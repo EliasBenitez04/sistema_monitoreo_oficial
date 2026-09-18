@@ -1,0 +1,8 @@
+body {
+    font-family: 'Roboto', sans-serif; /* Cambia 'Roboto' por la fuente deseada */
+}
+
+/* Cambia el tipo de letra en otras partes específicas */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Roboto', sans-serif;
+}
