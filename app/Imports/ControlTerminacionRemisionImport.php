@@ -6,14 +6,15 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
-class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, WithChunkReading
+class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 {
+    private $procesadas = 0;
     private $insertadas = 0;
     private $actualizadas = 0;
+    private $vinculadas = 0;
     private $sinVincular = 0;
     private $omitidas = 0;
 
@@ -22,32 +23,46 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         set_time_limit(0);
         DB::disableQueryLog();
 
+        /*
+        |--------------------------------------------------------------------------
+        | IMPORTANTE
+        |--------------------------------------------------------------------------
+        |
+        | El archivo ENVIOS actual tiene aproximadamente 1.075 registros.
+        | NO usamos WithChunkReading porque en este proyecto/versión estaba
+        | provocando que la misma hoja se procesara repetidas veces.
+        |
+        */
         $filas = $this->normalizarFilas($rows);
 
         if ($filas->isEmpty()) {
             return;
         }
 
+        $this->procesadas += $filas->count();
+
         /*
         |--------------------------------------------------------------------------
-        | PRE-CARGA DE VÍNCULOS LOGÍSTICOS
+        | CANDIDATOS LOGÍSTICOS EN UNA SOLA CONSULTA
         |--------------------------------------------------------------------------
         |
-        | Antes se consultaba PostgreSQL por CADA fila del Excel.
-        | Ahora traemos todos los candidatos del bloque en UNA consulta
-        | y resolvemos el vínculo en memoria.
+        | Traemos todos los movimientos de los códigos presentes en el Excel.
+        | No filtramos por nombre exacto de sucursal en SQL porque históricamente
+        | pueden existir nombres como:
+        |
+        | SL / SAN LORENZO
+        | L06 / L06 SAN LO 2
+        | Shopp / SHOP SAN LO3
+        |
+        | La sucursal se normaliza después en PHP.
         |
         */
         $vinculos = $this->precargarVinculos($filas);
 
         /*
         |--------------------------------------------------------------------------
-        | PRE-CARGA DE REMISIONES YA EXISTENTES
+        | REMISIONES YA EXISTENTES
         |--------------------------------------------------------------------------
-        |
-        | También se hace una sola consulta para saber qué filas son nuevas
-        | y cuáles deben actualizarse.
-        |
         */
         $existentes = $this->precargarExistentes($filas);
 
@@ -75,12 +90,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             /*
             |--------------------------------------------------------------------------
-            | CONSERVAR DATOS YA CONFIRMADOS
+            | CONSERVAR FECHAS YA CARGADAS
             |--------------------------------------------------------------------------
-            |
-            | Si una segunda importación no trae fecha de recepción pero la
-            | remisión ya estaba recibida, NO borramos esa confirmación.
-            |
             */
             $fechaRemision = $fila['fecha_remision']
                 ?: ($existente->fecha_remision ?? null);
@@ -93,8 +104,12 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             /*
             |--------------------------------------------------------------------------
-            | CONSERVAR VÍNCULO YA CORRECTO
+            | CONSERVAR / CORREGIR VÍNCULO
             |--------------------------------------------------------------------------
+            |
+            | Si ahora encontramos un vínculo mejor, reemplaza el vínculo anterior.
+            | Si no encontramos ninguno, conservamos uno previo que ya fuera válido.
+            |
             */
             $idOt = $vinculo
                 ? $vinculo->id_ot
@@ -107,6 +122,18 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $idLogisticaDetalle = $vinculo
                 ? $vinculo->id_logistica_detalle
                 : ($existente->id_logistica_detalle ?? null);
+
+            if ($idLogisticaDetalle) {
+                $this->vinculadas++;
+            } else {
+                $this->sinVincular++;
+            }
+
+            if ($existente) {
+                $this->actualizadas++;
+            } else {
+                $this->insertadas++;
+            }
 
             $registros[] = [
                 'id_ot' => $idOt,
@@ -139,59 +166,46 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 'created_at' => $existente->created_at ?? $ahora,
                 'updated_at' => $ahora,
             ];
-
-            if ($existente) {
-                $this->actualizadas++;
-            } else {
-                $this->insertadas++;
-            }
-
-            if (!$idLogisticaDetalle) {
-                $this->sinVincular++;
-            }
         }
 
         /*
         |--------------------------------------------------------------------------
-        | UPSERT MASIVO
+        | UPSERT POR LOTES
         |--------------------------------------------------------------------------
         |
-        | Un solo comando SQL inserta/actualiza todo el bloque.
-        | PostgreSQL 9.5 soporta ON CONFLICT, utilizado por Laravel upsert().
+        | 200 filas por sentencia mantiene bajo el número de parámetros
+        | enviados a PostgreSQL 9.5 y sigue siendo muy rápido.
         |
         */
-        DB::table('ot_logistica_remisiones')->upsert(
-            $registros,
-            [
-                'serie',
-                'numero_remision',
-                'codigo',
-                'cod_sucursal_salida',
-                'cod_sucursal_destino',
-            ],
-            [
-                'id_ot',
-                'id_trazabilidad',
-                'id_logistica_detalle',
-                'fecha_remision',
-                'fecha_creacion',
-                'fecha_recepcion',
-                'sucursal_salida',
-                'sucursal_destino',
-                'sucursal_logistica',
-                'descripcion',
-                'cantidad',
-                'precio_venta',
-                'costo_unitario',
-                'estado',
-                'updated_at',
-            ]
-        );
-    }
-
-    public function chunkSize(): int
-    {
-        return 250;
+        foreach (array_chunk($registros, 200) as $lote) {
+            DB::table('ot_logistica_remisiones')->upsert(
+                $lote,
+                [
+                    'serie',
+                    'numero_remision',
+                    'codigo',
+                    'cod_sucursal_salida',
+                    'cod_sucursal_destino',
+                ],
+                [
+                    'id_ot',
+                    'id_trazabilidad',
+                    'id_logistica_detalle',
+                    'fecha_remision',
+                    'fecha_creacion',
+                    'fecha_recepcion',
+                    'sucursal_salida',
+                    'sucursal_destino',
+                    'sucursal_logistica',
+                    'descripcion',
+                    'cantidad',
+                    'precio_venta',
+                    'costo_unitario',
+                    'estado',
+                    'updated_at',
+                ]
+            );
+        }
     }
 
     private function normalizarFilas(Collection $rows)
@@ -235,12 +249,12 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
                 'sucursal_salida' => $sucursalSalida !== '' ? $sucursalSalida : null,
                 'sucursal_destino' => $sucursalDestino !== '' ? $sucursalDestino : null,
-                'sucursal_logistica' => $this->resolverSucursalLogistica(
+                'sucursal_logistica' => $this->resolverSucursalImportada(
                     $codDestino,
                     $sucursalDestino
                 ),
 
-                // El Excel actual tiene el encabezado "Artiuclo".
+                // El archivo actual tiene el encabezado "Artiuclo".
                 'descripcion' => trim((string) (
                     $row['artiuclo']
                     ?? $row['articulo']
@@ -252,41 +266,37 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             ]);
         }
 
-        return $filas;
+        /*
+         * Protección adicional: si por algún motivo el Excel trae la misma
+         * línea repetida, procesamos una sola vez la clave de la remisión.
+         */
+        return $filas
+            ->unique(function ($fila) {
+                return $this->clave(
+                    $fila['serie'],
+                    $fila['numero_remision'],
+                    $fila['codigo'],
+                    $fila['cod_sucursal_salida'],
+                    $fila['cod_sucursal_destino']
+                );
+            })
+            ->values();
     }
 
     private function precargarVinculos(Collection $filas)
     {
-        $sucursales = $filas
-            ->pluck('sucursal_logistica')
-            ->filter()
-            ->unique()
-            ->values();
-
-        if ($sucursales->isEmpty()) {
-            return collect();
-        }
-
         $codigos = $filas
             ->pluck('codigo')
             ->filter()
+            ->map(function ($codigo) {
+                return strtoupper($this->normalizarCodigo($codigo));
+            })
             ->unique()
             ->values();
 
         if ($codigos->isEmpty()) {
             return collect();
         }
-
-        /*
-         * Compatibilidad por si algún código de OT quedó guardado
-         * con apóstrofe inicial.
-         */
-        $codigosConsulta = $codigos
-            ->flatMap(function ($codigo) {
-                return [$codigo, "'" . $codigo];
-            })
-            ->unique()
-            ->values();
 
         $fechaMaxima = $filas
             ->map(function ($fila) {
@@ -295,11 +305,19 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             ->filter()
             ->max();
 
+        /*
+         * Normalizamos el código directamente en SQL:
+         * - trim de espacios
+         * - elimina apóstrofe inicial
+         * - mayúsculas
+         */
         $query = DB::table('ot_logistica_detalle as d')
             ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
             ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
-            ->whereIn('o.codigo', $codigosConsulta->all())
-            ->whereIn('d.sucursal', $sucursales->all())
+            ->whereIn(
+                DB::raw("UPPER(REPLACE(TRIM(o.codigo), '''', ''))"),
+                $codigos->all()
+            )
             ->where('t.proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
             ->select(
                 'd.id as id_logistica_detalle',
@@ -315,14 +333,29 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $query->whereDate('t.fecha_proceso', '<=', $fechaMaxima);
         }
 
-        return $query
+        $candidatos = $query
             ->orderBy('t.fecha_proceso', 'desc')
             ->orderBy('d.id', 'desc')
-            ->get()
+            ->get();
+
+        return $candidatos
+            ->map(function ($item) {
+                $item->codigo_normalizado = strtoupper(
+                    $this->normalizarCodigo($item->codigo)
+                );
+
+                $item->sucursal_normalizada =
+                    $this->normalizarSucursalBase($item->sucursal);
+
+                return $item;
+            })
+            ->filter(function ($item) {
+                return !empty($item->sucursal_normalizada);
+            })
             ->groupBy(function ($item) {
                 return $this->claveVinculo(
-                    $this->normalizarCodigo($item->codigo),
-                    $item->sucursal
+                    $item->codigo_normalizado,
+                    $item->sucursal_normalizada
                 );
             });
     }
@@ -338,17 +371,21 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             return null;
         }
 
+        $clave = $this->claveVinculo(
+            strtoupper($this->normalizarCodigo($codigo)),
+            $this->normalizarSucursalBase($sucursal)
+        );
+
         $candidatos = collect(
-            $vinculos->get(
-                $this->claveVinculo($codigo, $sucursal),
-                collect()
-            )
+            $vinculos->get($clave, collect())
         );
 
         if ($fechaReferencia) {
-            $candidatos = $candidatos->filter(function ($item) use ($fechaReferencia) {
-                return $item->fecha_proceso <= $fechaReferencia;
-            })->values();
+            $candidatos = $candidatos
+                ->filter(function ($item) use ($fechaReferencia) {
+                    return $item->fecha_proceso <= $fechaReferencia;
+                })
+                ->values();
         }
 
         if ($candidatos->isEmpty()) {
@@ -356,9 +393,10 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         }
 
         /*
-         * Primero intentamos cantidad exacta.
-         * Si no existe, tomamos la distribución más reciente anterior
-         * o igual a la remisión.
+         * Prioridad:
+         * 1) misma cantidad y fecha logística más reciente;
+         * 2) si no coincide cantidad, logística más reciente anterior
+         *    a la remisión.
          */
         $exacto = $candidatos->first(function ($item) use ($cantidad) {
             return (int) $item->cantidad === (int) $cantidad;
@@ -389,72 +427,123 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             });
     }
 
-    private function resolverSucursalLogistica($codigo, $nombre)
+    private function resolverSucursalImportada($codigo, $nombre)
     {
-        /*
-         * Códigos usados actualmente por los locales del sistema.
-         * Si aparece uno nuevo, abajo existe además resolución por nombre.
-         */
         $porCodigo = [
             2 => 'SL',
-            3 => 'Luque',
-            4 => 'Mall',
+            3 => 'LUQUE',
+            4 => 'MALL',
             5 => 'L06',
-            6 => 'Rural',
-            7 => 'Bonanza',
-            8 => 'Shopp',
-            9 => 'Multi',
-            14 => 'Pinedo',
-            15 => 'Ñemby',
-            16 => 'Mariano',
-            22 => 'Los Jardines',
+            6 => 'RURAL',
+            7 => 'BONANZA',
+            8 => 'SHOPP',
+            9 => 'MULTI',
+            14 => 'PINEDO',
+            15 => 'NEMBY',
+            16 => 'MARIANO',
+            22 => 'JARDINES',
         ];
 
         if ($codigo && isset($porCodigo[$codigo])) {
             return $porCodigo[$codigo];
         }
 
-        $normalizado = $this->sinAcentos(strtoupper(trim((string) $nombre)));
+        return $this->normalizarSucursalBase($nombre);
+    }
 
-        $reglas = [
-            'SAN LORENZO' => 'SL',
-            'SAN LO' => 'SL',
-            'LUQUE' => 'Luque',
-            'MALL' => 'Mall',
-            'L06' => 'L06',
-            'RURAL' => 'Rural',
-            'BONANZA' => 'Bonanza',
-            'SHOP SAN LO' => 'Shopp',
-            'SHOPP' => 'Shopp',
-            'MULTIPLAZA' => 'Multi',
-            'MULTI' => 'Multi',
-            'PINEDO' => 'Pinedo',
-            'NEMBY' => 'Ñemby',
-            'MARIANO' => 'Mariano',
-            'JARDINES' => 'Los Jardines',
-            'AYALA' => 'Ayala',
-            'MODELO' => 'Modelo Muestra',
-        ];
+    private function normalizarSucursalBase($nombre)
+    {
+        $valor = $this->sinAcentos(
+            strtoupper(
+                trim((string) $nombre)
+            )
+        );
 
-        /*
-         * Primero reglas más específicas para evitar que "SHOP SAN LO3"
-         * sea interpretado como "SL".
-         */
-        if (strpos($normalizado, 'SHOP SAN LO') !== false) {
-            return 'Shopp';
+        if ($valor === '') {
+            return null;
         }
 
-        if (strpos($normalizado, 'L06') !== false) {
+        // Valores cortos que ya pueden venir guardados en ot_logistica_detalle.
+        $aliasExactos = [
+            'SL' => 'SL',
+            'LUQUE' => 'LUQUE',
+            'MALL' => 'MALL',
+            'L06' => 'L06',
+            'RURAL' => 'RURAL',
+            'BONANZA' => 'BONANZA',
+            'SHOPP' => 'SHOPP',
+            'MULTI' => 'MULTI',
+            'PINEDO' => 'PINEDO',
+            'NEMBY' => 'NEMBY',
+            'MARIANO' => 'MARIANO',
+            'LOS JARDINES' => 'JARDINES',
+            'JARDINES' => 'JARDINES',
+            'AYALA' => 'AYALA',
+            'MODELO MUESTRA' => 'MODELO',
+        ];
+
+        if (isset($aliasExactos[$valor])) {
+            return $aliasExactos[$valor];
+        }
+
+        // Primero los nombres más específicos.
+        if (strpos($valor, 'SHOP SAN LO') !== false) {
+            return 'SHOPP';
+        }
+
+        if (strpos($valor, 'L06') !== false) {
             return 'L06';
         }
 
-        foreach ($reglas as $texto => $alias) {
-            if (strpos($normalizado, $texto) !== false) {
-                return $alias;
-            }
+        if (strpos($valor, 'SAN LORENZO') !== false) {
+            return 'SL';
         }
 
-        return null;
+        if (strpos($valor, 'MULTIPLAZA') !== false) {
+            return 'MULTI';
+        }
+
+        if (strpos($valor, 'JARDINES') !== false) {
+            return 'JARDINES';
+        }
+
+        if (strpos($valor, 'MARIANO') !== false) {
+            return 'MARIANO';
+        }
+
+        if (strpos($valor, 'PINEDO') !== false) {
+            return 'PINEDO';
+        }
+
+        if (strpos($valor, 'BONANZA') !== false) {
+            return 'BONANZA';
+        }
+
+        if (strpos($valor, 'RURAL') !== false) {
+            return 'RURAL';
+        }
+
+        if (strpos($valor, 'NEMBY') !== false) {
+            return 'NEMBY';
+        }
+
+        if (strpos($valor, 'LUQUE') !== false) {
+            return 'LUQUE';
+        }
+
+        if (strpos($valor, 'MALL') !== false) {
+            return 'MALL';
+        }
+
+        if (strpos($valor, 'AYALA') !== false) {
+            return 'AYALA';
+        }
+
+        if (strpos($valor, 'MODELO') !== false) {
+            return 'MODELO';
+        }
+
+        return $valor;
     }
 
     private function clave($serie, $numero, $codigo, $origen, $destino)
@@ -462,7 +551,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         return implode('|', [
             (string) $serie,
             (string) $numero,
-            (string) $codigo,
+            strtoupper($this->normalizarCodigo($codigo)),
             (string) $origen,
             (string) $destino,
         ]);
@@ -561,6 +650,11 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         ]);
     }
 
+    public function getProcesadas()
+    {
+        return $this->procesadas;
+    }
+
     public function getInsertadas()
     {
         return $this->insertadas;
@@ -569,6 +663,11 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     public function getActualizadas()
     {
         return $this->actualizadas;
+    }
+
+    public function getVinculadas()
+    {
+        return $this->vinculadas;
     }
 
     public function getSinVincular()

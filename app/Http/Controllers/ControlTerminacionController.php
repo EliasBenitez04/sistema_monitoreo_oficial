@@ -296,8 +296,10 @@ class ControlTerminacionController extends Controller
             Excel::import($import, $request->file('archivo_envios'));
 
             $mensaje = 'Importación finalizada. '
-                . 'Nuevas: ' . $import->getInsertadas()
+                . 'Procesadas: ' . $import->getProcesadas()
+                . ' | Nuevas: ' . $import->getInsertadas()
                 . ' | Actualizadas: ' . $import->getActualizadas()
+                . ' | Vinculadas: ' . $import->getVinculadas()
                 . ' | Sin vínculo logístico: ' . $import->getSinVincular()
                 . ' | Omitidas: ' . $import->getOmitidas();
 
