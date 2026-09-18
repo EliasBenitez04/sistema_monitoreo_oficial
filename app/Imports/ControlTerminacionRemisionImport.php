@@ -47,7 +47,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         |--------------------------------------------------------------------------
         |
         | Traemos todos los movimientos de los códigos presentes en el Excel.
-        | No filtramos por nombre exacto de sucursal en SQL porque históricamente
+        | La fecha NO se usa como filtro excluyente: se usa después para escoger
+        | el movimiento más cercano. No filtramos por nombre exacto de sucursal
+        | en SQL porque históricamente
         | pueden existir nombres como:
         |
         | SL / SAN LORENZO
@@ -298,13 +300,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             return collect();
         }
 
-        $fechaMaxima = $filas
-            ->map(function ($fila) {
-                return $fila['fecha_remision'] ?: $fila['fecha_creacion'];
-            })
-            ->filter()
-            ->max();
-
         /*
          * Normalizamos el código directamente en SQL:
          * - trim de espacios
@@ -328,10 +323,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                 'o.codigo',
                 't.fecha_proceso'
             );
-
-        if ($fechaMaxima) {
-            $query->whereDate('t.fecha_proceso', '<=', $fechaMaxima);
-        }
 
         $candidatos = $query
             ->orderBy('t.fecha_proceso', 'desc')
@@ -380,29 +371,117 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             $vinculos->get($clave, collect())
         );
 
-        if ($fechaReferencia) {
-            $candidatos = $candidatos
-                ->filter(function ($item) use ($fechaReferencia) {
-                    return $item->fecha_proceso <= $fechaReferencia;
-                })
-                ->values();
-        }
-
         if ($candidatos->isEmpty()) {
             return null;
         }
 
         /*
-         * Prioridad:
-         * 1) misma cantidad y fecha logística más reciente;
-         * 2) si no coincide cantidad, logística más reciente anterior
-         *    a la remisión.
-         */
-        $exacto = $candidatos->first(function ($item) use ($cantidad) {
-            return (int) $item->cantidad === (int) $cantidad;
+        |--------------------------------------------------------------------------
+        | CRITERIO DE ASOCIACIÓN
+        |--------------------------------------------------------------------------
+        |
+        | CONDICIONES OBLIGATORIAS:
+        |   1) mismo código;
+        |   2) mismo local destino normalizado.
+        |
+        | PRIORIDAD:
+        |   A) misma cantidad del detalle logístico;
+        |   B) fecha logística más cercana a la fecha de remisión/creación;
+        |   C) ante empate, preferimos logística del mismo día o anterior;
+        |   D) ante otro empate, el movimiento más reciente.
+        |
+        | No exigimos que logística sea <= remisión porque en la operación real
+        | las cargas de ambos archivos pueden registrarse en días diferentes.
+        |
+        */
+
+        $fecha = null;
+
+        if ($fechaReferencia) {
+            try {
+                $fecha = Carbon::parse($fechaReferencia)->startOfDay();
+            } catch (\Throwable $e) {
+                $fecha = null;
+            }
+        }
+
+        $evaluados = $candidatos->map(function ($item) use ($cantidad, $fecha) {
+            $item->_cantidad_exacta =
+                ((int) $item->cantidad === (int) $cantidad) ? 1 : 0;
+
+            $item->_distancia_dias = 999999;
+            $item->_posterior = 1;
+
+            if ($fecha && !empty($item->fecha_proceso)) {
+                try {
+                    $fechaLogistica = Carbon::parse($item->fecha_proceso)->startOfDay();
+
+                    $item->_distancia_dias =
+                        abs($fechaLogistica->diffInDays($fecha, false));
+
+                    /*
+                     * 0 = mismo día o anterior a la remisión.
+                     * 1 = posterior.
+                     *
+                     * Esto solo desempata; no excluye fechas posteriores.
+                     */
+                    $item->_posterior =
+                        $fechaLogistica->gt($fecha) ? 1 : 0;
+                } catch (\Throwable $e) {
+                    // Se mantiene distancia alta.
+                }
+            }
+
+            return $item;
         });
 
-        return $exacto ?: $candidatos->first();
+        /*
+         * Evitamos asociaciones absurdamente alejadas.
+         *
+         * Si existe fecha de referencia, permitimos hasta 45 días de distancia.
+         * Si no hay ningún candidato dentro de esa ventana, dejamos la remisión
+         * sin vínculo para no asociarla a una OT histórica incorrecta.
+         */
+        if ($fecha) {
+            $cercanos = $evaluados
+                ->filter(function ($item) {
+                    return $item->_distancia_dias <= 45;
+                })
+                ->values();
+
+            if ($cercanos->isNotEmpty()) {
+                $evaluados = $cercanos;
+            } else {
+                return null;
+            }
+        }
+
+        return $evaluados
+            ->sort(function ($a, $b) {
+                // 1. Cantidad exacta primero.
+                if ($a->_cantidad_exacta !== $b->_cantidad_exacta) {
+                    return $a->_cantidad_exacta > $b->_cantidad_exacta ? -1 : 1;
+                }
+
+                // 2. Menor distancia de fecha.
+                if ($a->_distancia_dias !== $b->_distancia_dias) {
+                    return $a->_distancia_dias < $b->_distancia_dias ? -1 : 1;
+                }
+
+                // 3. Mismo día/anterior antes que posterior.
+                if ($a->_posterior !== $b->_posterior) {
+                    return $a->_posterior < $b->_posterior ? -1 : 1;
+                }
+
+                // 4. Movimiento logístico más reciente.
+                if ($a->fecha_proceso !== $b->fecha_proceso) {
+                    return strcmp((string) $b->fecha_proceso, (string) $a->fecha_proceso);
+                }
+
+                // 5. Último detalle como desempate final.
+                return ((int) $b->id_logistica_detalle) <=> ((int) $a->id_logistica_detalle);
+            })
+            ->first();
     }
 
     private function precargarExistentes(Collection $filas)
