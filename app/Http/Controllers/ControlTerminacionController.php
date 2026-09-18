@@ -17,7 +17,6 @@ class ControlTerminacionController extends Controller
 
         $procesoProductoTerminado = 'TERMINACION - PRODUCTO TERMINADO';
         $procesoLogistica = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
-
         $tablaRemisionesDisponible = Schema::hasTable('ot_logistica_remisiones');
 
         $produccionTerminada = DB::table('ot_trazabilidad as tp')
@@ -39,15 +38,69 @@ class ControlTerminacionController extends Controller
             ->orderBy('o.nro_ot')
             ->get();
 
-        foreach ($produccionTerminada as $item) {
-            $logistica = DB::table('ot_trazabilidad as tl')
-                ->where('tl.id_ot', $item->id_ot)
-                ->where('tl.proceso', $procesoLogistica)
-                ->whereDate('tl.fecha_proceso', '>=', $item->fecha_producto_terminado)
-                ->select('tl.id_trazabilidad', 'tl.resultado', 'tl.fecha_proceso')
-                ->orderBy('tl.fecha_proceso')
-                ->orderBy('tl.id_trazabilidad')
+        $idsOt = $produccionTerminada
+            ->pluck('id_ot')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $logisticaGeneral = collect();
+
+        if ($idsOt->isNotEmpty()) {
+            $logisticaGeneral = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt->all())
+                ->where('proceso', $procesoLogistica)
+                ->select('id_trazabilidad', 'id_ot', 'resultado', 'fecha_proceso')
+                ->orderBy('fecha_proceso')
+                ->orderBy('id_trazabilidad')
                 ->get();
+        }
+
+        $logisticaPorOt = $logisticaGeneral->groupBy('id_ot');
+
+        $idsTrazabilidad = $logisticaGeneral
+            ->pluck('id_trazabilidad')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $detallesGeneral = collect();
+
+        if ($idsTrazabilidad->isNotEmpty()) {
+            $detallesGeneral = DB::table('ot_logistica_detalle')
+                ->whereIn('id_trazabilidad', $idsTrazabilidad->all())
+                ->select('id', 'id_ot', 'id_trazabilidad', 'sucursal', 'cantidad', 'created_at')
+                ->orderBy('id_trazabilidad')
+                ->orderBy('id')
+                ->get();
+        }
+
+        $detallesPorTrazabilidad = $detallesGeneral->groupBy('id_trazabilidad');
+
+        $remisionesPorDetalle = collect();
+
+        if ($tablaRemisionesDisponible && $detallesGeneral->isNotEmpty()) {
+            $idsDetalle = $detallesGeneral
+                ->pluck('id')
+                ->filter()
+                ->unique()
+                ->values();
+
+            $remisionesPorDetalle = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_logistica_detalle', $idsDetalle->all())
+                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
+                ->orderBy('serie')
+                ->orderBy('numero_remision')
+                ->get()
+                ->groupBy('id_logistica_detalle');
+        }
+
+        foreach ($produccionTerminada as $item) {
+            $logistica = collect($logisticaPorOt->get($item->id_ot, collect()))
+                ->filter(function ($movimiento) use ($item) {
+                    return $movimiento->fecha_proceso >= $item->fecha_producto_terminado;
+                })
+                ->values();
 
             $item->logistica = $logistica;
             $item->cantidad_enviada = (int) $logistica->sum('resultado');
@@ -58,38 +111,21 @@ class ControlTerminacionController extends Controller
             $detalle = collect();
 
             foreach ($logistica as $movimiento) {
-                $locales = DB::table('ot_logistica_detalle')
-                    ->where('id_trazabilidad', $movimiento->id_trazabilidad)
-                    ->select('id', 'id_ot', 'id_trazabilidad', 'sucursal', 'cantidad', 'created_at')
-                    ->orderBy('created_at')
-                    ->orderBy('id')
-                    ->get();
+                $locales = collect($detallesPorTrazabilidad->get($movimiento->id_trazabilidad, collect()));
 
                 foreach ($locales as $local) {
                     $local->fecha_logistica = $movimiento->fecha_proceso;
-
-                    $remisiones = collect();
-
-                    if ($tablaRemisionesDisponible) {
-                        $remisiones = DB::table('ot_logistica_remisiones')
-                            ->where('id_logistica_detalle', $local->id)
-                            ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
-                            ->orderBy('serie')
-                            ->orderBy('numero_remision')
-                            ->get();
-                    }
-
-                    $local->remisiones = $remisiones;
-                    $local->cantidad_remitida = (int) $remisiones->sum('cantidad');
-                    $local->cantidad_recibida = (int) $remisiones
+                    $local->remisiones = collect($remisionesPorDetalle->get($local->id, collect()));
+                    $local->cantidad_remitida = (int) $local->remisiones->sum('cantidad');
+                    $local->cantidad_recibida = (int) $local->remisiones
                         ->filter(function ($remision) {
                             return !empty($remision->fecha_recepcion);
                         })
                         ->sum('cantidad');
 
-                    if ($remisiones->isEmpty()) {
+                    if ($local->remisiones->isEmpty()) {
                         $local->estado_confirmacion = 'SIN REMISION';
-                    } elseif ($remisiones->every(function ($remision) {
+                    } elseif ($local->remisiones->every(function ($remision) {
                         return !empty($remision->fecha_recepcion);
                     })) {
                         $local->estado_confirmacion = 'RECIBIDO';
@@ -240,6 +276,10 @@ class ControlTerminacionController extends Controller
 
     public function importarRemisiones(Request $request)
     {
+        set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+        DB::disableQueryLog();
+
         $request->validate([
             'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:20480',
         ]);
