@@ -802,4 +802,9 @@ Route::get(
     [ControlTerminacionController::class, 'index']
 )->name('control.terminacion');
 
+Route::post(
+    '/control/terminacion/importar-remisiones',
+    [ControlTerminacionController::class, 'importarRemisiones']
+)->name('control.terminacion.importar-remisiones');
+
 Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionConfigController::class);
