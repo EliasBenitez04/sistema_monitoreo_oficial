@@ -187,7 +187,7 @@ class RedistribucionSugeridaController extends Controller
              * Para no alterar la estructura actual de redistribucion_config:
              * - metodo_demanda: conserva el valor PERIODO exigido por la BD
              * - porcentaje_conservar_origen: 0 = cobertura automática, 1 = fija
-             * - porcentaje_demanda: demanda total a cubrir (120 = +20% seguridad)
+             * - porcentaje_demanda: margen de seguridad (20 = +20%)
              * - cantidad_maxima: días de cobertura cuando el método es FIJO
              * - stock_minimo: reserva mínima
              * - venta_minima: venta mínima para que un local pueda ser destino
@@ -208,7 +208,7 @@ class RedistribucionSugeridaController extends Controller
                 : 7;
 
             $seguridadConfigurada = $configuracionOperativa
-                ? max(0, min(100, (int) round((float) $configuracion->porcentaje_demanda - 100)))
+                ? max(0, min(100, (int) round((float) $configuracion->porcentaje_demanda)))
                 : 20;
 
             $minimoOrigenConfigurado = $configuracionOperativa
