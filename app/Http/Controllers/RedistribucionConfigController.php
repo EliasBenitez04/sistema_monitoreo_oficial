@@ -37,17 +37,18 @@ class RedistribucionConfigController extends Controller
             $config = RedistribucionConfig::orderByDesc('id')->first();
         }
 
-        $esOperativa = $config
-            && in_array(
-                (string) $config->metodo_demanda,
-                ['COBERTURA_AUTO', 'COBERTURA_FIJA'],
-                true
-            );
+        $esOperativa = (bool) $config;
+
+        // metodo_demanda pertenece al esquema original y su CHECK no admite
+        // COBERTURA_AUTO/COBERTURA_FIJA. Se conserva PERIODO en BD.
+        // El modo de cobertura se codifica en porcentaje_conservar_origen:
+        // 0 = automática, 1 = fija. Ese campo no participa en el motor actual.
+        $modoCobertura = $esOperativa && (float) $config->porcentaje_conservar_origen >= 1
+            ? 'COBERTURA_FIJA'
+            : 'COBERTURA_AUTO';
 
         $valores = [
-            'metodo_demanda' => $esOperativa
-                ? (string) $config->metodo_demanda
-                : 'COBERTURA_AUTO',
+            'metodo_demanda' => $modoCobertura,
             'dias_cobertura' => $esOperativa
                 ? max(1, min(90, (int) $config->cantidad_maxima))
                 : 7,
@@ -121,14 +122,17 @@ class RedistribucionConfigController extends Controller
 
             $diasCobertura = (int) ($data['dias_cobertura'] ?? 7);
 
-            $config->metodo_demanda = $data['metodo_demanda'];
+            // Respeta chk_metodo_demanda de la tabla existente.
+            // El motor actual trabaja con el período seleccionado.
+            $config->metodo_demanda = 'PERIODO';
             $config->porcentaje_demanda = 100 + (int) $data['seguridad_porcentaje'];
             $config->stock_minimo = (int) $data['stock_minimo_origen'];
             $config->venta_minima = (int) $data['venta_minima'];
 
-            // En el motor vigente cantidad_maxima actúa como almacenamiento del
-            // horizonte fijo de cobertura. Solo se interpreta así cuando
-            // metodo_demanda es COBERTURA_AUTO/COBERTURA_FIJA.
+            // Campos históricos reutilizados únicamente por la configuración
+            // del motor actual.
+            $config->porcentaje_conservar_origen =
+                $data['metodo_demanda'] === 'COBERTURA_FIJA' ? 1 : 0;
             $config->cantidad_maxima = $diasCobertura;
 
             $config->dias_bloqueo = (int) $data['dias_bloqueo'];
