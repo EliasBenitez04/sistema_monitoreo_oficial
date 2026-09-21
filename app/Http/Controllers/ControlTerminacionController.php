@@ -76,7 +76,6 @@ class ControlTerminacionController extends Controller
         }
 
         $detallesPorTrazabilidad = $detallesGeneral->groupBy('id_trazabilidad');
-
         $remisionesPorDetalle = collect();
 
         if ($tablaRemisionesDisponible && $detallesGeneral->isNotEmpty()) {
@@ -103,8 +102,6 @@ class ControlTerminacionController extends Controller
                 ->values();
 
             $item->logistica = $logistica;
-            $item->cantidad_enviada = (int) $logistica->sum('resultado');
-            $item->diferencia = (int) $item->cantidad_terminada - $item->cantidad_enviada;
             $item->primera_salida = optional($logistica->first())->fecha_proceso;
             $item->ultima_salida = optional($logistica->last())->fecha_proceso;
 
@@ -116,6 +113,7 @@ class ControlTerminacionController extends Controller
                 foreach ($locales as $local) {
                     $local->fecha_logistica = $movimiento->fecha_proceso;
                     $local->remisiones = collect($remisionesPorDetalle->get($local->id, collect()));
+
                     $local->cantidad_remitida = (int) $local->remisiones->sum('cantidad');
                     $local->cantidad_recibida = (int) $local->remisiones
                         ->filter(function ($remision) {
@@ -123,12 +121,27 @@ class ControlTerminacionController extends Controller
                         })
                         ->sum('cantidad');
 
-                    if ($local->remisiones->isEmpty()) {
+                    $local->cantidad_en_transito = max(
+                        0,
+                        $local->cantidad_remitida - $local->cantidad_recibida
+                    );
+
+                    $local->pendiente_remision = max(
+                        0,
+                        (int) $local->cantidad - $local->cantidad_remitida
+                    );
+
+                    $local->exceso_remision = max(
+                        0,
+                        $local->cantidad_remitida - (int) $local->cantidad
+                    );
+
+                    if ($local->cantidad_remitida <= 0) {
                         $local->estado_confirmacion = 'SIN REMISION';
-                    } elseif ($local->remisiones->every(function ($remision) {
-                        return !empty($remision->fecha_recepcion);
-                    })) {
+                    } elseif ($local->cantidad_recibida >= (int) $local->cantidad) {
                         $local->estado_confirmacion = 'RECIBIDO';
+                    } elseif ($local->cantidad_recibida > 0) {
+                        $local->estado_confirmacion = 'PARCIAL';
                     } else {
                         $local->estado_confirmacion = 'EN TRANSITO';
                     }
@@ -139,19 +152,27 @@ class ControlTerminacionController extends Controller
 
             $item->detalle_logistica = $detalle;
 
+            $item->cantidad_logistica = (int) $detalle->sum('cantidad');
+            $item->cantidad_enviada = $item->cantidad_logistica;
+            $item->cantidad_remitida = (int) $detalle->sum('cantidad_remitida');
+            $item->cantidad_recibida = (int) $detalle->sum('cantidad_recibida');
+            $item->cantidad_en_transito = max(
+                0,
+                $item->cantidad_remitida - $item->cantidad_recibida
+            );
+            $item->pendiente_remitir = max(
+                0,
+                $item->cantidad_logistica - $item->cantidad_remitida
+            );
+            $item->diferencia = (int) $item->cantidad_terminada - $item->cantidad_logistica;
+
             if ($detalle->isEmpty()) {
                 $item->confirmacion_local = 'SIN ENVIOS';
-            } elseif ($detalle->every(function ($local) {
-                return $local->estado_confirmacion === 'RECIBIDO';
-            })) {
+            } elseif ($item->cantidad_logistica > 0 && $item->cantidad_recibida >= $item->cantidad_logistica) {
                 $item->confirmacion_local = 'RECIBIDO';
-            } elseif ($detalle->contains(function ($local) {
-                return $local->estado_confirmacion === 'RECIBIDO';
-            })) {
+            } elseif ($item->cantidad_recibida > 0) {
                 $item->confirmacion_local = 'PARCIAL';
-            } elseif ($detalle->contains(function ($local) {
-                return $local->estado_confirmacion === 'EN TRANSITO';
-            })) {
+            } elseif ($item->cantidad_remitida > 0) {
                 $item->confirmacion_local = 'EN TRANSITO';
             } else {
                 $item->confirmacion_local = 'SIN REMISION';
@@ -167,7 +188,7 @@ class ControlTerminacionController extends Controller
         $produccionTerminada = $produccionTerminada->map(function ($item) {
             if ($item->diferencia == 0) {
                 $item->estado_control = 'FINALIZADO';
-            } elseif ($item->cantidad_enviada == 0) {
+            } elseif ($item->cantidad_logistica == 0) {
                 $item->estado_control = 'NO ENVIADO';
             } else {
                 $item->estado_control = 'PARCIAL';
@@ -196,8 +217,13 @@ class ControlTerminacionController extends Controller
         }
 
         $totalTerminado = (int) $produccionTerminada->sum('cantidad_terminada');
-        $totalEnviado = (int) $produccionTerminada->sum('cantidad_enviada');
-        $totalDiferencia = $totalTerminado - $totalEnviado;
+        $totalLogistica = (int) $produccionTerminada->sum('cantidad_logistica');
+        $totalEnviado = $totalLogistica;
+        $totalRemitido = (int) $produccionTerminada->sum('cantidad_remitida');
+        $totalRecibido = (int) $produccionTerminada->sum('cantidad_recibida');
+        $totalEnTransito = max(0, $totalRemitido - $totalRecibido);
+        $totalPendienteRemitir = max(0, $totalLogistica - $totalRemitido);
+        $totalDiferencia = $totalTerminado - $totalLogistica;
         $totalOTs = $produccionTerminada->count();
 
         $otsCompletas = $produccionTerminada
@@ -214,12 +240,12 @@ class ControlTerminacionController extends Controller
 
         $otsNoEnviadas = $produccionTerminada
             ->filter(function ($item) {
-                return $item->cantidad_enviada == 0;
+                return $item->cantidad_logistica == 0;
             })
             ->count();
 
         $porcentajeEnviado = $totalTerminado > 0
-            ? round(($totalEnviado / $totalTerminado) * 100, 2)
+            ? round(($totalLogistica / $totalTerminado) * 100, 2)
             : 0;
 
         $totalRemisiones = 0;
@@ -245,11 +271,42 @@ class ControlTerminacionController extends Controller
         }
 
         $remisionesSinVincular = 0;
+        $remisionesSinVincularFilas = 0;
+        $resumenSinVincular = collect();
 
         if ($tablaRemisionesDisponible) {
-            $remisionesSinVincular = DB::table('ot_logistica_remisiones')
-                ->whereNull('id_logistica_detalle')
-                ->count();
+            $baseSinVinculo = DB::table('ot_logistica_remisiones')
+                ->whereNull('id_logistica_detalle');
+
+            $remisionesSinVincularFilas = (clone $baseSinVinculo)->count();
+
+            $documentosSinVinculo = $baseSinVinculo
+                ->select(
+                    'serie',
+                    'numero_remision',
+                    'cod_sucursal_destino',
+                    'sucursal_destino',
+                    'sucursal_logistica',
+                    'fecha_remision',
+                    'fecha_recepcion',
+                    DB::raw('COUNT(*) as lineas'),
+                    DB::raw('SUM(cantidad) as cantidad')
+                )
+                ->groupBy(
+                    'serie',
+                    'numero_remision',
+                    'cod_sucursal_destino',
+                    'sucursal_destino',
+                    'sucursal_logistica',
+                    'fecha_remision',
+                    'fecha_recepcion'
+                )
+                ->orderBy('fecha_remision', 'desc')
+                ->orderBy('numero_remision', 'desc')
+                ->get();
+
+            $remisionesSinVincular = $documentosSinVinculo->count();
+            $resumenSinVincular = $documentosSinVinculo->take(50)->values();
         }
 
         return view('control.terminacion', compact(
@@ -258,7 +315,12 @@ class ControlTerminacionController extends Controller
             'produccionTerminada',
             'detalleLogistica',
             'totalTerminado',
+            'totalLogistica',
             'totalEnviado',
+            'totalRemitido',
+            'totalRecibido',
+            'totalEnTransito',
+            'totalPendienteRemitir',
             'totalDiferencia',
             'totalOTs',
             'otsCompletas',
@@ -270,14 +332,16 @@ class ControlTerminacionController extends Controller
             'remisionesRecibidas',
             'remisionesEnTransito',
             'detallesSinRemision',
-            'remisionesSinVincular'
+            'remisionesSinVincular',
+            'remisionesSinVincularFilas',
+            'resumenSinVincular'
         ));
     }
 
     public function importarRemisiones(Request $request)
     {
         set_time_limit(0);
-        @ini_set('memory_limit', '512M');
+        @ini_set('memory_limit', '768M');
         DB::disableQueryLog();
 
         $request->validate([
@@ -287,7 +351,7 @@ class ControlTerminacionController extends Controller
         if (!Schema::hasTable('ot_logistica_remisiones')) {
             return redirect()
                 ->route('control.terminacion', $request->only('fecha_desde', 'fecha_hasta'))
-                ->with('error', 'Primero ejecutá php artisan migrate para crear la tabla de remisiones.');
+                ->with('error', 'Primero creá la tabla ot_logistica_remisiones antes de importar ENVIOS.');
         }
 
         try {
@@ -296,12 +360,15 @@ class ControlTerminacionController extends Controller
             Excel::import($import, $request->file('archivo_envios'));
 
             $mensaje = 'Importación finalizada. '
-                . 'Procesadas: ' . $import->getProcesadas()
+                . 'Documentos: ' . $import->getDocumentosArchivo()
+                . ' | Recibidos en el archivo: ' . $import->getDocumentosRecibidos()
+                . ' | En tránsito: ' . $import->getDocumentosEnTransito()
+                . ' | Líneas procesadas: ' . $import->getProcesadas()
                 . ' | Nuevas: ' . $import->getInsertadas()
                 . ' | Actualizadas: ' . $import->getActualizadas()
-                . ' | Vinculadas: ' . $import->getVinculadas()
-                . ' | Sin vínculo logístico: ' . $import->getSinVincular()
-                . ' | Omitidas: ' . $import->getOmitidas();
+                . ' | Vinculadas a logística: ' . $import->getVinculadas()
+                . ' | Sin vínculo: ' . $import->getSinVincular()
+                . ' | Omitidas: ' . $import->getOmitidas() . '.';
 
             return redirect()
                 ->route('control.terminacion', $request->only('fecha_desde', 'fecha_hasta'))
@@ -314,4 +381,5 @@ class ControlTerminacionController extends Controller
                 ->with('error', 'No se pudo importar el archivo: ' . $e->getMessage());
         }
     }
+
 }
