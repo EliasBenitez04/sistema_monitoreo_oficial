@@ -125,38 +125,46 @@
     </div>
 
     <div class="row mb-3">
-        <div class="col-xl-3 col-md-6 mb-2">
+        <div class="col-xl-2 col-md-4 col-6 mb-2">
             <div class="card ct-card ct-kpi primary h-100"><div class="card-body">
                 <div class="label">Producto terminado</div>
                 <div class="value">{{ number_format($totalTerminado, 0, ',', '.') }}</div>
                 <small class="text-muted">{{ $totalOTs }} OTs</small>
             </div></div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-2">
+        <div class="col-xl-2 col-md-4 col-6 mb-2">
             <div class="card ct-card ct-kpi success h-100"><div class="card-body">
-                <div class="label">Enviado a locales</div>
-                <div class="value">{{ number_format($totalEnviado, 0, ',', '.') }}</div>
+                <div class="label">Salida logística</div>
+                <div class="value">{{ number_format($totalLogistica, 0, ',', '.') }}</div>
                 <small class="text-muted">{{ number_format($porcentajeEnviado, 1, ',', '.') }}% del terminado</small>
             </div></div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-2">
+        <div class="col-xl-2 col-md-4 col-6 mb-2">
             <div class="card ct-card ct-kpi info h-100"><div class="card-body">
-                <div class="label">Remisiones recibidas</div>
-                <div class="value">{{ number_format($remisionesRecibidas, 0, ',', '.') }}</div>
-                <small class="text-muted">{{ $remisionesEnTransito }} en tránsito</small>
+                <div class="label">Remitido</div>
+                <div class="value">{{ number_format($totalRemitido, 0, ',', '.') }}</div>
+                <small class="text-muted">{{ number_format($totalPendienteRemitir, 0, ',', '.') }} pendiente remitir</small>
             </div></div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-2">
+        <div class="col-xl-2 col-md-4 col-6 mb-2">
+            <div class="card ct-card ct-kpi success h-100"><div class="card-body">
+                <div class="label">Recibido por locales</div>
+                <div class="value">{{ number_format($totalRecibido, 0, ',', '.') }}</div>
+                <small class="text-muted">Confirmado por fecha recepción</small>
+            </div></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 mb-2">
             <div class="card ct-card ct-kpi warning h-100"><div class="card-body">
-                <div class="label">Locales sin remisión</div>
-                <div class="value">{{ number_format($detallesSinRemision, 0, ',', '.') }}</div>
-                <small class="text-muted">
-                    @if($remisionesSinVincular > 0)
-                        {{ $remisionesSinVincular }} filas importadas sin vínculo
-                    @else
-                        Sin inconsistencias de vínculo
-                    @endif
-                </small>
+                <div class="label">En tránsito</div>
+                <div class="value">{{ number_format($totalEnTransito, 0, ',', '.') }}</div>
+                <small class="text-muted">Remitido todavía no recibido</small>
+            </div></div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 mb-2">
+            <div class="card ct-card ct-kpi warning h-100"><div class="card-body">
+                <div class="label">Sin vínculo logístico</div>
+                <div class="value">{{ number_format($remisionesSinVincular, 0, ',', '.') }}</div>
+                <small class="text-muted">{{ number_format($remisionesSinVincularFilas, 0, ',', '.') }} líneas</small>
             </div></div>
         </div>
     </div>
@@ -177,14 +185,16 @@
                         <th>OT</th>
                         <th>Código</th>
                         <th>Descripción</th>
-                        <th class="text-right">Cantidad</th>
-                        <th>Terminado</th>
+                        <th class="text-right">Cant. PT</th>
+                        <th>Fecha PT</th>
                         <th>Primera salida</th>
                         <th>Última salida</th>
-                        <th class="text-right">Enviado</th>
-                        <th class="text-right">Diferencia</th>
+                        <th class="text-right">Logística</th>
+                        <th class="text-right">Remitido</th>
+                        <th class="text-right">Recibido</th>
+                        <th class="text-right">Dif. PT/Log.</th>
                         <th>Estado</th>
-                        <th>Confirmación local</th>
+                        <th>Recepción local</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -198,7 +208,9 @@
                             <td class="ct-nowrap">{{ $item->fecha_producto_terminado ? \Carbon\Carbon::parse($item->fecha_producto_terminado)->format('d/m/Y') : '—' }}</td>
                             <td class="ct-nowrap">{{ $item->primera_salida ? \Carbon\Carbon::parse($item->primera_salida)->format('d/m/Y') : '—' }}</td>
                             <td class="ct-nowrap">{{ $item->ultima_salida ? \Carbon\Carbon::parse($item->ultima_salida)->format('d/m/Y') : '—' }}</td>
-                            <td class="text-right">{{ number_format($item->cantidad_enviada, 0, ',', '.') }}</td>
+                            <td class="text-right"><strong>{{ number_format($item->cantidad_logistica, 0, ',', '.') }}</strong></td>
+                            <td class="text-right">{{ number_format($item->cantidad_remitida, 0, ',', '.') }}</td>
+                            <td class="text-right">{{ number_format($item->cantidad_recibida, 0, ',', '.') }}</td>
                             <td class="text-right">
                                 <span class="badge {{ $item->diferencia == 0 ? 'badge-success' : ($item->diferencia > 0 ? 'badge-danger' : 'badge-warning') }} ct-badge">
                                     {{ number_format($item->diferencia, 0, ',', '.') }}
@@ -233,7 +245,7 @@
                         </tr>
 
                         <tr class="collapse ct-detail" id="traza-{{ $item->id_trazabilidad_producto }}">
-                            <td colspan="12">
+                            <td colspan="14">
                                 <div class="ct-detail-box">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <strong>
@@ -307,7 +319,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="12" class="text-center text-muted py-5">No hay OTs para los filtros seleccionados.</td></tr>
+                        <tr><td colspan="14" class="text-center text-muted py-5">No hay OTs para los filtros seleccionados.</td></tr>
                     @endforelse
                 </tbody>
                 <tfoot>
@@ -315,7 +327,9 @@
                         <td colspan="3"><strong>TOTAL</strong></td>
                         <td class="text-right"><strong>{{ number_format($totalTerminado, 0, ',', '.') }}</strong></td>
                         <td colspan="3"></td>
-                        <td class="text-right"><strong>{{ number_format($totalEnviado, 0, ',', '.') }}</strong></td>
+                        <td class="text-right"><strong>{{ number_format($totalLogistica, 0, ',', '.') }}</strong></td>
+                        <td class="text-right"><strong>{{ number_format($totalRemitido, 0, ',', '.') }}</strong></td>
+                        <td class="text-right"><strong>{{ number_format($totalRecibido, 0, ',', '.') }}</strong></td>
                         <td class="text-right"><strong>{{ number_format($totalDiferencia, 0, ',', '.') }}</strong></td>
                         <td colspan="3"></td>
                     </tr>
@@ -340,7 +354,7 @@
                         <th>OT</th>
                         <th>Código</th>
                         <th>Local</th>
-                        <th class="text-right">Enviado</th>
+                        <th class="text-right">Logística</th>
                         <th>Salida logística</th>
                         <th>Remisión</th>
                         <th>Fecha remisión</th>
@@ -370,6 +384,11 @@
                                         @if($remision->sucursal_destino)
                                             <br><small class="text-muted">{{ $remision->sucursal_destino }}</small>
                                         @endif
+                                        <br><small class="text-muted">
+                                            Remitido {{ number_format($detalle->cantidad_remitida, 0, ',', '.') }}
+                                            · Recibido {{ number_format($detalle->cantidad_recibida, 0, ',', '.') }}
+                                            · Pendiente {{ number_format($detalle->pendiente_remision, 0, ',', '.') }}
+                                        </small>
                                     </td>
                                     <td class="text-right">{{ number_format($detalle->cantidad, 0, ',', '.') }}</td>
                                     <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
@@ -395,5 +414,58 @@
             </table>
         </div>
     </div>
+
+    @if($tablaRemisionesDisponible && $remisionesSinVincular > 0)
+        <div class="card ct-card mt-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div>
+                    <strong><i class="fas fa-unlink text-warning mr-1"></i>Remisiones todavía sin vínculo logístico</strong>
+                    <div class="ct-subtitle">
+                        Estas remisiones existen en ENVIOS, pero todavía no se pudo encontrar una salida de logística
+                        compatible por código, sucursal y fecha. Se muestran hasta 50 documentos.
+                    </div>
+                </div>
+                <span class="badge badge-warning">
+                    {{ $remisionesSinVincular }} documentos · {{ $remisionesSinVincularFilas }} líneas
+                </span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0 ct-table">
+                    <thead>
+                        <tr>
+                            <th>Remisión</th>
+                            <th>Fecha</th>
+                            <th>Cod. suc.</th>
+                            <th>Destino ENVIOS</th>
+                            <th>Destino normalizado</th>
+                            <th class="text-right">Líneas</th>
+                            <th class="text-right">Cantidad</th>
+                            <th>Recepción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($resumenSinVincular as $sinVinculo)
+                            <tr>
+                                <td class="ct-remision">{{ $sinVinculo->serie }}-{{ $sinVinculo->numero_remision }}</td>
+                                <td>{{ $sinVinculo->fecha_remision ? \Carbon\Carbon::parse($sinVinculo->fecha_remision)->format('d/m/Y') : '—' }}</td>
+                                <td>{{ $sinVinculo->cod_sucursal_destino }}</td>
+                                <td>{{ $sinVinculo->sucursal_destino ?: '—' }}</td>
+                                <td><span class="badge badge-light border">{{ $sinVinculo->sucursal_logistica ?: '—' }}</span></td>
+                                <td class="text-right">{{ number_format($sinVinculo->lineas, 0, ',', '.') }}</td>
+                                <td class="text-right"><strong>{{ number_format($sinVinculo->cantidad, 0, ',', '.') }}</strong></td>
+                                <td>
+                                    @if($sinVinculo->fecha_recepcion)
+                                        <span class="badge badge-success">RECIBIDO</span>
+                                    @else
+                                        <span class="badge badge-primary">EN TRÁNSITO</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 </div>
 @endsection
