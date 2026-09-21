@@ -26,7 +26,7 @@
 
 
 @php
-    $menuMonitoreo = request()->routeIs('stock_ventas_sucursales.*', 'RedistribucionSugeridas.*');
+    $menuMonitoreo = request()->routeIs('stock_ventas_sucursales.*', 'RedistribucionSugeridas.*', 'redistribucion-configs.*');
 @endphp
 
 
@@ -397,6 +397,16 @@
             @endcan
 
 
+
+            @can('redistribucionsugerencia index')
+                <li class="nav-item">
+                    <a href="{{ route('redistribucion-configs.index') }}"
+                        class="nav-link {{ request()->routeIs('redistribucion-configs.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-sliders-h"></i>
+                        <p>Config. Redistribución</p>
+                    </a>
+                </li>
+            @endcan
 
             @can('redistribucionsugerencia lotes')
                 <li class="nav-item">

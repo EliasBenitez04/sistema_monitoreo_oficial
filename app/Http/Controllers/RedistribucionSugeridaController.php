@@ -7,6 +7,7 @@ use App\Models\RedistribucionSugerida;
 use App\Models\RedistribucionProceso;
 use App\Models\RedistribucionProcesoDetalle;
 use App\Models\StockVentasSucursal;
+use App\Models\RedistribucionConfig;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -179,11 +180,84 @@ class RedistribucionSugeridaController extends Controller
 
             $diasMonitoreados = (int) $fechaDesde->diffInDays($fechaHasta) + 1;
             $diasRestantes = $fechaHasta->daysInMonth - $fechaHasta->day;
-            // Al cierre de un mes completo, planificar la siguiente semana.
-            $diasCobertura = (int) ($request->input('dias_cobertura') ?? ($diasRestantes > 0 ? $diasRestantes : 7));
-            $seguridad = (int) ($request->input('seguridad_porcentaje') ?? 20);
-            $minimoOrigen = (int) ($request->input('stock_minimo_origen') ?? 1);
-            $diasBloqueo = (int) ($request->input('dias_bloqueo') ?? 30);
+
+            /*
+             * Configuración operativa centralizada.
+             *
+             * Para no alterar la estructura actual de redistribucion_config:
+             * - metodo_demanda: COBERTURA_AUTO | COBERTURA_FIJA
+             * - porcentaje_demanda: demanda total a cubrir (120 = +20% seguridad)
+             * - cantidad_maxima: días de cobertura cuando el método es FIJO
+             * - stock_minimo: reserva mínima
+             * - venta_minima: venta mínima para que un local pueda ser destino
+             */
+            $configuracion = RedistribucionConfig::where('activo', true)
+                ->orderByDesc('id')
+                ->first();
+
+            $configuracionOperativa = $configuracion
+                && in_array(
+                    (string) $configuracion->metodo_demanda,
+                    ['COBERTURA_AUTO', 'COBERTURA_FIJA'],
+                    true
+                );
+
+            $metodoCobertura = $configuracionOperativa
+                ? (string) $configuracion->metodo_demanda
+                : 'COBERTURA_AUTO';
+
+            $diasCoberturaConfigurados = $configuracionOperativa
+                ? max(1, min(90, (int) $configuracion->cantidad_maxima))
+                : 7;
+
+            $seguridadConfigurada = $configuracionOperativa
+                ? max(0, min(100, (int) round((float) $configuracion->porcentaje_demanda - 100)))
+                : 20;
+
+            $minimoOrigenConfigurado = $configuracionOperativa
+                ? max(1, min(100, (int) $configuracion->stock_minimo))
+                : 1;
+
+            $ventaMinima = $configuracionOperativa
+                ? max(1, (int) $configuracion->venta_minima)
+                : 1;
+
+            $diasBloqueoConfigurados = $configuracionOperativa
+                ? max(0, min(365, (int) $configuracion->dias_bloqueo))
+                : 30;
+
+            $bloquearPendientes = $configuracionOperativa
+                ? (bool) $configuracion->bloquear_pendientes
+                : true;
+
+            $bloquearEnProceso = $configuracionOperativa
+                ? (bool) $configuracion->bloquear_en_proceso
+                : true;
+
+            $bloquearFinalizadosRecientes = $configuracionOperativa
+                ? (bool) $configuracion->bloquear_finalizados_recientes
+                : true;
+
+            // Mantiene compatibilidad: si una llamada antigua envía estos campos,
+            // el valor enviado tiene prioridad sobre la configuración guardada.
+            $diasCoberturaAutomaticos = $diasRestantes > 0 ? $diasRestantes : 7;
+            $diasCobertura = $request->filled('dias_cobertura')
+                ? (int) $request->input('dias_cobertura')
+                : ($metodoCobertura === 'COBERTURA_FIJA'
+                    ? $diasCoberturaConfigurados
+                    : $diasCoberturaAutomaticos);
+
+            $seguridad = $request->filled('seguridad_porcentaje')
+                ? (int) $request->input('seguridad_porcentaje')
+                : $seguridadConfigurada;
+
+            $minimoOrigen = $request->filled('stock_minimo_origen')
+                ? (int) $request->input('stock_minimo_origen')
+                : $minimoOrigenConfigurado;
+
+            $diasBloqueo = $request->filled('dias_bloqueo')
+                ? (int) $request->input('dias_bloqueo')
+                : $diasBloqueoConfigurados;
 
             /* Motor puro: calcula un codigo completo antes de grabar sugerencias.
          * Una sucursal solo puede ser origen O destino para ese codigo.
@@ -193,7 +267,8 @@ class RedistribucionSugeridaController extends Controller
                 $diasMonitoreados,
                 $diasCobertura,
                 $seguridad,
-                $minimoOrigen
+                $minimoOrigen,
+                $ventaMinima
             ): array {
                 $origenes = [];
                 $destinos = [];
@@ -210,7 +285,7 @@ class RedistribucionSugeridaController extends Controller
                     if ($local['stock'] > $objetivo) {
                         $local['exceso'] = $local['stock'] - $objetivo;
                         $origenes[] = $local;
-                    } elseif ($local['venta'] >= 1 && $local['stock'] < $objetivo) {
+                    } elseif ($local['venta'] >= $ventaMinima && $local['stock'] < $objetivo) {
                         $local['necesidad'] = $objetivo - $local['stock'];
                         $destinos[] = $local;
                     }
@@ -287,7 +362,7 @@ class RedistribucionSugeridaController extends Controller
                     if (
                         $origen['sucursal_id'] === $destino['sucursal_id']
                         || $origen['saldo'] < $origen['objetivo']
-                        || $destino['venta'] < 1 || $destino['saldo'] > $destino['objetivo']
+                        || $destino['venta'] < $ventaMinima || $destino['saldo'] > $destino['objetivo']
                     ) {
                         throw new \LogicException('El plan no respeta las reservas o los limites de stock.');
                     }
@@ -313,6 +388,9 @@ class RedistribucionSugeridaController extends Controller
                 $diasCobertura,
                 $seguridad,
                 $diasBloqueo,
+                $bloquearPendientes,
+                $bloquearEnProceso,
+                $bloquearFinalizadosRecientes,
                 $planificarCodigo
             ) {
                 // Serializa las ejecuciones de ESTE metodo en PostgreSQL 9.5+.
@@ -414,15 +492,26 @@ class RedistribucionSugeridaController extends Controller
                 };
                 $tablaDetalle = (new RedistribucionProcesoDetalle())->getTable();
                 foreach (array_chunk($codigos, 500) as $bloque) {
-                    $marcarBloqueados(RedistribucionSugerida::whereIn('codigo', $bloque)
-                        ->whereIn('estado', ['PENDIENTE', 'APROBADO', 'APROBADA', 'EN PROCESO', 'EN_PROCESO'])
-                        ->lockForUpdate()->get(['codigo', 'sucursal_origen', 'sucursal_destino']));
+                    if ($bloquearPendientes) {
+                        $marcarBloqueados(RedistribucionSugerida::whereIn('codigo', $bloque)
+                            ->whereIn('estado', ['PENDIENTE', 'APROBADO', 'APROBADA'])
+                            ->lockForUpdate()
+                            ->get(['codigo', 'sucursal_origen', 'sucursal_destino']));
+                    }
 
-                    $marcarBloqueados(RedistribucionProcesoDetalle::whereIn('codigo', $bloque)
-                        ->whereIn('estado', ['PENDIENTE', 'EN PROCESO', 'EN_PROCESO'])
-                        ->lockForUpdate()->get(['codigo', 'sucursal_origen', 'sucursal_destino']));
+                    if ($bloquearEnProceso) {
+                        $marcarBloqueados(RedistribucionSugerida::whereIn('codigo', $bloque)
+                            ->whereIn('estado', ['EN PROCESO', 'EN_PROCESO'])
+                            ->lockForUpdate()
+                            ->get(['codigo', 'sucursal_origen', 'sucursal_destino']));
 
-                    if ($diasBloqueo > 0) {
+                        $marcarBloqueados(RedistribucionProcesoDetalle::whereIn('codigo', $bloque)
+                            ->whereIn('estado', ['PENDIENTE', 'EN PROCESO', 'EN_PROCESO'])
+                            ->lockForUpdate()
+                            ->get(['codigo', 'sucursal_origen', 'sucursal_destino']));
+                    }
+
+                    if ($bloquearFinalizadosRecientes && $diasBloqueo > 0) {
                         $marcarBloqueados(RedistribucionProcesoDetalle::query()
                             ->leftJoin('redistribucion_lote as rl', 'rl.id', '=', $tablaDetalle . '.lote_id')
                             ->whereIn($tablaDetalle . '.codigo', $bloque)
@@ -510,6 +599,10 @@ class RedistribucionSugeridaController extends Controller
                     'dias_monitoreados' => $diasMonitoreados,
                     'dias_cobertura' => $diasCobertura,
                     'seguridad_porcentaje' => $seguridad,
+                    'stock_minimo_origen' => $minimoOrigen,
+                    'venta_minima' => $ventaMinima,
+                    'dias_bloqueo' => $diasBloqueo,
+                    'metodo_cobertura' => $metodoCobertura,
                 ];
                 return $resumen;
             }, 3);

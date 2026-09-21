@@ -807,4 +807,4 @@ Route::post(
     [ControlTerminacionController::class, 'importarRemisiones']
 )->name('control.terminacion.importar-remisiones');
 
-Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionConfigController::class);
+Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionConfigController::class)\n    ->only(['index', 'store']);

@@ -439,7 +439,12 @@
                         </div>
                     </div>
                 </div>
-                <div class="mt-2 mt-md-0">
+                <div class="mt-2 mt-md-0 d-flex align-items-center">
+                    @can('redistribucionsugerencia create')
+                        <a href="{{ route('redistribucion-configs.index') }}" class="btn btn-light btn-sm mr-2 border">
+                            <i class="fas fa-sliders-h mr-1"></i> Configuración
+                        </a>
+                    @endcan
                     <span class="badge badge-light text-primary px-3 py-2"><i class="fas fa-cogs mr-1"></i> Análisis
                         inteligente</span>
                 </div>
