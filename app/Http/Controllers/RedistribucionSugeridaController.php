@@ -185,7 +185,8 @@ class RedistribucionSugeridaController extends Controller
              * Configuración operativa centralizada.
              *
              * Para no alterar la estructura actual de redistribucion_config:
-             * - metodo_demanda: COBERTURA_AUTO | COBERTURA_FIJA
+             * - metodo_demanda: conserva el valor PERIODO exigido por la BD
+             * - porcentaje_conservar_origen: 0 = cobertura automática, 1 = fija
              * - porcentaje_demanda: demanda total a cubrir (120 = +20% seguridad)
              * - cantidad_maxima: días de cobertura cuando el método es FIJO
              * - stock_minimo: reserva mínima
@@ -195,16 +196,12 @@ class RedistribucionSugeridaController extends Controller
                 ->orderByDesc('id')
                 ->first();
 
-            $configuracionOperativa = $configuracion
-                && in_array(
-                    (string) $configuracion->metodo_demanda,
-                    ['COBERTURA_AUTO', 'COBERTURA_FIJA'],
-                    true
-                );
+            $configuracionOperativa = (bool) $configuracion;
 
             $metodoCobertura = $configuracionOperativa
-                ? (string) $configuracion->metodo_demanda
-                : 'COBERTURA_AUTO';
+                && (float) $configuracion->porcentaje_conservar_origen >= 1
+                    ? 'COBERTURA_FIJA'
+                    : 'COBERTURA_AUTO';
 
             $diasCoberturaConfigurados = $configuracionOperativa
                 ? max(1, min(90, (int) $configuracion->cantidad_maxima))
