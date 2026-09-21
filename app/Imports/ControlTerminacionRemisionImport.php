@@ -5,6 +5,7 @@ namespace App\Imports;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
@@ -17,6 +18,13 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
     private $vinculadas = 0;
     private $sinVincular = 0;
     private $omitidas = 0;
+
+    private $documentosArchivo = 0;
+    private $documentosRecibidos = 0;
+    private $documentosEnTransito = 0;
+
+    private $usoDetalle = [];
+    private $asignadoImportacion = [];
 
     public function collection(Collection $rows)
     {
@@ -40,6 +48,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         }
 
         $this->procesadas += $filas->count();
+        $this->calcularResumenDocumentos($filas);
 
         /*
         |--------------------------------------------------------------------------
@@ -67,6 +76,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         |--------------------------------------------------------------------------
         */
         $existentes = $this->precargarExistentes($filas);
+        $this->usoDetalle = $this->precargarUsoDetalles($vinculos);
 
         $ahora = now();
         $registros = [];
@@ -82,13 +92,37 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
             $existente = $existentes->get($clave);
 
-            $vinculo = $this->resolverVinculoEnMemoria(
-                $vinculos,
-                $fila['codigo'],
-                $fila['sucursal_logistica'],
-                $fila['cantidad'],
-                $fila['fecha_remision'] ?: $fila['fecha_creacion']
-            );
+            /*
+             * Un vínculo ya resuelto se conserva. Solo intentamos reparar filas
+             * nuevas o registros históricos que quedaron sin id_logistica_detalle.
+             */
+            $idOt = $existente->id_ot ?? null;
+            $idTrazabilidad = $existente->id_trazabilidad ?? null;
+            $idLogisticaDetalle = $existente->id_logistica_detalle ?? null;
+
+            if (!$idLogisticaDetalle) {
+                $vinculo = $this->resolverVinculoEnMemoria(
+                    $vinculos,
+                    $fila['codigo'],
+                    $fila['sucursal_logistica'],
+                    $fila['cantidad'],
+                    $fila['fecha_remision'] ?: $fila['fecha_creacion']
+                );
+
+                if ($vinculo) {
+                    $idOt = $vinculo->id_ot;
+                    $idTrazabilidad = $vinculo->id_trazabilidad;
+                    $idLogisticaDetalle = $vinculo->id_logistica_detalle;
+
+                    $this->asignadoImportacion[$idLogisticaDetalle] =
+                        ($this->asignadoImportacion[$idLogisticaDetalle] ?? 0)
+                        + (int) $fila['cantidad'];
+                }
+            } elseif ($existente && (int) $existente->cantidad !== (int) $fila['cantidad']) {
+                $diferenciaCantidad = (int) $fila['cantidad'] - (int) $existente->cantidad;
+                $this->usoDetalle[$idLogisticaDetalle] =
+                    ($this->usoDetalle[$idLogisticaDetalle] ?? 0) + $diferenciaCantidad;
+            }
 
             /*
             |--------------------------------------------------------------------------
@@ -103,27 +137,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
             $fechaRecepcion = $fila['fecha_recepcion']
                 ?: ($existente->fecha_recepcion ?? null);
-
-            /*
-            |--------------------------------------------------------------------------
-            | CONSERVAR / CORREGIR VÍNCULO
-            |--------------------------------------------------------------------------
-            |
-            | Si ahora encontramos un vínculo mejor, reemplaza el vínculo anterior.
-            | Si no encontramos ninguno, conservamos uno previo que ya fuera válido.
-            |
-            */
-            $idOt = $vinculo
-                ? $vinculo->id_ot
-                : ($existente->id_ot ?? null);
-
-            $idTrazabilidad = $vinculo
-                ? $vinculo->id_trazabilidad
-                : ($existente->id_trazabilidad ?? null);
-
-            $idLogisticaDetalle = $vinculo
-                ? $vinculo->id_logistica_detalle
-                : ($existente->id_logistica_detalle ?? null);
 
             if ($idLogisticaDetalle) {
                 $this->vinculadas++;
@@ -214,13 +227,29 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
     {
         $filas = collect();
 
+        $codigosDestino = $rows
+            ->map(function ($row) {
+                return $this->enteroONull($row['cod_sucursal'] ?? null);
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        $catalogoSucursales = collect();
+
+        if ($codigosDestino->isNotEmpty()) {
+            $catalogoSucursales = DB::table('sucursal')
+                ->whereIn('cod_suc', $codigosDestino->all())
+                ->pluck('suc_descri', 'cod_suc');
+        }
+
         foreach ($rows as $row) {
             $codigo = $this->normalizarCodigo($row['cod_articulo'] ?? null);
             $serie = trim((string) ($row['serie'] ?? ''));
             $numeroRemision = trim((string) ($row['numero_remision'] ?? ''));
             $codSalida = $this->enteroONull($row['cod_sucursal_salida'] ?? null);
             $codDestino = $this->enteroONull($row['cod_sucursal'] ?? null);
-            $cantidad = (int) ($row['cantidad'] ?? 0);
+            $cantidad = $this->parseQuantity($row['cantidad'] ?? null);
 
             if (
                 $codigo === '' ||
@@ -236,6 +265,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
             $sucursalSalida = trim((string) ($row['sucursal_salida'] ?? ''));
             $sucursalDestino = trim((string) ($row['sucursal'] ?? ''));
+            $nombreCatalogo = $catalogoSucursales->get($codDestino);
 
             $filas->push([
                 'codigo' => $codigo,
@@ -253,7 +283,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                 'sucursal_destino' => $sucursalDestino !== '' ? $sucursalDestino : null,
                 'sucursal_logistica' => $this->resolverSucursalImportada(
                     $codDestino,
-                    $sucursalDestino
+                    $sucursalDestino,
+                    $nombreCatalogo
                 ),
 
                 // El archivo actual tiene el encabezado "Artiuclo".
@@ -291,38 +322,49 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             ->pluck('codigo')
             ->filter()
             ->map(function ($codigo) {
-                return strtoupper($this->normalizarCodigo($codigo));
+                return $this->normalizarCodigo($codigo);
             })
             ->unique()
-            ->values();
+            ->flip();
 
         if ($codigos->isEmpty()) {
             return collect();
         }
 
+        $fechas = $filas
+            ->map(function ($fila) {
+                return $fila['fecha_remision'] ?: $fila['fecha_creacion'];
+            })
+            ->filter()
+            ->values();
+
         /*
-         * Normalizamos el código directamente en SQL:
-         * - trim de espacios
-         * - elimina apóstrofe inicial
-         * - mayúsculas
+         * Traemos las salidas logísticas del rango real del ENVIOS y después
+         * normalizamos código + sucursal en PHP. Esto evita depender de un
+         * WHERE IN gigante con miles de códigos transformados en PostgreSQL 9.5.
          */
         $query = DB::table('ot_logistica_detalle as d')
             ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
             ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
-            ->whereIn(
-                DB::raw("UPPER(REPLACE(TRIM(o.codigo), '''', ''))"),
-                $codigos->all()
-            )
-            ->where('t.proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
+            ->whereRaw("UPPER(TRIM(t.proceso)) LIKE '%LOGISTICA%'")
+            ->whereRaw("UPPER(TRIM(t.proceso)) LIKE '%DISTRIBUCION%'")
             ->select(
                 'd.id as id_logistica_detalle',
                 'd.id_ot',
                 'd.id_trazabilidad',
                 'd.sucursal',
                 'd.cantidad',
+                'o.nro_ot',
                 'o.codigo',
+                'o.descripcion',
                 't.fecha_proceso'
             );
+
+        if ($fechas->isNotEmpty()) {
+            $fechaMin = Carbon::parse($fechas->min())->subDays(120)->toDateString();
+            $fechaMax = Carbon::parse($fechas->max())->addDays(15)->toDateString();
+            $query->whereBetween('t.fecha_proceso', [$fechaMin, $fechaMax]);
+        }
 
         $candidatos = $query
             ->orderBy('t.fecha_proceso', 'desc')
@@ -331,17 +373,14 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
         return $candidatos
             ->map(function ($item) {
-                $item->codigo_normalizado = strtoupper(
-                    $this->normalizarCodigo($item->codigo)
-                );
-
-                $item->sucursal_normalizada =
-                    $this->normalizarSucursalBase($item->sucursal);
-
+                $item->codigo_normalizado = $this->normalizarCodigo($item->codigo);
+                $item->sucursal_normalizada = $this->normalizarSucursalBase($item->sucursal);
                 return $item;
             })
-            ->filter(function ($item) {
-                return !empty($item->sucursal_normalizada);
+            ->filter(function ($item) use ($codigos) {
+                return $item->codigo_normalizado !== ''
+                    && isset($codigos[$item->codigo_normalizado])
+                    && !empty($item->sucursal_normalizada);
             })
             ->groupBy(function ($item) {
                 return $this->claveVinculo(
@@ -349,6 +388,36 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                     $item->sucursal_normalizada
                 );
             });
+    }
+
+    private function precargarUsoDetalles(Collection $vinculos)
+    {
+        $ids = $vinculos
+            ->flatten(1)
+            ->pluck('id_logistica_detalle')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $uso = [];
+
+        foreach ($ids->chunk(1000) as $bloque) {
+            $totales = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_logistica_detalle', $bloque->all())
+                ->select('id_logistica_detalle', DB::raw('SUM(cantidad) as total'))
+                ->groupBy('id_logistica_detalle')
+                ->get();
+
+            foreach ($totales as $total) {
+                $uso[(int) $total->id_logistica_detalle] = (int) $total->total;
+            }
+        }
+
+        return $uso;
     }
 
     private function resolverVinculoEnMemoria(
@@ -363,37 +432,15 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         }
 
         $clave = $this->claveVinculo(
-            strtoupper($this->normalizarCodigo($codigo)),
+            $this->normalizarCodigo($codigo),
             $this->normalizarSucursalBase($sucursal)
         );
 
-        $candidatos = collect(
-            $vinculos->get($clave, collect())
-        );
+        $candidatos = collect($vinculos->get($clave, collect()));
 
         if ($candidatos->isEmpty()) {
             return null;
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | CRITERIO DE ASOCIACIÓN
-        |--------------------------------------------------------------------------
-        |
-        | CONDICIONES OBLIGATORIAS:
-        |   1) mismo código;
-        |   2) mismo local destino normalizado.
-        |
-        | PRIORIDAD:
-        |   A) misma cantidad del detalle logístico;
-        |   B) fecha logística más cercana a la fecha de remisión/creación;
-        |   C) ante empate, preferimos logística del mismo día o anterior;
-        |   D) ante otro empate, el movimiento más reciente.
-        |
-        | No exigimos que logística sea <= remisión porque en la operación real
-        | las cargas de ambos archivos pueden registrarse en días diferentes.
-        |
-        */
 
         $fecha = null;
 
@@ -406,79 +453,70 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         }
 
         $evaluados = $candidatos->map(function ($item) use ($cantidad, $fecha) {
-            $item->_cantidad_exacta =
-                ((int) $item->cantidad === (int) $cantidad) ? 1 : 0;
+            $idDetalle = (int) $item->id_logistica_detalle;
+            $usado = (int) ($this->usoDetalle[$idDetalle] ?? 0)
+                + (int) ($this->asignadoImportacion[$idDetalle] ?? 0);
 
+            $item->_disponible = max(0, (int) $item->cantidad - $usado);
+            $item->_tiene_saldo = $item->_disponible >= (int) $cantidad ? 1 : 0;
+            $item->_saldo_exacto = $item->_disponible === (int) $cantidad ? 1 : 0;
+            $item->_cantidad_exacta = (int) $item->cantidad === (int) $cantidad ? 1 : 0;
             $item->_distancia_dias = 999999;
             $item->_posterior = 1;
 
             if ($fecha && !empty($item->fecha_proceso)) {
                 try {
                     $fechaLogistica = Carbon::parse($item->fecha_proceso)->startOfDay();
-
-                    $item->_distancia_dias =
-                        abs($fechaLogistica->diffInDays($fecha, false));
-
-                    /*
-                     * 0 = mismo día o anterior a la remisión.
-                     * 1 = posterior.
-                     *
-                     * Esto solo desempata; no excluye fechas posteriores.
-                     */
-                    $item->_posterior =
-                        $fechaLogistica->gt($fecha) ? 1 : 0;
+                    $item->_distancia_dias = abs($fechaLogistica->diffInDays($fecha, false));
+                    $item->_posterior = $fechaLogistica->gt($fecha) ? 1 : 0;
                 } catch (\Throwable $e) {
-                    // Se mantiene distancia alta.
+                    // Mantener distancia alta.
                 }
             }
 
             return $item;
         });
 
-        /*
-         * Evitamos asociaciones absurdamente alejadas.
-         *
-         * Si existe fecha de referencia, permitimos hasta 45 días de distancia.
-         * Si no hay ningún candidato dentro de esa ventana, dejamos la remisión
-         * sin vínculo para no asociarla a una OT histórica incorrecta.
-         */
         if ($fecha) {
             $cercanos = $evaluados
                 ->filter(function ($item) {
-                    return $item->_distancia_dias <= 45;
+                    return $item->_distancia_dias <= 120;
                 })
                 ->values();
 
-            if ($cercanos->isNotEmpty()) {
-                $evaluados = $cercanos;
-            } else {
+            if ($cercanos->isEmpty()) {
                 return null;
             }
+
+            $evaluados = $cercanos;
         }
 
         return $evaluados
             ->sort(function ($a, $b) {
-                // 1. Cantidad exacta primero.
-                if ($a->_cantidad_exacta !== $b->_cantidad_exacta) {
-                    return $a->_cantidad_exacta > $b->_cantidad_exacta ? -1 : 1;
-                }
-
-                // 2. Menor distancia de fecha.
                 if ($a->_distancia_dias !== $b->_distancia_dias) {
                     return $a->_distancia_dias < $b->_distancia_dias ? -1 : 1;
                 }
 
-                // 3. Mismo día/anterior antes que posterior.
                 if ($a->_posterior !== $b->_posterior) {
                     return $a->_posterior < $b->_posterior ? -1 : 1;
                 }
 
-                // 4. Movimiento logístico más reciente.
-                if ($a->fecha_proceso !== $b->fecha_proceso) {
+                if ($a->_tiene_saldo !== $b->_tiene_saldo) {
+                    return $a->_tiene_saldo > $b->_tiene_saldo ? -1 : 1;
+                }
+
+                if ($a->_saldo_exacto !== $b->_saldo_exacto) {
+                    return $a->_saldo_exacto > $b->_saldo_exacto ? -1 : 1;
+                }
+
+                if ($a->_cantidad_exacta !== $b->_cantidad_exacta) {
+                    return $a->_cantidad_exacta > $b->_cantidad_exacta ? -1 : 1;
+                }
+
+                if ((string) $a->fecha_proceso !== (string) $b->fecha_proceso) {
                     return strcmp((string) $b->fecha_proceso, (string) $a->fecha_proceso);
                 }
 
-                // 5. Último detalle como desempate final.
                 return ((int) $b->id_logistica_detalle) <=> ((int) $a->id_logistica_detalle);
             })
             ->first();
@@ -506,7 +544,33 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             });
     }
 
-    private function resolverSucursalImportada($codigo, $nombre)
+    private function calcularResumenDocumentos(Collection $filas)
+    {
+        $documentos = $filas->groupBy(function ($fila) {
+            return implode('|', [
+                $fila['serie'],
+                $fila['numero_remision'],
+                $fila['cod_sucursal_salida'],
+                $fila['cod_sucursal_destino'],
+            ]);
+        });
+
+        $this->documentosArchivo = $documentos->count();
+
+        foreach ($documentos as $lineas) {
+            $recibido = $lineas->contains(function ($fila) {
+                return !empty($fila['fecha_recepcion']);
+            });
+
+            if ($recibido) {
+                $this->documentosRecibidos++;
+            } else {
+                $this->documentosEnTransito++;
+            }
+        }
+    }
+
+    private function resolverSucursalImportada($codigo, $nombreExcel, $nombreCatalogo = null)
     {
         $porCodigo = [
             2 => 'SL',
@@ -521,13 +585,21 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             15 => 'NEMBY',
             16 => 'MARIANO',
             22 => 'JARDINES',
+            25 => 'MATRIZ',
         ];
 
         if ($codigo && isset($porCodigo[$codigo])) {
             return $porCodigo[$codigo];
         }
 
-        return $this->normalizarSucursalBase($nombre);
+        if ($nombreCatalogo) {
+            $normalizado = $this->normalizarSucursalBase($nombreCatalogo);
+            if ($normalizado) {
+                return $normalizado;
+            }
+        }
+
+        return $this->normalizarSucursalBase($nombreExcel);
     }
 
     private function normalizarSucursalBase($nombre)
@@ -559,6 +631,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             'JARDINES' => 'JARDINES',
             'AYALA' => 'AYALA',
             'MODELO MUESTRA' => 'MODELO',
+            'MODELO' => 'MODELO',
+            'COMERCIAL MATRIZ' => 'MATRIZ',
+            'MATRIZ' => 'MATRIZ',
         ];
 
         if (isset($aliasExactos[$valor])) {
@@ -622,6 +697,10 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             return 'MODELO';
         }
 
+        if (strpos($valor, 'MATRIZ') !== false) {
+            return 'MATRIZ';
+        }
+
         return $valor;
     }
 
@@ -645,8 +724,11 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
     private function normalizarCodigo($valor)
     {
-        $codigo = trim((string) $valor);
-        return ltrim($codigo, "'");
+        $codigo = strtoupper(trim((string) $valor));
+        $codigo = ltrim($codigo, "'’`");
+        $codigo = preg_replace('/\\s+/u', '', $codigo);
+
+        return $codigo ?: '';
     }
 
     private function enteroONull($valor)
@@ -656,6 +738,30 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         }
 
         return (int) $valor;
+    }
+
+    private function parseQuantity($valor): int
+    {
+        if ($valor === null || $valor === '') {
+            return 0;
+        }
+
+        if (is_numeric($valor)) {
+            return (int) round((float) $valor);
+        }
+
+        $texto = str_replace(' ', '', trim((string) $valor));
+
+        if (strpos($texto, ',') !== false && strpos($texto, '.') !== false) {
+            $texto = str_replace('.', '', $texto);
+            $texto = str_replace(',', '.', $texto);
+        } elseif (strpos($texto, ',') !== false) {
+            $texto = str_replace(',', '.', $texto);
+        }
+
+        return is_numeric($texto)
+            ? (int) round((float) $texto)
+            : 0;
     }
 
     private function decimalONull($valor)
@@ -757,5 +863,20 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
     public function getOmitidas()
     {
         return $this->omitidas;
+    }
+
+    public function getDocumentosArchivo()
+    {
+        return $this->documentosArchivo;
+    }
+
+    public function getDocumentosRecibidos()
+    {
+        return $this->documentosRecibidos;
+    }
+
+    public function getDocumentosEnTransito()
+    {
+        return $this->documentosEnTransito;
     }
 }
