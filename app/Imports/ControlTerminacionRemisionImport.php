@@ -36,7 +36,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         | IMPORTANTE
         |--------------------------------------------------------------------------
         |
-        | El archivo ENVIOS actual tiene aproximadamente 1.075 registros.
+        | El archivo ENVIOS analizado actualmente tiene 68.909 líneas.
         | NO usamos WithChunkReading porque en este proyecto/versión estaba
         | provocando que la misma hoja se procesara repetidas veces.
         |
