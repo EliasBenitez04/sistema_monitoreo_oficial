@@ -23,8 +23,9 @@ class RedistribucionConfigController extends Controller
      * Pantalla única de configuración del motor actual de redistribución.
      *
      * Se reutilizan columnas existentes para no exigir cambios de estructura:
-     * - metodo_demanda: COBERTURA_AUTO | COBERTURA_FIJA
-     * - porcentaje_demanda: 100 + porcentaje de seguridad
+     * - metodo_demanda: conserva PERIODO para respetar el CHECK de la BD
+     * - porcentaje_demanda: porcentaje de seguridad (0 a 100)
+     * - porcentaje_conservar_origen: 0 = cobertura automática, 1 = fija
      * - cantidad_maxima: días de cobertura cuando el modo es fijo
      */
     public function index()
@@ -53,7 +54,7 @@ class RedistribucionConfigController extends Controller
                 ? max(1, min(90, (int) $config->cantidad_maxima))
                 : 7,
             'seguridad_porcentaje' => $esOperativa
-                ? max(0, min(100, (int) round((float) $config->porcentaje_demanda - 100)))
+                ? max(0, min(100, (int) round((float) $config->porcentaje_demanda)))
                 : 20,
             'stock_minimo_origen' => $esOperativa
                 ? max(1, min(100, (int) $config->stock_minimo))
@@ -125,8 +126,12 @@ class RedistribucionConfigController extends Controller
             // Respeta chk_metodo_demanda de la tabla existente.
             // El motor actual trabaja con el período seleccionado.
             $config->metodo_demanda = 'PERIODO';
-            $config->porcentaje_demanda = 100 + (int) $data['seguridad_porcentaje'];
+            $config->porcentaje_demanda = (int) $data['seguridad_porcentaje'];
             $config->stock_minimo = (int) $data['stock_minimo_origen'];
+            $config->stock_maximo = max(
+                (int) $data['stock_minimo_origen'],
+                (int) ($config->stock_maximo ?? 0)
+            );
             $config->venta_minima = (int) $data['venta_minima'];
 
             // Campos históricos reutilizados únicamente por la configuración
