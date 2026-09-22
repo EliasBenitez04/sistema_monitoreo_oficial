@@ -23,25 +23,27 @@ class ControlTerminacionController extends Controller
             $estados = [$estados];
         }
 
+        $procesoEntradaTerminacion = 'TERMINACION - TERMINACION';
         $procesoProductoTerminado = 'TERMINACION - PRODUCTO TERMINADO';
-        $procesoLogistica = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
         $hoy = now()->startOfDay();
 
         /*
-         * CONTROL DE PRODUCTO TERMINADO
+         * REGLA DEL FLUJO
          *
-         * Esta pantalla responde únicamente:
-         * 1) ¿Cuánto terminó Terminación?
-         * 2) ¿Cuánto recibió/movió Logística?
-         * 3) ¿Qué OT sigue pendiente y desde cuándo?
+         * TERMINACION - TERMINACION:
+         *     ingreso de la prenda al área de Terminación.
          *
-         * Remisiones y recepción de locales se consultan como trazabilidad
-         * secundaria al abrir una OT, no forman parte de los KPIs principales.
+         * TERMINACION - PRODUCTO TERMINADO:
+         *     salida de Terminación y entrega/entrada a Logística.
+         *
+         * Por lo tanto Producto Terminado NO se compara contra
+         * LOGISTICA - LOGISTICA Y DISTRIBUCION para decidir si fue entregado.
+         * Ese último proceso pertenece al Dashboard Logística.
          */
-        $queryProduccion = DB::table('ot_trazabilidad as tp')
-            ->join('ot as o', 'o.id_ot', '=', 'tp.id_ot')
-            ->where('tp.proceso', $procesoProductoTerminado)
-            ->whereBetween('tp.fecha_proceso', [$fechaDesde, $fechaHasta]);
+        $queryProduccion = DB::table('ot_trazabilidad as pt')
+            ->join('ot as o', 'o.id_ot', '=', 'pt.id_ot')
+            ->where('pt.proceso', $procesoProductoTerminado)
+            ->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta]);
 
         if ($buscar !== '') {
             $queryProduccion->where(function ($q) use ($buscar) {
@@ -72,9 +74,9 @@ class ControlTerminacionController extends Controller
                 'o.descripcion',
                 'o.cantidad_orden',
                 'o.estado',
-                DB::raw('SUM(tp.resultado) as cantidad_terminada'),
-                DB::raw('MIN(tp.fecha_proceso) as fecha_producto_terminado'),
-                DB::raw('MAX(tp.fecha_proceso) as ultima_fecha_producto_terminado')
+                DB::raw('SUM(pt.resultado) as cantidad_terminada'),
+                DB::raw('MIN(pt.fecha_proceso) as fecha_producto_terminado'),
+                DB::raw('MAX(pt.fecha_proceso) as ultima_fecha_producto_terminado')
             )
             ->get();
 
@@ -84,91 +86,74 @@ class ControlTerminacionController extends Controller
             ->unique()
             ->values();
 
-        $logisticaPorOt = collect();
+        $entradaPorOt = collect();
 
         if ($idsOt->isNotEmpty()) {
-            /*
-             * La logística se considera a partir del primer PT del período
-             * seleccionado para cada OT.
-             */
-            $ptMinimo = DB::table('ot_trazabilidad')
-                ->where('proceso', $procesoProductoTerminado)
-                ->whereBetween('fecha_proceso', [$fechaDesde, $fechaHasta])
+            $entradaPorOt = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $idsOt->all())
+                ->where('proceso', $procesoEntradaTerminacion)
                 ->groupBy('id_ot')
-                ->select('id_ot', DB::raw('MIN(fecha_proceso) as fecha_pt'));
-
-            $logisticaPorOt = DB::table('ot_trazabilidad as tl')
-                ->join('ot_logistica_detalle as d', 'd.id_trazabilidad', '=', 'tl.id_trazabilidad')
-                ->joinSub($ptMinimo, 'ptx', function ($join) {
-                    $join->on('ptx.id_ot', '=', 'tl.id_ot')
-                        ->whereColumn('tl.fecha_proceso', '>=', 'ptx.fecha_pt');
-                })
-                ->where('tl.proceso', $procesoLogistica)
-                ->whereIn('tl.id_ot', $idsOt->all())
-                ->groupBy('tl.id_ot')
                 ->select(
-                    'tl.id_ot',
-                    DB::raw('SUM(d.cantidad) as cantidad_logistica'),
-                    DB::raw('MIN(tl.fecha_proceso) as primera_salida'),
-                    DB::raw('MAX(tl.fecha_proceso) as ultima_salida'),
-                    DB::raw('COUNT(DISTINCT d.sucursal) as destinos_logisticos'),
-                    DB::raw('COUNT(DISTINCT tl.id_trazabilidad) as movimientos_logisticos')
+                    'id_ot',
+                    DB::raw('SUM(resultado) as cantidad_ingreso_terminacion'),
+                    DB::raw('MIN(fecha_proceso) as primera_fecha_ingreso'),
+                    DB::raw('MAX(fecha_proceso) as ultima_fecha_ingreso')
                 )
                 ->get()
                 ->keyBy('id_ot');
         }
 
         foreach ($produccionTerminada as $item) {
-            $logistica = $logisticaPorOt->get($item->id_ot);
+            $entrada = $entradaPorOt->get($item->id_ot);
 
             $item->cantidad_terminada = (int) $item->cantidad_terminada;
-            $item->cantidad_logistica = (int) ($logistica->cantidad_logistica ?? 0);
-            $item->primera_salida = $logistica->primera_salida ?? null;
-            $item->ultima_salida = $logistica->ultima_salida ?? null;
-            $item->destinos_logisticos = (int) ($logistica->destinos_logisticos ?? 0);
-            $item->movimientos_logisticos = (int) ($logistica->movimientos_logisticos ?? 0);
+            $item->cantidad_ingreso_terminacion = (int) ($entrada->cantidad_ingreso_terminacion ?? 0);
+            $item->primera_fecha_ingreso = $entrada->primera_fecha_ingreso ?? null;
+            $item->ultima_fecha_ingreso = $entrada->ultima_fecha_ingreso ?? null;
 
-            $item->pendiente_logistica = max(
+            // Producto Terminado ya es la entrega/entrada a Logística.
+            $item->cantidad_entregada_logistica = $item->cantidad_terminada;
+
+            $item->pendiente_terminar = max(
                 0,
-                $item->cantidad_terminada - $item->cantidad_logistica
+                $item->cantidad_ingreso_terminacion - $item->cantidad_terminada
             );
 
-            $item->exceso_logistica = max(
+            $item->exceso_producto_terminado = max(
                 0,
-                $item->cantidad_logistica - $item->cantidad_terminada
+                $item->cantidad_terminada - $item->cantidad_ingreso_terminacion
             );
 
-            $fechaPt = \Carbon\Carbon::parse($item->fecha_producto_terminado)->startOfDay();
+            $item->dias_en_terminacion = null;
 
-            if ($item->primera_salida) {
-                $fechaPrimeraSalida = \Carbon\Carbon::parse($item->primera_salida)->startOfDay();
-                $item->dias_primera_salida = max(0, $fechaPt->diffInDays($fechaPrimeraSalida, false));
-            } else {
-                $item->dias_primera_salida = null;
+            if ($item->primera_fecha_ingreso) {
+                $fechaIngreso = \Carbon\Carbon::parse($item->primera_fecha_ingreso)->startOfDay();
+
+                if ($item->pendiente_terminar > 0) {
+                    $item->dias_en_terminacion = max(
+                        0,
+                        $fechaIngreso->diffInDays($hoy, false)
+                    );
+                } else {
+                    $fechaSalida = \Carbon\Carbon::parse(
+                        $item->ultima_fecha_producto_terminado
+                    )->startOfDay();
+
+                    $item->dias_en_terminacion = max(
+                        0,
+                        $fechaIngreso->diffInDays($fechaSalida, false)
+                    );
+                }
             }
 
-            /*
-             * Antigüedad operativa:
-             * - si falta entregar, días desde PT hasta hoy;
-             * - si ya se entregó, días hasta la primera salida de Logística.
-             */
-            if ($item->pendiente_logistica > 0) {
-                $item->dias_espera = max(0, $fechaPt->diffInDays($hoy, false));
-            } elseif ($item->primera_salida) {
-                $item->dias_espera = $item->dias_primera_salida;
-            } else {
-                $item->dias_espera = 0;
-            }
-
-            if ($item->cantidad_logistica <= 0) {
-                $item->estado_control = 'SIN ENVIAR';
-            } elseif ($item->cantidad_logistica < $item->cantidad_terminada) {
+            if ($item->cantidad_ingreso_terminacion <= 0) {
+                $item->estado_control = 'SIN INGRESO';
+            } elseif ($item->cantidad_terminada < $item->cantidad_ingreso_terminacion) {
                 $item->estado_control = 'PARCIAL';
-            } elseif ($item->cantidad_logistica > $item->cantidad_terminada) {
+            } elseif ($item->cantidad_terminada > $item->cantidad_ingreso_terminacion) {
                 $item->estado_control = 'EXCEDENTE';
             } else {
-                $item->estado_control = 'ENTREGADO';
+                $item->estado_control = 'COMPLETO';
             }
         }
 
@@ -180,15 +165,11 @@ class ControlTerminacionController extends Controller
                 ->values();
         }
 
-        /*
-         * Los pendientes más antiguos aparecen primero.
-         * Luego parciales/excedentes y al final las OTs ya entregadas.
-         */
         $prioridadEstado = [
-            'SIN ENVIAR' => 1,
-            'PARCIAL' => 2,
+            'PARCIAL' => 1,
+            'SIN INGRESO' => 2,
             'EXCEDENTE' => 3,
-            'ENTREGADO' => 4,
+            'COMPLETO' => 4,
         ];
 
         $produccionTerminada = $produccionTerminada
@@ -200,74 +181,74 @@ class ControlTerminacionController extends Controller
                     return $pa <=> $pb;
                 }
 
-                if ($a->pendiente_logistica > 0 || $b->pendiente_logistica > 0) {
-                    if ($a->dias_espera !== $b->dias_espera) {
-                        return $b->dias_espera <=> $a->dias_espera;
-                    }
-                }
+                $diasA = $a->dias_en_terminacion ?? -1;
+                $diasB = $b->dias_en_terminacion ?? -1;
 
-                if ((string) $a->fecha_producto_terminado !== (string) $b->fecha_producto_terminado) {
-                    return strcmp(
-                        (string) $a->fecha_producto_terminado,
-                        (string) $b->fecha_producto_terminado
-                    );
+                if ($a->pendiente_terminar > 0 || $b->pendiente_terminar > 0) {
+                    if ($diasA !== $diasB) {
+                        return $diasB <=> $diasA;
+                    }
                 }
 
                 return ((int) $b->nro_ot) <=> ((int) $a->nro_ot);
             })
             ->values();
 
-        /*
-         * KPIs exclusivos de Terminación -> Logística.
-         */
+        $totalIngresoTerminacion = (int) $produccionTerminada->sum('cantidad_ingreso_terminacion');
         $totalTerminado = (int) $produccionTerminada->sum('cantidad_terminada');
-        $totalLogistica = (int) $produccionTerminada->sum('cantidad_logistica');
-        $totalPendienteLogistica = (int) $produccionTerminada->sum('pendiente_logistica');
-        $totalExcesoLogistica = (int) $produccionTerminada->sum('exceso_logistica');
-        $totalOTs = $produccionTerminada->count();
 
-        $otsSinEnviar = $produccionTerminada
-            ->where('estado_control', 'SIN ENVIAR')
-            ->count();
+        // Mismo valor por definición del flujo.
+        $totalEntregadoLogistica = $totalTerminado;
+
+        $totalPendienteTerminar = (int) $produccionTerminada->sum('pendiente_terminar');
+        $totalExcesoProductoTerminado = (int) $produccionTerminada->sum('exceso_producto_terminado');
+        $totalOTs = $produccionTerminada->count();
 
         $otsParciales = $produccionTerminada
             ->where('estado_control', 'PARCIAL')
             ->count();
 
-        $otsEntregadas = $produccionTerminada
-            ->where('estado_control', 'ENTREGADO')
+        $otsCompletas = $produccionTerminada
+            ->where('estado_control', 'COMPLETO')
+            ->count();
+
+        $otsSinIngreso = $produccionTerminada
+            ->where('estado_control', 'SIN INGRESO')
             ->count();
 
         $otsExcedidas = $produccionTerminada
             ->where('estado_control', 'EXCEDENTE')
             ->count();
 
-        $otsPendientes = $otsSinEnviar + $otsParciales;
+        $porcentajeEntregadoLogistica = $totalTerminado > 0
+            ? 100
+            : 0;
 
-        $porcentajeEntregado = $totalTerminado > 0
-            ? round(($totalLogistica / $totalTerminado) * 100, 2)
+        $porcentajeTerminado = $totalIngresoTerminacion > 0
+            ? round(($totalTerminado / $totalIngresoTerminacion) * 100, 2)
             : 0;
 
         $pendientes = $produccionTerminada
             ->filter(function ($item) {
-                return $item->pendiente_logistica > 0;
+                return $item->pendiente_terminar > 0;
             });
 
         $antiguedadMaximaPendiente = $pendientes->isNotEmpty()
-            ? (int) $pendientes->max('dias_espera')
+            ? (int) $pendientes->max('dias_en_terminacion')
             : 0;
 
         $otMasAntiguaPendiente = $pendientes
-            ->sortByDesc('dias_espera')
+            ->sortByDesc('dias_en_terminacion')
             ->first();
 
-        $conPrimeraSalida = $produccionTerminada
+        $conTiempo = $produccionTerminada
             ->filter(function ($item) {
-                return $item->dias_primera_salida !== null;
+                return $item->dias_en_terminacion !== null
+                    && $item->estado_control !== 'SIN INGRESO';
             });
 
-        $promedioDiasPrimeraSalida = $conPrimeraSalida->isNotEmpty()
-            ? round($conPrimeraSalida->avg('dias_primera_salida'), 1)
+        $promedioDiasTerminacion = $conTiempo->isNotEmpty()
+            ? round($conTiempo->avg('dias_en_terminacion'), 1)
             : 0;
 
         $porPagina = 50;
@@ -293,20 +274,21 @@ class ControlTerminacionController extends Controller
             'buscar',
             'estados',
             'produccionPaginada',
+            'totalIngresoTerminacion',
             'totalTerminado',
-            'totalLogistica',
-            'totalPendienteLogistica',
-            'totalExcesoLogistica',
+            'totalEntregadoLogistica',
+            'totalPendienteTerminar',
+            'totalExcesoProductoTerminado',
             'totalOTs',
-            'otsSinEnviar',
             'otsParciales',
-            'otsEntregadas',
+            'otsCompletas',
+            'otsSinIngreso',
             'otsExcedidas',
-            'otsPendientes',
-            'porcentajeEntregado',
+            'porcentajeEntregadoLogistica',
+            'porcentajeTerminado',
             'antiguedadMaximaPendiente',
             'otMasAntiguaPendiente',
-            'promedioDiasPrimeraSalida'
+            'promedioDiasTerminacion'
         ));
     }
 
