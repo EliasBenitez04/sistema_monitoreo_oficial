@@ -97,12 +97,128 @@
     @endif
 
     @if($remisionesSinVinculo > 0)
-        <div class="alert alert-warning">
-            <i class="fas fa-unlink mr-1"></i>
-            Hay <strong>{{ number_format($remisionesSinVinculo, 0, ',', '.') }} líneas</strong>
-            de remisión del período todavía sin vínculo logístico
-            ({{ number_format($cantidadSinVinculo, 0, ',', '.') }} unidades).
-            Esas unidades no pueden clasificarse todavía como Local o Mayorista dentro de este reporte.
+        <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <i class="fas fa-unlink mr-1"></i>
+                Hay <strong>{{ number_format($remisionesSinVinculo, 0, ',', '.') }} líneas</strong>
+                de remisión del período todavía sin vínculo logístico
+                ({{ number_format($cantidadSinVinculo, 0, ',', '.') }} unidades).
+                Esas unidades no pueden clasificarse todavía como Local o Mayorista dentro de este reporte.
+            </div>
+
+            <button type="button"
+                class="btn btn-warning btn-sm mt-2 mt-md-0"
+                data-toggle="collapse"
+                data-target="#detalleSinVinculo"
+                aria-expanded="false">
+                <i class="fas fa-eye mr-1"></i>Ver líneas sin vínculo
+            </button>
+        </div>
+
+        <div class="collapse mb-3" id="detalleSinVinculo">
+            <div class="card rs-card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
+                    <div>
+                        <strong><i class="fas fa-unlink text-warning mr-1"></i>Detalle de remisiones sin vínculo</strong>
+                        <div class="rs-subtitle">
+                            Si aparece <strong>SIN OT</strong>, todavía no se identificó la OT.
+                            Si aparece <strong>SIN ASIGNACIÓN LOGÍSTICA</strong>, la OT ya está identificada pero falta relacionarla con una distribución/local concreto.
+                        </div>
+                    </div>
+                    <span class="badge badge-warning">
+                        {{ number_format($remisionesSinVinculo, 0, ',', '.') }} líneas ·
+                        {{ number_format($cantidadSinVinculo, 0, ',', '.') }} unidades
+                    </span>
+                </div>
+
+                @if($sinVinculoPorDestino->isNotEmpty())
+                    <div class="card-body border-bottom py-2">
+                        <div class="row">
+                            @foreach($sinVinculoPorDestino as $destino)
+                                <div class="col-xl-3 col-md-4 col-6 mb-2">
+                                    <div class="border rounded p-2 h-100">
+                                        <small class="text-muted d-block">{{ $destino->destino }}</small>
+                                        <strong>{{ number_format($destino->cantidad, 0, ',', '.') }} unidades</strong>
+                                        <div class="small text-muted">
+                                            {{ number_format($destino->lineas, 0, ',', '.') }} líneas
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 rs-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Remisión</th>
+                                <th>OT</th>
+                                <th>Código ENVIOS</th>
+                                <th>Código base</th>
+                                <th>Descripción</th>
+                                <th>Destino</th>
+                                <th class="text-right">Cantidad</th>
+                                <th>Recepción</th>
+                                <th>Motivo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($detalleSinVinculo as $linea)
+                                <tr>
+                                    <td class="rs-nowrap">
+                                        @php
+                                            $fechaLinea = $linea->fecha_remision ?: $linea->fecha_creacion;
+                                        @endphp
+                                        {{ $fechaLinea ? \Carbon\Carbon::parse($fechaLinea)->format('d/m/Y') : '—' }}
+                                    </td>
+                                    <td>
+                                        <strong>{{ $linea->serie }}-{{ $linea->numero_remision }}</strong>
+                                    </td>
+                                    <td>
+                                        @if($linea->nro_ot)
+                                            <strong>{{ $linea->nro_ot }}</strong>
+                                            @if($linea->codigo_ot)
+                                                <br><small class="text-muted">{{ $linea->codigo_ot }}</small>
+                                            @endif
+                                        @else
+                                            <span class="text-danger">—</span>
+                                        @endif
+                                    </td>
+                                    <td><span class="rs-code">{{ $linea->codigo }}</span></td>
+                                    <td><span class="rs-code">{{ $linea->codigo_base }}</span></td>
+                                    <td>{{ \Illuminate\Support\Str::limit($linea->descripcion, 36) }}</td>
+                                    <td>
+                                        <strong>{{ $linea->destino_real }}</strong>
+                                        @if($linea->cod_sucursal_destino)
+                                            <br><small class="text-muted">Cod. {{ $linea->cod_sucursal_destino }}</small>
+                                        @endif
+                                    </td>
+                                    <td class="text-right"><strong>{{ number_format($linea->cantidad, 0, ',', '.') }}</strong></td>
+                                    <td>
+                                        @if($linea->fecha_recepcion)
+                                            <span class="badge badge-success">
+                                                {{ \Carbon\Carbon::parse($linea->fecha_recepcion)->format('d/m/Y') }}
+                                            </span>
+                                        @else
+                                            <span class="badge badge-primary">EN TRÁNSITO</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        @if($linea->motivo_sin_vinculo === 'SIN OT')
+                                            <span class="badge badge-danger">SIN OT</span>
+                                        @else
+                                            <span class="badge badge-warning">SIN ASIGNACIÓN LOGÍSTICA</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     @endif
 
