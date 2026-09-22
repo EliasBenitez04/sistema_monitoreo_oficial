@@ -2948,7 +2948,7 @@ class OtController extends Controller
                 $request->fecha_desde,
                 $request->fecha_hasta,
                 $request->sucursal,
-                $request->nro_ot
+                $request->busqueda
             ),
 
             $nombreArchivo
