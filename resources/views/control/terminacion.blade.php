@@ -260,7 +260,8 @@
                                         <table class="table table-sm table-bordered mb-0 ct-table">
                                             <thead>
                                                 <tr>
-                                                    <th>Local destino</th>
+                                                    <th>Plan logística</th>
+                                                    <th>Destino real</th>
                                                     <th class="text-right">Cant. logística</th>
                                                     <th>Fecha salida</th>
                                                     <th>Remisión</th>
@@ -275,18 +276,24 @@
                                                     @if($local->remisiones->isEmpty())
                                                         <tr>
                                                             <td><strong>{{ $local->sucursal }}</strong></td>
+                                                            <td class="text-muted">—</td>
                                                             <td class="text-right">{{ number_format($local->cantidad, 0, ',', '.') }}</td>
                                                             <td>{{ $local->fecha_logistica ? \Carbon\Carbon::parse($local->fecha_logistica)->format('d/m/Y') : '—' }}</td>
-                                                            <td colspan="4" class="text-muted">Todavía no se encontró una remisión importada para este código/local.</td>
+                                                            <td colspan="4" class="text-muted">Todavía no se encontró una remisión importada para esta asignación logística.</td>
                                                             <td><span class="badge badge-secondary">SIN REMISIÓN</span></td>
                                                         </tr>
                                                     @else
                                                         @foreach($local->remisiones as $remision)
                                                             <tr>
                                                                 <td>
-                                                                    <strong>{{ $local->sucursal }}</strong>
-                                                                    @if($remision->sucursal_destino)
-                                                                        <br><small class="text-muted">{{ $remision->sucursal_destino }}</small>
+                                                                    <strong>{{ $remision->destino_planificado }}</strong>
+                                                                </td>
+                                                                <td>
+                                                                    <strong>{{ $remision->destino_real ?: '—' }}</strong>
+                                                                    @if($remision->es_redireccion)
+                                                                        <br><span class="badge badge-warning">
+                                                                            <i class="fas fa-random mr-1"></i>REDIRIGIDO
+                                                                        </span>
                                                                     @endif
                                                                 </td>
                                                                 <td class="text-right">{{ number_format($local->cantidad, 0, ',', '.') }}</td>
@@ -309,7 +316,7 @@
                                                     @endif
                                                 @empty
                                                     <tr>
-                                                        <td colspan="8" class="text-center text-muted py-3">La OT todavía no tiene detalle de distribución a sucursales.</td>
+                                                        <td colspan="9" class="text-center text-muted py-3">La OT todavía no tiene detalle de distribución a sucursales.</td>
                                                     </tr>
                                                 @endforelse
                                             </tbody>
@@ -403,7 +410,8 @@
                     <tr>
                         <th>OT</th>
                         <th>Código</th>
-                        <th>Local</th>
+                        <th>Plan logística</th>
+                        <th>Destino real</th>
                         <th class="text-right">Logística</th>
                         <th>Salida logística</th>
                         <th>Remisión</th>
@@ -419,6 +427,7 @@
                                 <td><strong>{{ $detalle->nro_ot }}</strong></td>
                                 <td><span class="ct-code">{{ $detalle->codigo }}</span></td>
                                 <td><strong>{{ $detalle->sucursal }}</strong></td>
+                                <td class="text-muted">—</td>
                                 <td class="text-right">{{ number_format($detalle->cantidad, 0, ',', '.') }}</td>
                                 <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
                                 <td colspan="3" class="text-muted">Sin remisión importada</td>
@@ -430,15 +439,20 @@
                                     <td><strong>{{ $detalle->nro_ot }}</strong></td>
                                     <td><span class="ct-code">{{ $detalle->codigo }}</span></td>
                                     <td>
-                                        <strong>{{ $detalle->sucursal }}</strong>
-                                        @if($remision->sucursal_destino)
-                                            <br><small class="text-muted">{{ $remision->sucursal_destino }}</small>
-                                        @endif
+                                        <strong>{{ $remision->destino_planificado }}</strong>
                                         <br><small class="text-muted">
                                             Remitido {{ number_format($detalle->cantidad_remitida, 0, ',', '.') }}
                                             · Recibido {{ number_format($detalle->cantidad_recibida, 0, ',', '.') }}
                                             · Pendiente {{ number_format($detalle->pendiente_remision, 0, ',', '.') }}
                                         </small>
+                                    </td>
+                                    <td>
+                                        <strong>{{ $remision->destino_real ?: '—' }}</strong>
+                                        @if($remision->es_redireccion)
+                                            <br><span class="badge badge-warning">
+                                                <i class="fas fa-random mr-1"></i>REDIRIGIDO
+                                            </span>
+                                        @endif
                                     </td>
                                     <td class="text-right">{{ number_format($detalle->cantidad, 0, ',', '.') }}</td>
                                     <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
@@ -458,7 +472,7 @@
                             @endforeach
                         @endif
                     @empty
-                        <tr><td colspan="9" class="text-center text-muted py-4">No existen movimientos logísticos para las OTs seleccionadas.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">No existen movimientos logísticos para las OTs seleccionadas.</td></tr>
                     @endforelse
                 </tbody>
             </table>
