@@ -506,13 +506,22 @@ class ControlTerminacionController extends Controller
 
         DB::disableQueryLog();
 
+        $rutaRetorno = $request->input('origen') === 'dashboard-logistica'
+            ? 'dashboard.ot-logistica'
+            : 'control.terminacion';
+
+        $parametrosRetorno = array_filter([
+            'fecha_desde' => $request->input('fecha_desde'),
+            'fecha_hasta' => $request->input('fecha_hasta'),
+        ]);
+
         $request->validate([
             'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:102400',
         ]);
 
         if (!Schema::hasTable('ot_logistica_remisiones')) {
             return redirect()
-                ->route('control.terminacion', $request->only('fecha_desde', 'fecha_hasta'))
+                ->route($rutaRetorno, $parametrosRetorno)
                 ->with('error', 'Primero creá la tabla ot_logistica_remisiones antes de importar ENVIOS.');
         }
 
@@ -562,7 +571,7 @@ class ControlTerminacionController extends Controller
                 . ' | Omitidas: ' . $import->getOmitidas() . '.';
 
             return redirect()
-                ->route('control.terminacion', $request->only('fecha_desde', 'fecha_hasta'))
+                ->route($rutaRetorno, $parametrosRetorno)
                 ->with('success', $mensaje);
         } catch (\Throwable $e) {
             Log::error('ERROR IMPORTACION ENVIOS', [
@@ -575,7 +584,7 @@ class ControlTerminacionController extends Controller
             report($e);
 
             return redirect()
-                ->route('control.terminacion', $request->only('fecha_desde', 'fecha_hasta'))
+                ->route($rutaRetorno, $parametrosRetorno)
                 ->with('error', 'No se pudo importar el archivo: ' . $e->getMessage());
         }
     }
