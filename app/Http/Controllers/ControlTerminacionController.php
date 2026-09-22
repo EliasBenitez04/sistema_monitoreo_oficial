@@ -406,7 +406,14 @@ class ControlTerminacionController extends Controller
             $inicio = microtime(true);
             $import = new ControlTerminacionRemisionImport();
 
-            Excel::import($import, $archivo);
+            $extension = strtolower($archivo->getClientOriginalExtension());
+
+            if ($extension === 'xlsx') {
+                $import->importarXlsxStreaming($archivo->getRealPath());
+            } else {
+                // Compatibilidad para XLS/CSV pequeños.
+                Excel::import($import, $archivo);
+            }
 
             Log::info('FIN IMPORTACION ENVIOS', [
                 'segundos' => round(microtime(true) - $inicio, 2),
