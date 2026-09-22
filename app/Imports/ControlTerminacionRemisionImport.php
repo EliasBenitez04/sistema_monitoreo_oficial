@@ -1221,6 +1221,14 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     {
         $codigo = $this->normalizarCodigoCompleto($valor);
 
+        /*
+         * Si Excel convirtió 050617600 en 50617600, recuperamos el cero
+         * inicial porque los códigos base de OT son de 9 dígitos.
+         */
+        if (preg_match('/^(\\d{1,9})$/', $codigo)) {
+            return str_pad($codigo, 9, '0', STR_PAD_LEFT);
+        }
+
         if (preg_match('/^(\\d{9})/', $codigo, $coincidencia)) {
             return $coincidencia[1];
         }
