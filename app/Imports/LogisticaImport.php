@@ -793,6 +793,4 @@ class LogisticaImport implements ToCollection, WithHeadingRow
 
         return $codigo;
     }
-
-    }
 }
