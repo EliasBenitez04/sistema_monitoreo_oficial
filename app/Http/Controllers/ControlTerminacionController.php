@@ -366,8 +366,10 @@ class ControlTerminacionController extends Controller
                 . ' | Líneas procesadas: ' . $import->getProcesadas()
                 . ' | Nuevas: ' . $import->getInsertadas()
                 . ' | Actualizadas: ' . $import->getActualizadas()
+                . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
-                . ' | Sin vínculo: ' . $import->getSinVincular()
+                . ' | Sin detalle logístico: ' . $import->getSinVincular()
+                . ' | Sin OT: ' . $import->getSinOt()
                 . ' | Omitidas: ' . $import->getOmitidas() . '.';
 
             return redirect()
