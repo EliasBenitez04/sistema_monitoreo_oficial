@@ -12,9 +12,19 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class OtImport implements ToCollection, WithHeadingRow
 {
+    private $procesadas = 0;
+    private $otCreadas = 0;
+    private $otActualizadas = 0;
+    private $trazabilidadesNuevas = 0;
+    private $trazabilidadesExistentes = 0;
+    private $omitidas = 0;
+    private $errores = 0;
+
     public function collection(Collection $rows)
     {
         foreach ($rows as $index => $row) {
+            $this->procesadas++;
+
             try {
                 $fila = $index + 2;
 
@@ -35,6 +45,8 @@ class OtImport implements ToCollection, WithHeadingRow
                 $fecha = $this->parseDate($fechaRaw);
 
                 if (!$nroOt || $proceso === '') {
+                    $this->omitidas++;
+
                     Log::warning('IMPORT OT - FILA OMITIDA', [
                         'fila' => $fila,
                         'nro_ot' => $nroOtRaw,
@@ -46,6 +58,8 @@ class OtImport implements ToCollection, WithHeadingRow
                 }
 
                 if (!$fecha) {
+                    $this->omitidas++;
+
                     Log::warning('IMPORT OT - FECHA INVALIDA', [
                         'fila' => $fila,
                         'nro_ot' => $nroOt,
@@ -62,6 +76,7 @@ class OtImport implements ToCollection, WithHeadingRow
                  * no queda permanentemente desactualizada.
                  */
                 $ot = Ot::where('nro_ot', $nroOt)->first();
+                $otExistia = (bool) $ot;
 
                 if (!$ot) {
                     $ot = new Ot();
@@ -94,6 +109,12 @@ class OtImport implements ToCollection, WithHeadingRow
 
                 $ot->save();
 
+                if ($otExistia) {
+                    $this->otActualizadas++;
+                } else {
+                    $this->otCreadas++;
+                }
+
                 if (
                     $codigoAnterior
                     && $codigoAnterior !== $ot->codigo
@@ -119,6 +140,12 @@ class OtImport implements ToCollection, WithHeadingRow
                     'fecha_proceso' => $fecha,
                 ]);
 
+                if ($trazabilidad->wasRecentlyCreated) {
+                    $this->trazabilidadesNuevas++;
+                } else {
+                    $this->trazabilidadesExistentes++;
+                }
+
                 Log::info('IMPORT OT - OK', [
                     'fila' => $fila,
                     'id_ot' => $ot->id_ot,
@@ -130,6 +157,8 @@ class OtImport implements ToCollection, WithHeadingRow
                     'trazabilidad_nueva' => $trazabilidad->wasRecentlyCreated,
                 ]);
             } catch (\Throwable $e) {
+                $this->errores++;
+
                 Log::error('ERROR IMPORT OT', [
                     'fila' => $index + 2,
                     'error' => $e->getMessage(),
@@ -139,6 +168,41 @@ class OtImport implements ToCollection, WithHeadingRow
                 ]);
             }
         }
+    }
+
+    public function getProcesadas()
+    {
+        return $this->procesadas;
+    }
+
+    public function getOtCreadas()
+    {
+        return $this->otCreadas;
+    }
+
+    public function getOtActualizadas()
+    {
+        return $this->otActualizadas;
+    }
+
+    public function getTrazabilidadesNuevas()
+    {
+        return $this->trazabilidadesNuevas;
+    }
+
+    public function getTrazabilidadesExistentes()
+    {
+        return $this->trazabilidadesExistentes;
+    }
+
+    public function getOmitidas()
+    {
+        return $this->omitidas;
+    }
+
+    public function getErrores()
+    {
+        return $this->errores;
     }
 
     private function get($row, array $keys)
