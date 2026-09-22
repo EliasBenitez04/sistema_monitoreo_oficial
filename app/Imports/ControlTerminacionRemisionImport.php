@@ -6,11 +6,13 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\ToCollection;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
-class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
+class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, WithChunkReading, SkipsEmptyRows
 {
     private $procesadas = 0;
     private $insertadas = 0;
@@ -21,9 +23,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
     private $sinOt = 0;
     private $omitidas = 0;
 
-    private $documentosArchivo = 0;
-    private $documentosRecibidos = 0;
-    private $documentosEnTransito = 0;
+    private $documentosEstado = [];
 
     private $usoDetalle = [];
     private $asignadoImportacion = [];
@@ -35,12 +35,12 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
         /*
         |--------------------------------------------------------------------------
-        | IMPORTANTE
+        | PROCESAMIENTO POR BLOQUES
         |--------------------------------------------------------------------------
         |
-        | El archivo ENVIOS analizado actualmente tiene 68.909 líneas.
-        | NO usamos WithChunkReading porque en este proyecto/versión estaba
-        | provocando que la misma hoja se procesara repetidas veces.
+        | WithChunkReading evita cargar un XLSX grande completo en memoria.
+        | Cada llamada procesa como máximo 1.500 filas y conserva los contadores
+        | del objeto importador entre bloques.
         |
         */
         $filas = $this->normalizarFilas($rows);
@@ -80,6 +80,10 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         */
         $existentes = $this->precargarExistentes($filas);
         $this->usoDetalle = $this->precargarUsoDetalles($vinculos);
+
+        // El uso ya persistido se leyó de BD. Este acumulador solo corresponde
+        // a las filas todavía no grabadas del bloque actual.
+        $this->asignadoImportacion = [];
 
         $ahora = now();
         $registros = [];
@@ -346,46 +350,48 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                 return $this->normalizarCodigoBase($codigo);
             })
             ->unique()
-            ->flip();
+            ->values();
 
         if ($codigos->isEmpty()) {
             return collect();
         }
 
-        $fechas = $filas
-            ->map(function ($fila) {
-                return $fila['fecha_remision'] ?: $fila['fecha_creacion'];
-            })
-            ->filter()
-            ->values();
-
         /*
-         * Traemos las salidas logísticas y después normalizamos código + sucursal
-         * en PHP. Para asociar usamos el código base de 9 dígitos:
-         * 050616220VD04 (ENVIOS) -> 050616220 (OT). Esto evita depender de un
-         * WHERE IN gigante con miles de códigos transformados en PostgreSQL 9.5.
+         * Consultamos únicamente los códigos base presentes en ESTE bloque.
+         * Ejemplo: 050616220VD04 (ENVIOS) -> 050616220 (OT).
+         *
+         * Se hacen lotes de 400 códigos para no generar un IN gigante en
+         * PostgreSQL 9.5.
          */
-        $query = DB::table('ot_logistica_detalle as d')
-            ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
-            ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
-            ->whereRaw("UPPER(TRIM(t.proceso)) LIKE '%LOGISTICA%'")
-            ->whereRaw("UPPER(TRIM(t.proceso)) LIKE '%DISTRIBUCION%'")
-            ->select(
-                'd.id as id_logistica_detalle',
-                'd.id_ot',
-                'd.id_trazabilidad',
-                'd.sucursal',
-                'd.cantidad',
-                'o.nro_ot',
-                'o.codigo',
-                'o.descripcion',
-                't.fecha_proceso'
-            );
+        $candidatos = collect();
 
-        $candidatos = $query
-            ->orderBy('t.fecha_proceso', 'desc')
-            ->orderBy('d.id', 'desc')
-            ->get();
+        foreach ($codigos->chunk(400) as $bloqueCodigos) {
+            $parcial = DB::table('ot_logistica_detalle as d')
+                ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+                ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
+                ->whereIn(
+                    DB::raw("UPPER(REPLACE(TRIM(o.codigo), '''', ''))"),
+                    $bloqueCodigos->all()
+                )
+                ->whereRaw("UPPER(TRIM(t.proceso)) LIKE '%LOGISTICA%'")
+                ->whereRaw("UPPER(TRIM(t.proceso)) LIKE '%DISTRIBUCION%'")
+                ->select(
+                    'd.id as id_logistica_detalle',
+                    'd.id_ot',
+                    'd.id_trazabilidad',
+                    'd.sucursal',
+                    'd.cantidad',
+                    'o.nro_ot',
+                    'o.codigo',
+                    'o.descripcion',
+                    't.fecha_proceso'
+                )
+                ->orderBy('t.fecha_proceso', 'desc')
+                ->orderBy('d.id', 'desc')
+                ->get();
+
+            $candidatos = $candidatos->concat($parcial);
+        }
 
         return $candidatos
             ->map(function ($item) {
@@ -393,9 +399,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                 $item->sucursal_normalizada = $this->normalizarSucursalBase($item->sucursal);
                 return $item;
             })
-            ->filter(function ($item) use ($codigos) {
+            ->filter(function ($item) {
                 return $item->codigo_normalizado !== ''
-                    && isset($codigos[$item->codigo_normalizado])
                     && !empty($item->sucursal_normalizada);
             })
             ->groupBy(function ($item) {
@@ -415,36 +420,47 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                 return $this->normalizarCodigoBase($codigo);
             })
             ->unique()
-            ->flip();
+            ->values();
 
         if ($codigos->isEmpty()) {
             return collect();
         }
 
-        return DB::table('ot as o')
-            ->leftJoin('ot_trazabilidad as pt', function ($join) {
-                $join->on('pt.id_ot', '=', 'o.id_ot')
-                    ->where('pt.proceso', '=', 'TERMINACION - PRODUCTO TERMINADO');
-            })
-            ->select(
-                'o.id_ot',
-                'o.nro_ot',
-                'o.codigo',
-                'o.descripcion',
-                'pt.id_trazabilidad as id_producto_terminado',
-                'pt.fecha_proceso as fecha_producto_terminado',
-                'pt.resultado as cantidad_producto_terminado'
-            )
-            ->orderBy('pt.fecha_proceso', 'desc')
-            ->orderBy('o.id_ot', 'desc')
-            ->get()
+        $ots = collect();
+
+        foreach ($codigos->chunk(400) as $bloqueCodigos) {
+            $parcial = DB::table('ot as o')
+                ->leftJoin('ot_trazabilidad as pt', function ($join) {
+                    $join->on('pt.id_ot', '=', 'o.id_ot')
+                        ->where('pt.proceso', '=', 'TERMINACION - PRODUCTO TERMINADO');
+                })
+                ->whereIn(
+                    DB::raw("UPPER(REPLACE(TRIM(o.codigo), '''', ''))"),
+                    $bloqueCodigos->all()
+                )
+                ->select(
+                    'o.id_ot',
+                    'o.nro_ot',
+                    'o.codigo',
+                    'o.descripcion',
+                    'pt.id_trazabilidad as id_producto_terminado',
+                    'pt.fecha_proceso as fecha_producto_terminado',
+                    'pt.resultado as cantidad_producto_terminado'
+                )
+                ->orderBy('pt.fecha_proceso', 'desc')
+                ->orderBy('o.id_ot', 'desc')
+                ->get();
+
+            $ots = $ots->concat($parcial);
+        }
+
+        return $ots
             ->map(function ($item) {
                 $item->codigo_normalizado = $this->normalizarCodigoBase($item->codigo);
                 return $item;
             })
-            ->filter(function ($item) use ($codigos) {
-                return $item->codigo_normalizado !== ''
-                    && isset($codigos[$item->codigo_normalizado]);
+            ->filter(function ($item) {
+                return $item->codigo_normalizado !== '';
             })
             ->groupBy('codigo_normalizado');
     }
@@ -675,27 +691,18 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
     private function calcularResumenDocumentos(Collection $filas)
     {
-        $documentos = $filas->groupBy(function ($fila) {
-            return implode('|', [
+        foreach ($filas as $fila) {
+            $claveDocumento = implode('|', [
                 $fila['serie'],
                 $fila['numero_remision'],
                 $fila['cod_sucursal_salida'],
                 $fila['cod_sucursal_destino'],
             ]);
-        });
 
-        $this->documentosArchivo = $documentos->count();
+            $recibido = !empty($fila['fecha_recepcion']);
 
-        foreach ($documentos as $lineas) {
-            $recibido = $lineas->contains(function ($fila) {
-                return !empty($fila['fecha_recepcion']);
-            });
-
-            if ($recibido) {
-                $this->documentosRecibidos++;
-            } else {
-                $this->documentosEnTransito++;
-            }
+            $this->documentosEstado[$claveDocumento] =
+                ($this->documentosEstado[$claveDocumento] ?? false) || $recibido;
         }
     }
 
@@ -1037,16 +1044,21 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
     public function getDocumentosArchivo()
     {
-        return $this->documentosArchivo;
+        return count($this->documentosEstado);
     }
 
     public function getDocumentosRecibidos()
     {
-        return $this->documentosRecibidos;
+        return count(array_filter($this->documentosEstado));
     }
 
     public function getDocumentosEnTransito()
     {
-        return $this->documentosEnTransito;
+        return $this->getDocumentosArchivo() - $this->getDocumentosRecibidos();
+    }
+
+    public function chunkSize(): int
+    {
+        return 1500;
     }
 }
