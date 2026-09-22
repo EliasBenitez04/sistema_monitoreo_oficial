@@ -855,12 +855,26 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             return null;
         }
 
-        $clave = $this->claveVinculo(
-            $this->normalizarCodigoBase($codigo),
-            $this->normalizarSucursalBase($sucursal)
-        );
+        $codigoBase = $this->normalizarCodigoBase($codigo);
+        $sucursalesCandidatas = $this->resolverSucursalesCandidatas($sucursal);
 
-        $candidatos = collect($vinculos->get($clave, collect()));
+        $candidatos = collect();
+
+        foreach ($sucursalesCandidatas as $indice => $sucursalCandidata) {
+            $clave = $this->claveVinculo(
+                $codigoBase,
+                $sucursalCandidata
+            );
+
+            $grupo = collect($vinculos->get($clave, collect()))
+                ->map(function ($item) use ($indice, $sucursalCandidata) {
+                    $item->_prioridad_destino = $indice;
+                    $item->_destino_planificado_normalizado = $sucursalCandidata;
+                    return $item;
+                });
+
+            $candidatos = $candidatos->concat($grupo);
+        }
 
         if ($candidatos->isEmpty()) {
             return null;
@@ -885,6 +899,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $item->_tiene_saldo = $item->_disponible >= (int) $cantidad ? 1 : 0;
             $item->_saldo_exacto = $item->_disponible === (int) $cantidad ? 1 : 0;
             $item->_cantidad_exacta = (int) $item->cantidad === (int) $cantidad ? 1 : 0;
+            $item->_sobrante_despues = $item->_tiene_saldo
+                ? $item->_disponible - (int) $cantidad
+                : 999999;
             $item->_distancia_dias = 999999;
             $item->_posterior = 1;
 
@@ -933,8 +950,19 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                     return $a->_saldo_exacto > $b->_saldo_exacto ? -1 : 1;
                 }
 
+                // Para COMERCIAL MATRIZ pueden competir AYALA y MODELO.
+                // Elegimos el detalle donde la línea deje el menor sobrante,
+                // aprovechando mejor la cantidad planificada sin excederla.
+                if ($a->_sobrante_despues !== $b->_sobrante_despues) {
+                    return $a->_sobrante_despues < $b->_sobrante_despues ? -1 : 1;
+                }
+
                 if ($a->_cantidad_exacta !== $b->_cantidad_exacta) {
                     return $a->_cantidad_exacta > $b->_cantidad_exacta ? -1 : 1;
+                }
+
+                if (($a->_prioridad_destino ?? 999) !== ($b->_prioridad_destino ?? 999)) {
+                    return ($a->_prioridad_destino ?? 999) < ($b->_prioridad_destino ?? 999) ? -1 : 1;
                 }
 
                 if ((string) $a->fecha_proceso !== (string) $b->fecha_proceso) {
@@ -983,6 +1011,29 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $this->documentosEstado[$claveDocumento] =
                 ($this->documentosEstado[$claveDocumento] ?? false) || $recibido;
         }
+    }
+
+    /**
+     * Destinos físicos que pueden representar una asignación logística.
+     *
+     * COMERCIAL MATRIZ no existe como columna en el Excel de planificación:
+     * operativamente puede recibir mercadería originalmente asignada a AYALA
+     * o a MODELO MUESTRA. Para el resto de los locales exigimos coincidencia
+     * exacta y no hacemos equivalencias.
+     */
+    private function resolverSucursalesCandidatas($sucursal): array
+    {
+        $normalizada = $this->normalizarSucursalBase($sucursal);
+
+        if (!$normalizada) {
+            return [];
+        }
+
+        if ($normalizada === 'MATRIZ') {
+            return ['MATRIZ', 'AYALA', 'MODELO'];
+        }
+
+        return [$normalizada];
     }
 
     private function resolverSucursalImportada($codigo, $nombreExcel, $nombreCatalogo = null)
