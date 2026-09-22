@@ -162,6 +162,27 @@
         </div>
     </div>
 
+    @if($resumenTipos->isNotEmpty())
+        <div class="card rs-card mb-3">
+            <div class="card-body py-3">
+                <div class="row">
+                    @foreach($resumenTipos as $tipo)
+                        <div class="col-xl-3 col-md-6 mb-2 mb-xl-0">
+                            <div class="border rounded p-2 h-100">
+                                <small class="text-muted d-block">{{ $tipo->tipo }}</small>
+                                <strong>{{ number_format($tipo->cantidad, 0, ',', '.') }} prendas</strong>
+                                <div class="small text-muted">
+                                    {{ number_format($tipo->movimientos, 0, ',', '.') }} movimientos ·
+                                    {{ number_format($tipo->ots, 0, ',', '.') }} OTs
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="card rs-card mb-3">
         <div class="card-header bg-white">
             <strong><i class="fas fa-table mr-1"></i>Detalle del período</strong>
@@ -175,23 +196,25 @@
                 <thead>
                     <tr>
                         <th rowspan="2">Fecha</th>
+                        <th rowspan="2">Tipo movimiento</th>
                         <th rowspan="2">OT</th>
                         <th rowspan="2">Código / artículo</th>
-                        <th rowspan="2" class="text-right">PT</th>
-                        <th colspan="4" class="text-center rs-plan">Plan Logística</th>
+                        <th rowspan="2" class="text-right">PT ref.</th>
+                        <th rowspan="2" class="text-right">Movimiento</th>
+                        <th rowspan="2" class="text-right">Acum. OT</th>
+                        <th rowspan="2" class="text-right">Pend. OT</th>
+                        <th colspan="3" class="text-center rs-plan">Plan del movimiento</th>
                         <th colspan="5" class="text-center rs-real">Movimiento real</th>
-                        <th rowspan="2" class="text-right">Dif. PT/Dist.</th>
                         <th rowspan="2">Estado</th>
                     </tr>
                     <tr>
-                        <th class="text-right rs-plan">Distribución</th>
                         <th class="text-right rs-plan">Locales</th>
                         <th class="text-right rs-plan">Ayala</th>
                         <th class="text-right rs-plan">Modelo/Muestra</th>
                         <th class="text-right rs-real">Locales</th>
                         <th class="text-right rs-real">Mayorista</th>
                         <th class="text-right rs-real">Remitido</th>
-                        <th class="text-right rs-real">Pendiente</th>
+                        <th class="text-right rs-real">Pend. remitir</th>
                         <th class="text-right rs-real">Recibido</th>
                     </tr>
                 </thead>
@@ -202,13 +225,40 @@
                             <td class="rs-nowrap">
                                 {{ $item->fecha_logistica ? \Carbon\Carbon::parse($item->fecha_logistica)->format('d/m/Y') : '—' }}
                             </td>
+                            <td>
+                                @if($item->tipo_movimiento === 'CANCELACION / CIERRE')
+                                    <span class="badge badge-info">CANCELACIÓN / CIERRE</span>
+                                @elseif($item->tipo_movimiento === 'COMPLEMENTO')
+                                    <span class="badge badge-primary">COMPLEMENTO</span>
+                                @elseif($item->tipo_movimiento === 'AJUSTE / EXCEDENTE')
+                                    <span class="badge badge-danger">AJUSTE / EXCEDENTE</span>
+                                @else
+                                    <span class="badge badge-secondary">DISTRIBUCIÓN</span>
+                                @endif
+                            </td>
                             <td><strong>{{ $item->nro_ot }}</strong></td>
                             <td>
                                 <span class="rs-code">{{ $item->codigo }}</span>
                                 <br><small class="text-muted">{{ \Illuminate\Support\Str::limit($item->descripcion, 38) }}</small>
                             </td>
-                            <td class="text-right">{{ number_format($item->cantidad_pt, 0, ',', '.') }}</td>
-                            <td class="text-right rs-plan"><strong>{{ number_format($item->distribucion, 0, ',', '.') }}</strong></td>
+                            <td class="text-right">
+                                @if($item->tipo_movimiento === 'DISTRIBUCION')
+                                    {{ number_format($item->cantidad_pt, 0, ',', '.') }}
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
+                            <td class="text-right"><strong>{{ number_format($item->cantidad_movimiento, 0, ',', '.') }}</strong></td>
+                            <td class="text-right">{{ number_format($item->acumulado_ot, 0, ',', '.') }}</td>
+                            <td class="text-right">
+                                @if($item->pendiente_ot === null)
+                                    —
+                                @elseif($item->pendiente_ot > 0)
+                                    <span class="badge badge-warning">{{ number_format($item->pendiente_ot, 0, ',', '.') }}</span>
+                                @else
+                                    <span class="badge badge-success">0</span>
+                                @endif
+                            </td>
                             <td class="text-right rs-plan">{{ number_format($item->plan_locales, 0, ',', '.') }}</td>
                             <td class="text-right rs-plan">{{ number_format($item->plan_ayala, 0, ',', '.') }}</td>
                             <td class="text-right rs-plan">{{ number_format($item->plan_modelo_muestra, 0, ',', '.') }}</td>
@@ -231,11 +281,6 @@
                                 @endif
                             </td>
                             <td class="text-right rs-real">{{ number_format($item->recibido, 0, ',', '.') }}</td>
-                            <td class="text-right">
-                                <span class="badge {{ $item->diferencia_pt_distribucion == 0 ? 'badge-success' : 'badge-warning' }}">
-                                    {{ number_format($item->diferencia_pt_distribucion, 0, ',', '.') }}
-                                </span>
-                            </td>
                             <td>
                                 @if($item->estado === 'COMPLETO')
                                     <span class="badge badge-success">COMPLETO</span>
@@ -250,7 +295,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="15" class="text-center text-muted py-5">
+                            <td colspan="17" class="text-center text-muted py-5">
                                 No existen movimientos logísticos para el período seleccionado.
                             </td>
                         </tr>
@@ -260,8 +305,9 @@
                 @if($detalles->isNotEmpty())
                     <tfoot>
                         <tr>
-                            <td colspan="4"><strong>TOTAL GENERAL</strong></td>
+                            <td colspan="5"><strong>TOTAL MOVIMIENTOS DEL PERÍODO</strong></td>
                             <td class="text-right"><strong>{{ number_format($totales['distribucion'], 0, ',', '.') }}</strong></td>
+                            <td colspan="2"></td>
                             <td class="text-right"><strong>{{ number_format($totales['plan_locales'], 0, ',', '.') }}</strong></td>
                             <td class="text-right"><strong>{{ number_format($totales['plan_ayala'], 0, ',', '.') }}</strong></td>
                             <td class="text-right"><strong>{{ number_format($totales['plan_modelo_muestra'], 0, ',', '.') }}</strong></td>
@@ -270,7 +316,7 @@
                             <td class="text-right"><strong>{{ number_format($totales['remitido'], 0, ',', '.') }}</strong></td>
                             <td class="text-right"><strong>{{ number_format($totales['pendiente_remitir'], 0, ',', '.') }}</strong></td>
                             <td class="text-right"><strong>{{ number_format($totales['recibido'], 0, ',', '.') }}</strong></td>
-                            <td colspan="2"></td>
+                            <td></td>
                         </tr>
                     </tfoot>
                 @endif
