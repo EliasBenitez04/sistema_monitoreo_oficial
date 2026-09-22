@@ -34,8 +34,11 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 // DATOS DEL EXCEL
                 // =========================================================
 
-                $codigo = trim((string) ($row['codigo'] ?? ''));
-                $nroOtExcel = trim((string) ($row['nro_ot'] ?? ''));
+                $codigoOriginal = $row['codigo'] ?? '';
+                $nroOtOriginal = $row['nro_ot'] ?? '';
+
+                $codigo = $this->normalizarCodigoBase($codigoOriginal);
+                $nroOtExcel = $this->normalizarNroOt($nroOtOriginal);
 
                 /*
                  * IMPORTANTE:
@@ -74,49 +77,93 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 // =========================================================
 
                 $ot = null;
+                $otPorNumero = null;
 
                 /*
-                 * Primero buscamos por:
-                 *
-                 * N° OT + código
+                 * 1) El nro_ot es la referencia principal.
+                 * 2) El código se compara NORMALIZADO para tolerar:
+                 *    050617600 <-> 50617600
+                 *    '050617600 <-> 050617600
                  */
+                if ($nroOtExcel) {
+                    $otPorNumero = Ot::where('nro_ot', $nroOtExcel)->first();
 
-                if ($nroOtExcel !== '') {
+                    if ($otPorNumero) {
+                        $codigoOt = $this->normalizarCodigoBase($otPorNumero->codigo);
 
-                    $ot = Ot::where('nro_ot', $nroOtExcel)
-                        ->where('codigo', $codigo)
-                        ->first();
+                        if (
+                            $codigoOt === $codigo
+                            || $codigoOt === ''
+                            || strtoupper((string) $otPorNumero->codigo) === 'SIN_CODIGO'
+                        ) {
+                            $ot = $otPorNumero;
+
+                            /*
+                             * Si la OT estaba creada sin código válido,
+                             * la reparamos con el código del Excel logístico.
+                             */
+                            if (
+                                $codigoOt === ''
+                                || strtoupper((string) $otPorNumero->codigo) === 'SIN_CODIGO'
+                            ) {
+                                $ot->codigo = $codigo;
+                                $ot->save();
+
+                                Log::warning('LOGISTICA - CODIGO OT REPARADO', [
+                                    'fila' => $index + 2,
+                                    'nro_ot' => $nroOtExcel,
+                                    'codigo_nuevo' => $codigo,
+                                ]);
+                            }
+                        }
+                    }
                 }
-
 
                 /*
-                 * Si no encontramos, buscamos solamente por código.
+                 * Si no coincidió por nro_ot, buscamos por código normalizado.
+                 * Se consideran también códigos históricos sin cero inicial.
                  */
-
                 if (!$ot) {
+                    $alternativasCodigo = array_values(array_unique([
+                        $codigo,
+                        ltrim($codigo, '0'),
+                    ]));
 
-                    $ot = Ot::where('codigo', $codigo)
-                        ->first();
+                    $ot = Ot::whereIn(
+                        DB::raw("REPLACE(TRIM(codigo), '''', '')"),
+                        $alternativasCodigo
+                    )->first();
                 }
 
-
                 // =========================================================
-                // OT NO ENCONTRADA
+                // OT NO ENCONTRADA / INCONSISTENTE
                 // =========================================================
 
                 if (!$ot) {
-
                     Log::warning('CODIGO / OT NO ENCONTRADO', [
-
                         'fila' => $index + 2,
-                        'codigo' => $codigo,
-                        'nro_ot' => $nroOtExcel,
-
+                        'codigo_original' => $codigoOriginal,
+                        'codigo_normalizado' => $codigo,
+                        'nro_ot_original' => $nroOtOriginal,
+                        'nro_ot_normalizado' => $nroOtExcel,
+                        'ot_por_numero_existe' => (bool) $otPorNumero,
+                        'codigo_guardado_ot' => $otPorNumero ? $otPorNumero->codigo : null,
                     ]);
 
                     DB::rollBack();
-
                     continue;
+                }
+
+                if (
+                    $nroOtExcel
+                    && (int) $ot->nro_ot !== (int) $nroOtExcel
+                ) {
+                    Log::warning('LOGISTICA - OT ENCONTRADA SOLO POR CODIGO', [
+                        'fila' => $index + 2,
+                        'nro_ot_excel' => $nroOtExcel,
+                        'nro_ot_bd' => $ot->nro_ot,
+                        'codigo' => $codigo,
+                    ]);
                 }
 
 
@@ -326,10 +373,48 @@ class LogisticaImport implements ToCollection, WithHeadingRow
 
 
                     /*
-                     * No guardamos cantidades 0.
+                     * Reimportación segura:
+                     * si antes existía una cantidad para esta sucursal y el
+                     * Excel corregido ahora trae 0, no dejamos el valor viejo.
                      */
-
                     if ($cantidad <= 0) {
+                        $detalleCero = OtLogisticaDetalle::where(
+                            'id_ot',
+                            $ot->id_ot
+                        )
+                            ->where(
+                                'id_trazabilidad',
+                                $trazabilidad->id_trazabilidad
+                            )
+                            ->where(
+                                'sucursal',
+                                $sucursal
+                            )
+                            ->first();
+
+                        if ($detalleCero) {
+                            /*
+                             * Conservamos el ID si existen remisiones ligadas
+                             * a este detalle; en ese caso lo dejamos en 0.
+                             */
+                            $tieneRemisiones = DB::table('ot_logistica_remisiones')
+                                ->where('id_logistica_detalle', $detalleCero->id)
+                                ->exists();
+
+                            if ($tieneRemisiones) {
+                                $detalleCero->cantidad = 0;
+                                $detalleCero->save();
+                            } else {
+                                $detalleCero->delete();
+                            }
+
+                            Log::info('DETALLE LOGISTICA LIMPIADO', [
+                                'fila' => $index + 2,
+                                'ot' => $ot->nro_ot,
+                                'sucursal' => $sucursal,
+                                'con_remisiones' => $tieneRemisiones,
+                            ]);
+                        }
 
                         continue;
                     }
@@ -490,6 +575,17 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                     )->get();
 
 
+                if ($totalDistribuido !== $resultado) {
+                    Log::warning('LOGISTICA - RESULTADO NO COINCIDE CON DETALLES', [
+                        'fila' => $index + 2,
+                        'ot' => $ot->nro_ot,
+                        'codigo' => $codigo,
+                        'resultado_excel' => $resultado,
+                        'total_detalles' => $totalDistribuido,
+                        'diferencia' => $resultado - $totalDistribuido,
+                    ]);
+                }
+
                 Log::info(
                     'VERIFICACION IMPORTACION LOGISTICA',
                     [
@@ -612,5 +708,37 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 );
             }
         }
+    private function normalizarNroOt($valor)
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+
+        $texto = preg_replace('/[^0-9]/', '', trim((string) $valor));
+
+        return $texto !== '' ? (int) $texto : null;
+    }
+
+    private function normalizarCodigoBase($valor)
+    {
+        if ($valor === null || $valor === '') {
+            return '';
+        }
+
+        $codigo = strtoupper(trim((string) $valor));
+        $codigo = ltrim($codigo, "'’`");
+        $codigo = preg_replace('/\s+/u', '', $codigo);
+
+        if (preg_match('/^(\d{1,9})$/', $codigo)) {
+            return str_pad($codigo, 9, '0', STR_PAD_LEFT);
+        }
+
+        if (preg_match('/^(\d{9})/', $codigo, $match)) {
+            return $match[1];
+        }
+
+        return $codigo;
+    }
+
     }
 }
