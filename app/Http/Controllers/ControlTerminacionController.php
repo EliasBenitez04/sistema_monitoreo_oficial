@@ -77,6 +77,7 @@ class ControlTerminacionController extends Controller
 
         $detallesPorTrazabilidad = $detallesGeneral->groupBy('id_trazabilidad');
         $remisionesPorDetalle = collect();
+        $remisionesSinDetallePorOt = collect();
 
         if ($tablaRemisionesDisponible && $detallesGeneral->isNotEmpty()) {
             $idsDetalle = $detallesGeneral
@@ -92,6 +93,17 @@ class ControlTerminacionController extends Controller
                 ->orderBy('numero_remision')
                 ->get()
                 ->groupBy('id_logistica_detalle');
+        }
+
+        if ($tablaRemisionesDisponible && $idsOt->isNotEmpty()) {
+            $remisionesSinDetallePorOt = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $idsOt->all())
+                ->whereNull('id_logistica_detalle')
+                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
+                ->orderBy('serie')
+                ->orderBy('numero_remision')
+                ->get()
+                ->groupBy('id_ot');
         }
 
         foreach ($produccionTerminada as $item) {
@@ -151,11 +163,28 @@ class ControlTerminacionController extends Controller
             }
 
             $item->detalle_logistica = $detalle;
+            $item->remisiones_sin_detalle = collect(
+                $remisionesSinDetallePorOt->get($item->id_ot, collect())
+            );
 
             $item->cantidad_logistica = (int) $detalle->sum('cantidad');
             $item->cantidad_enviada = $item->cantidad_logistica;
-            $item->cantidad_remitida = (int) $detalle->sum('cantidad_remitida');
-            $item->cantidad_recibida = (int) $detalle->sum('cantidad_recibida');
+
+            $item->cantidad_remitida_detalle = (int) $detalle->sum('cantidad_remitida');
+            $item->cantidad_recibida_detalle = (int) $detalle->sum('cantidad_recibida');
+
+            $item->cantidad_remitida_sin_detalle = (int) $item->remisiones_sin_detalle->sum('cantidad');
+            $item->cantidad_recibida_sin_detalle = (int) $item->remisiones_sin_detalle
+                ->filter(function ($remision) {
+                    return !empty($remision->fecha_recepcion);
+                })
+                ->sum('cantidad');
+
+            $item->cantidad_remitida =
+                $item->cantidad_remitida_detalle + $item->cantidad_remitida_sin_detalle;
+
+            $item->cantidad_recibida =
+                $item->cantidad_recibida_detalle + $item->cantidad_recibida_sin_detalle;
             $item->cantidad_en_transito = max(
                 0,
                 $item->cantidad_remitida - $item->cantidad_recibida
@@ -166,9 +195,12 @@ class ControlTerminacionController extends Controller
             );
             $item->diferencia = (int) $item->cantidad_terminada - $item->cantidad_logistica;
 
-            if ($detalle->isEmpty()) {
+            if ($detalle->isEmpty() && $item->remisiones_sin_detalle->isEmpty()) {
                 $item->confirmacion_local = 'SIN ENVIOS';
-            } elseif ($item->cantidad_logistica > 0 && $item->cantidad_recibida >= $item->cantidad_logistica) {
+            } elseif (
+                $item->cantidad_remitida > 0
+                && $item->cantidad_recibida >= $item->cantidad_remitida
+            ) {
                 $item->confirmacion_local = 'RECIBIDO';
             } elseif ($item->cantidad_recibida > 0) {
                 $item->confirmacion_local = 'PARCIAL';
