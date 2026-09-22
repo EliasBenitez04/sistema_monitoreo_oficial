@@ -15,136 +15,219 @@ class OtImport implements ToCollection, WithHeadingRow
     public function collection(Collection $rows)
     {
         foreach ($rows as $index => $row) {
-
             try {
+                $fila = $index + 2;
 
-                // =========================
-                // 🔥 LOG DE FILA COMPLETA
-                // =========================
-                Log::info('IMPORT OT - FILA', [
-                    'fila' => $index,
-                    'row' => $row->toArray(),
-                ]);
-
-                // =========================
-                // 🔥 EXTRACCIÓN SEGURA
-                // =========================
-                $nroOt = $this->get($row, ['n_ot', 'n_ot ', 'n° ot', 'nro_ot']);
-                $codigo = $this->get($row, ['codigo']);
+                $nroOtRaw = $this->get($row, ['n_ot', 'n_ot ', 'n° ot', 'nro_ot']);
+                $codigoRaw = $this->get($row, ['codigo']);
                 $descripcion = $this->get($row, ['descripcion', 'descripción']);
                 $orden = $this->get($row, ['orden']);
                 $resultado = $this->get($row, ['resultado']);
-                $fecha = $this->get($row, ['fecha']);
+                $fechaRaw = $this->get($row, ['fecha']);
                 $proceso = $this->get($row, ['procesos', 'proceso']);
 
-                // =========================
-                // 🔥 LOG EXTRACCIÓN
-                // =========================
-                Log::info('IMPORT OT - CAMPOS', [
-                    'nroOt' => $nroOt,
-                    'codigo' => $codigo,
-                    'descripcion' => $descripcion,
-                    'orden' => $orden,
-                    'resultado' => $resultado,
-                    'fecha' => $fecha,
-                    'proceso' => $proceso,
-                ]);
+                $nroOt = $this->normalizarNroOt($nroOtRaw);
+                $codigo = $this->normalizarCodigoBase($codigoRaw);
+                $proceso = trim((string) $proceso);
+                $descripcion = trim((string) $descripcion);
+                $orden = is_numeric($orden) ? (int) round((float) $orden) : 0;
+                $resultado = is_numeric($resultado) ? (int) round((float) $resultado) : 0;
+                $fecha = $this->parseDate($fechaRaw);
 
-                // =========================
-                // 🔥 VALIDACIÓN
-                // =========================
-                if (empty($nroOt) || empty($proceso)) {
-
-                    Log::warning('FILA OMITIDA (VALIDACIÓN)', [
-                        'fila' => $index,
-                        'nroOt' => $nroOt,
+                if (!$nroOt || $proceso === '') {
+                    Log::warning('IMPORT OT - FILA OMITIDA', [
+                        'fila' => $fila,
+                        'nro_ot' => $nroOtRaw,
+                        'codigo' => $codigoRaw,
                         'proceso' => $proceso,
+                        'motivo' => 'NRO OT O PROCESO VACIO',
                     ]);
-
                     continue;
                 }
 
-                $nroOt = (int) $nroOt;
-                $orden = is_numeric($orden) ? (int)$orden : 0;
-                $resultado = is_numeric($resultado) ? (int)$resultado : 0;
+                if (!$fecha) {
+                    Log::warning('IMPORT OT - FECHA INVALIDA', [
+                        'fila' => $fila,
+                        'nro_ot' => $nroOt,
+                        'codigo' => $codigo,
+                        'fecha_original' => $fechaRaw,
+                    ]);
+                    continue;
+                }
 
-                // =========================
-                // 🔥 OT
-                // =========================
-                $ot = Ot::firstOrCreate(
-                    ['nro_ot' => $nroOt],
-                    [
-                        'codigo' => $codigo ?? 'SIN_CODIGO',
-                        'descripcion' => $descripcion ?? 'SIN_DESCRIPCION',
-                        'cantidad_orden' => $orden,
-                    ]
-                );
+                /*
+                 * La OT se identifica por nro_ot, pero a diferencia del antiguo
+                 * firstOrCreate actualizamos sus datos maestros cuando la OT ya
+                 * existe. Así una OT creada antes con código vacío/mal formado
+                 * no queda permanentemente desactualizada.
+                 */
+                $ot = Ot::where('nro_ot', $nroOt)->first();
 
-                // =========================
-                // 🔥 FECHA
-                // =========================
-                $fecha = $this->parseDate($fecha);
+                if (!$ot) {
+                    $ot = new Ot();
+                    $ot->nro_ot = $nroOt;
+                }
 
-                // =========================
-                // 🔥 INSERT TRAZABILIDAD
-                // =========================
-                OtTrazabilidad::create([
+                $codigoAnterior = $ot->codigo;
+
+                if ($codigo !== '') {
+                    $ot->codigo = $codigo;
+                }
+
+                if ($descripcion !== '') {
+                    $ot->descripcion = $descripcion;
+                }
+
+                if ($orden > 0) {
+                    $ot->cantidad_orden = $orden;
+                } elseif (!$ot->exists && empty($ot->cantidad_orden)) {
+                    $ot->cantidad_orden = 0;
+                }
+
+                if (!$ot->codigo) {
+                    $ot->codigo = 'SIN_CODIGO';
+                }
+
+                if (!$ot->descripcion) {
+                    $ot->descripcion = 'SIN_DESCRIPCION';
+                }
+
+                $ot->save();
+
+                if (
+                    $codigoAnterior
+                    && $codigoAnterior !== $ot->codigo
+                    && $codigoAnterior !== 'SIN_CODIGO'
+                ) {
+                    Log::warning('IMPORT OT - CODIGO ACTUALIZADO', [
+                        'fila' => $fila,
+                        'nro_ot' => $nroOt,
+                        'codigo_anterior' => $codigoAnterior,
+                        'codigo_nuevo' => $ot->codigo,
+                    ]);
+                }
+
+                /*
+                 * Reimportar el mismo archivo ya no duplica la trazabilidad.
+                 * La clave replica la restricción lógica de la tabla:
+                 * OT + proceso + fecha + resultado.
+                 */
+                $trazabilidad = OtTrazabilidad::firstOrCreate([
                     'id_ot' => $ot->id_ot,
                     'proceso' => $proceso,
                     'resultado' => $resultado,
                     'fecha_proceso' => $fecha,
                 ]);
-            } catch (\Exception $e) {
 
-                // =========================
-                // 🚨 ERROR POR FILA
-                // =========================
+                Log::info('IMPORT OT - OK', [
+                    'fila' => $fila,
+                    'id_ot' => $ot->id_ot,
+                    'nro_ot' => $ot->nro_ot,
+                    'codigo' => $ot->codigo,
+                    'proceso' => $proceso,
+                    'resultado' => $resultado,
+                    'fecha' => $fecha,
+                    'trazabilidad_nueva' => $trazabilidad->wasRecentlyCreated,
+                ]);
+            } catch (\Throwable $e) {
                 Log::error('ERROR IMPORT OT', [
-                    'fila' => $index,
+                    'fila' => $index + 2,
                     'error' => $e->getMessage(),
+                    'archivo' => $e->getFile(),
+                    'linea' => $e->getLine(),
                     'row' => $row->toArray(),
                 ]);
             }
         }
     }
 
-    // =========================
-    // 🔥 BUSCADOR FLEXIBLE
-    // =========================
     private function get($row, array $keys)
     {
         foreach ($keys as $key) {
-            if (isset($row[$key]) && trim($row[$key]) !== '') {
+            if (isset($row[$key]) && trim((string) $row[$key]) !== '') {
                 return $row[$key];
             }
         }
+
         return null;
     }
 
-    // =========================
-    // 🔥 FECHA
-    // =========================
-    private function parseDate($value)
+    private function normalizarNroOt($valor)
     {
-        if (empty($value)) return null;
-
-        if (is_numeric($value)) {
-            return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value)
-                ->format('Y-m-d');
+        if ($valor === null || $valor === '') {
+            return null;
         }
 
-        $value = trim($value);
+        $texto = trim((string) $valor);
+        $texto = preg_replace('/[^0-9]/', '', $texto);
 
-        try {
-            return Carbon::createFromFormat('d/m/Y', $value)->format('Y-m-d');
-        } catch (\Exception $e) {
+        return $texto !== '' ? (int) $texto : null;
+    }
+
+    /**
+     * Los códigos maestros de OT son de 9 dígitos.
+     *
+     * Excel puede convertir 050617600 en 50617600 si la celda es numérica.
+     * En ese caso restauramos el cero inicial con str_pad.
+     */
+    private function normalizarCodigoBase($valor)
+    {
+        if ($valor === null || $valor === '') {
+            return '';
+        }
+
+        $codigo = strtoupper(trim((string) $valor));
+        $codigo = ltrim($codigo, "'’`");
+        $codigo = preg_replace('/\s+/u', '', $codigo);
+
+        if (preg_match('/^(\d{1,9})$/', $codigo)) {
+            return str_pad($codigo, 9, '0', STR_PAD_LEFT);
+        }
+
+        if (preg_match('/^(\d{9})/', $codigo, $match)) {
+            return $match[1];
+        }
+
+        return $codigo;
+    }
+
+    private function parseDate($value)
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::instance($value)->format('Y-m-d');
+        }
+
+        if (is_numeric($value)) {
+            try {
+                return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value)
+                    ->format('Y-m-d');
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
+
+        $value = trim((string) $value);
+
+        foreach (['d/m/Y', 'Y-m-d', 'd-m-Y', 'm/d/Y'] as $formato) {
+            try {
+                $fecha = Carbon::createFromFormat($formato, $value);
+
+                if ($fecha !== false) {
+                    return $fecha->format('Y-m-d');
+                }
+            } catch (\Throwable $e) {
+                // Probar siguiente formato.
+            }
         }
 
         try {
             return Carbon::parse($value)->format('Y-m-d');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            return null;
         }
-
-        return null;
     }
 }
