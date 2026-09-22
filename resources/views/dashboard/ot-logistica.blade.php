@@ -76,6 +76,10 @@
         </div>
 
         <div class="mt-2 mt-md-0">
+            <a href="{{ route('reporte.logistica-semanal', ['fecha_desde' => $fechaDesde, 'fecha_hasta' => $fechaHasta]) }}"
+                class="btn btn-outline-primary btn-sm mr-1">
+                <i class="fas fa-calendar-week mr-1"></i>Reporte Semanal
+            </a>
             <a href="{{ route('dashboard.logistica.exportar', request()->query()) }}"
                 class="btn btn-success btn-sm mr-1">
                 <i class="fas fa-file-excel mr-1"></i>Exportar
