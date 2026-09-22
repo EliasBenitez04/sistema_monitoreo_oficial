@@ -17,18 +17,18 @@ class OtLogisticaExport implements
     protected $fecha_desde;
     protected $fecha_hasta;
     protected $sucursal;
-    protected $nro_ot;
+    protected $busqueda;
 
     public function __construct(
         $fecha_desde = null,
         $fecha_hasta = null,
         $sucursal = null,
-        $nro_ot = null
+        $busqueda = null
     ) {
         $this->fecha_desde = $fecha_desde;
         $this->fecha_hasta = $fecha_hasta;
         $this->sucursal = $sucursal;
-        $this->nro_ot = $nro_ot;
+        $this->busqueda = $busqueda;
     }
 
 
@@ -132,16 +132,22 @@ class OtLogisticaExport implements
 
         /*
         |--------------------------------------------------------------------------
-        | N° OT
+        | N° OT / CÓDIGO / DESCRIPCIÓN
         |--------------------------------------------------------------------------
         */
 
-        if (!empty($this->nro_ot)) {
+        if (!empty($this->busqueda)) {
+            $busqueda = trim((string) $this->busqueda);
 
-            $query->where(
-                'o.nro_ot',
-                $this->nro_ot
-            );
+            $query->where(function ($q) use ($busqueda) {
+                if (ctype_digit($busqueda)) {
+                    $q->where('o.nro_ot', (int) $busqueda)
+                        ->orWhere('o.codigo', 'ILIKE', $busqueda . '%');
+                } else {
+                    $q->where('o.codigo', 'ILIKE', '%' . $busqueda . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $busqueda . '%');
+                }
+            });
         }
 
 
