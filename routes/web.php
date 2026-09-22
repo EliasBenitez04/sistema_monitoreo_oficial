@@ -802,6 +802,11 @@ Route::get(
     [ControlTerminacionController::class, 'index']
 )->name('control.terminacion');
 
+Route::get(
+    '/control/terminacion/{idOt}/detalle',
+    [ControlTerminacionController::class, 'detalle']
+)->name('control.terminacion.detalle');
+
 Route::post(
     '/control/terminacion/importar-remisiones',
     [ControlTerminacionController::class, 'importarRemisiones']
