@@ -10,6 +10,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Exports\OtLogisticaExport;
 use App\Models\OtTrazabilidad;
 
@@ -2567,689 +2568,352 @@ class OtController extends Controller
 
     public function dashboardlogistica(Request $request)
     {
+        $fechaDesde = $request->input('fecha_desde', now()->toDateString());
+        $fechaHasta = $request->input('fecha_hasta', now()->toDateString());
+        $busqueda = trim((string) $request->input('busqueda', ''));
+        $sucursalesSeleccionadas = array_values(array_filter(
+            (array) $request->input('sucursal', [])
+        ));
+
+        $procesoLogistica = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
+        $tablaRemisionesDisponible = Schema::hasTable('ot_logistica_remisiones');
+
         /*
-    |--------------------------------------------------------------------------
-    | QUERY BASE
-    |--------------------------------------------------------------------------
-    |
-    | Relación:
-    |
-    | ot_logistica_detalle
-    |        ↓
-    | ot_trazabilidad
-    |        ↓
-    | ot
-    |
-    | La fecha oficial para este dashboard es:
-    |
-    |     t.fecha_proceso
-    |
-    */
+         * Una fila de remisiones por detalle logístico.
+         * Esto evita duplicar d.cantidad cuando un detalle tiene muchas líneas
+         * de ENVIOS asociadas.
+         */
+        $remisionPorDetalle = null;
+
+        if ($tablaRemisionesDisponible) {
+            $remisionPorDetalle = DB::table('ot_logistica_remisiones')
+                ->whereNotNull('id_logistica_detalle')
+                ->groupBy('id_logistica_detalle')
+                ->select(
+                    'id_logistica_detalle',
+                    DB::raw('SUM(cantidad) as cantidad_remitida'),
+                    DB::raw("SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as cantidad_recibida"),
+                    DB::raw("SUM(CASE WHEN fecha_recepcion IS NULL THEN cantidad ELSE 0 END) as cantidad_en_transito")
+                );
+        }
 
         $baseQuery = DB::table('ot_logistica_detalle as d')
+            ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
+            ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+            ->where('t.proceso', $procesoLogistica)
+            ->whereBetween('t.fecha_proceso', [$fechaDesde, $fechaHasta]);
 
-            ->leftJoin(
-                'ot_trazabilidad as t',
-                't.id_trazabilidad',
-                '=',
-                'd.id_trazabilidad'
-            )
-
-            ->leftJoin(
-                'ot as o',
-                'o.id_ot',
-                '=',
-                'd.id_ot'
-            );
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | FILTRO FECHA DESDE
-    |--------------------------------------------------------------------------
-    */
-
-        if ($request->filled('fecha_desde')) {
-
-            $baseQuery->whereDate(
-                't.fecha_proceso',
-                '>=',
-                $request->fecha_desde
-            );
-        }
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | FILTRO FECHA HASTA
-    |--------------------------------------------------------------------------
-    */
-
-        if ($request->filled('fecha_hasta')) {
-
-            $baseQuery->whereDate(
-                't.fecha_proceso',
-                '<=',
-                $request->fecha_hasta
-            );
-        }
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | FILTRO SUCURSAL
-    |--------------------------------------------------------------------------
-    */
-
-        if ($request->filled('sucursal')) {
-
-            $sucursalesSeleccionadas = $request->input(
-                'sucursal',
-                []
-            );
-
-            $baseQuery->whereIn(
-                'd.sucursal',
-                $sucursalesSeleccionadas
-            );
-        }
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | FILTRO N° OT / CÓDIGO
-    |--------------------------------------------------------------------------
-    */
-
-        if ($request->filled('busqueda')) {
-
-            $busqueda = trim(
-                $request->busqueda
-            );
-
-
-            if (!ctype_digit($busqueda)) {
-
-                alert()->warning(
-                    'Dato inválido',
-                    'Ingrese solo números en el campo N° OT o Código.'
-                );
-
-                return redirect()
-                    ->back()
-                    ->withInput();
-            }
-
-
-            if (strlen($busqueda) > 10) {
-
-                alert()->warning(
-                    'N° OT / Código inválido',
-                    'El número ingresado es demasiado grande.'
-                );
-
-                return redirect()
-                    ->back()
-                    ->withInput();
-            }
-
-
-            $baseQuery->where(function ($query) use ($busqueda) {
-
-                $query->where(
-                    'o.nro_ot',
-                    (int) $busqueda
-                )
-
-                    ->orWhere(
-                        'o.codigo',
-                        'ILIKE',
-                        $busqueda . '%'
-                    );
+        if ($tablaRemisionesDisponible) {
+            $baseQuery->leftJoinSub($remisionPorDetalle, 'r', function ($join) {
+                $join->on('r.id_logistica_detalle', '=', 'd.id');
             });
         }
 
+        if (!empty($sucursalesSeleccionadas)) {
+            $baseQuery->whereIn('d.sucursal', $sucursalesSeleccionadas);
+        }
+
+        if ($busqueda !== '') {
+            $baseQuery->where(function ($query) use ($busqueda) {
+                if (ctype_digit($busqueda)) {
+                    $query->where('o.nro_ot', (int) $busqueda)
+                        ->orWhere('o.codigo', 'ILIKE', $busqueda . '%');
+                } else {
+                    $query->where('o.codigo', 'ILIKE', '%' . $busqueda . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $busqueda . '%');
+                }
+            });
+        }
 
         /*
-    |--------------------------------------------------------------------------
-    | DETALLE
-    |--------------------------------------------------------------------------
-    */
+         * Producto Terminado acumulado por OT. Se muestra como referencia del
+         * volumen disponible para Logística, no como filtro del período.
+         */
+        $productoTerminado = DB::table('ot_trazabilidad')
+            ->where('proceso', 'TERMINACION - PRODUCTO TERMINADO')
+            ->groupBy('id_ot')
+            ->select(
+                'id_ot',
+                DB::raw('SUM(resultado) as cantidad_pt'),
+                DB::raw('MAX(fecha_proceso) as ultima_fecha_pt')
+            );
 
-        $detalles = (clone $baseQuery)
+        /*
+         * Resumen principal: una fila por OT.
+         */
+        $queryOt = clone $baseQuery;
 
-            ->select([
+        $queryOt->leftJoinSub($productoTerminado, 'pt', function ($join) {
+            $join->on('pt.id_ot', '=', 'o.id_ot');
+        });
 
-                'd.id',
-                'd.id_ot',
-                'd.id_trazabilidad',
-                'd.sucursal',
-                'd.cantidad',
-                'd.created_at',
+        $selectOt = [
+            'o.id_ot',
+            'o.nro_ot',
+            'o.codigo',
+            'o.descripcion',
+            'o.cantidad_orden',
+            DB::raw('MIN(t.fecha_proceso) as primera_salida'),
+            DB::raw('MAX(t.fecha_proceso) as ultima_salida'),
+            DB::raw('COUNT(DISTINCT t.id_trazabilidad) as movimientos_logisticos'),
+            DB::raw('COUNT(DISTINCT d.sucursal) as destinos'),
+            DB::raw('SUM(d.cantidad) as cantidad_logistica'),
+            DB::raw('COALESCE(MAX(pt.cantidad_pt), 0) as cantidad_pt'),
+            DB::raw('MAX(pt.ultima_fecha_pt) as ultima_fecha_pt'),
+        ];
 
-                't.proceso',
-                't.resultado',
-                't.fecha_proceso',
+        if ($tablaRemisionesDisponible) {
+            $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as cantidad_remitida');
+            $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_recibida), 0) as cantidad_recibida');
+            $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_en_transito), 0) as cantidad_en_transito');
+        } else {
+            $selectOt[] = DB::raw('0 as cantidad_remitida');
+            $selectOt[] = DB::raw('0 as cantidad_recibida');
+            $selectOt[] = DB::raw('0 as cantidad_en_transito');
+        }
 
+        $detalles = $queryOt
+            ->groupBy(
+                'o.id_ot',
                 'o.nro_ot',
                 'o.codigo',
                 'o.descripcion',
-                'o.cantidad_orden',
-                'o.estado',
-                'o.obs',
-            ])
-
-            /*
-        |--------------------------------------------------------------------------
-        | FECHA
-        |--------------------------------------------------------------------------
-        */
-
-            ->orderByRaw(
-                't.fecha_proceso IS NULL ASC'
+                'o.cantidad_orden'
             )
-
-            ->orderByDesc(
-                't.fecha_proceso'
-            )
-
-            /*
-        |--------------------------------------------------------------------------
-        | N° OT
-        |--------------------------------------------------------------------------
-        */
-
-            ->orderBy(
-                'o.nro_ot',
-                'asc'
-            )
-
-            /*
-        |--------------------------------------------------------------------------
-        | CÓDIGO
-        |--------------------------------------------------------------------------
-        */
-
-            ->orderBy(
-                'o.codigo',
-                'asc'
-            )
-
-            /*
-        |--------------------------------------------------------------------------
-        | SUCURSAL
-        |--------------------------------------------------------------------------
-        */
-
-            ->orderBy(
-                'd.sucursal',
-                'asc'
-            )
-
-            /*
-        |--------------------------------------------------------------------------
-        | TRAZABILIDAD
-        |--------------------------------------------------------------------------
-        */
-
-            ->orderByDesc(
-                'd.id_trazabilidad'
-            )
-
-            /*
-        |--------------------------------------------------------------------------
-        | ID DETALLE
-        |--------------------------------------------------------------------------
-        */
-
-            ->orderByDesc(
-                'd.id'
-            )
-
-            ->paginate(30)
-
+            ->select($selectOt)
+            ->orderByDesc('ultima_salida')
+            ->orderByDesc('o.nro_ot')
+            ->paginate(35)
             ->withQueryString();
 
+        foreach ($detalles as $item) {
+            $item->cantidad_pt = (int) $item->cantidad_pt;
+            $item->cantidad_logistica = (int) $item->cantidad_logistica;
+            $item->cantidad_remitida = (int) $item->cantidad_remitida;
+            $item->cantidad_recibida = (int) $item->cantidad_recibida;
+            $item->cantidad_en_transito = (int) $item->cantidad_en_transito;
 
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL REGISTROS
-    |--------------------------------------------------------------------------
-    */
-
-        $totalRegistros = (clone $baseQuery)
-            ->count('d.id');
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL OT
-    |--------------------------------------------------------------------------
-    |
-    | Una OT puede tener varias trazabilidades/detalles.
-    |
-    */
-
-        $totalOT = (clone $baseQuery)
-            ->distinct()
-            ->count('d.id_ot');
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL CANTIDAD ENVIADA
-    |--------------------------------------------------------------------------
-    |
-    | La cantidad enviada corresponde a:
-    |
-    | ot_logistica_detalle.cantidad
-    |
-    */
-
-        $totalCantidadEnviada = (clone $baseQuery)
-            ->sum('d.cantidad');
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL CANTIDAD
-    |--------------------------------------------------------------------------
-    |
-    | Mantenemos esta variable porque ya la utilizás
-    | posiblemente en otras partes del dashboard.
-    |
-    | Actualmente representa la cantidad de logística.
-    |
-    */
-
-        $totalCantidad = $totalCantidadEnviada;
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL CANTIDAD ORDENADA
-    |--------------------------------------------------------------------------
-    |
-    | Tomamos solamente una vez cada OT.
-    |
-    | Esto evita que una OT con varias trazabilidades
-    | sea sumada varias veces.
-    |
-    */
-
-        $totalCantidadOrdenada = DB::query()
-
-            ->fromSub(
-
-                (clone $baseQuery)
-
-                    ->select([
-                        'o.id_ot',
-                        'o.cantidad_orden',
-                    ])
-
-                    ->distinct(),
-
-                'ots'
-            )
-
-            ->sum(
-                'cantidad_orden'
+            $item->pendiente_remitir = max(
+                0,
+                $item->cantidad_logistica - $item->cantidad_remitida
             );
 
-
-        /*
-    |--------------------------------------------------------------------------
-    | OTs FILTRADAS
-    |--------------------------------------------------------------------------
-    |
-    | Obtenemos las OTs que realmente aparecen después
-    | de aplicar los filtros del dashboard.
-    |
-    */
-
-        $otFiltradas = (clone $baseQuery)
-
-            ->select(
-                'o.id_ot'
-            )
-
-            ->whereNotNull(
-                'o.id_ot'
-            )
-
-            ->distinct()
-
-            ->pluck(
-                'id_ot'
+            $item->exceso_remitido = max(
+                0,
+                $item->cantidad_remitida - $item->cantidad_logistica
             );
 
+            $item->diferencia_pt_logistica =
+                $item->cantidad_pt - $item->cantidad_logistica;
 
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL CANTIDAD CORTADA
-    |--------------------------------------------------------------------------
-    |
-    | La cantidad cortada está en:
-    |
-    | ot_trazabilidad.resultado
-    |
-    | solamente para:
-    |
-    | PRODUCCION - CORTE
-    |
-    */
+            if ($item->cantidad_remitida <= 0) {
+                $item->estado_documental = 'SIN REMISION';
+            } elseif ($item->cantidad_remitida < $item->cantidad_logistica) {
+                $item->estado_documental = 'PENDIENTE';
+            } elseif ($item->cantidad_remitida > $item->cantidad_logistica) {
+                $item->estado_documental = 'EXCEDENTE';
+            } else {
+                $item->estado_documental = 'COMPLETO';
+            }
 
-        $totalCantidadCortada = 0;
-
-
-        if ($otFiltradas->isNotEmpty()) {
-
-            $totalCantidadCortada = DB::table(
-                'ot_trazabilidad as tc'
-            )
-
-                ->whereIn(
-                    'tc.id_ot',
-                    $otFiltradas
-                )
-
-                ->where(
-                    'tc.proceso',
-                    'PRODUCCION - CORTE'
-                )
-
-                ->sum(
-                    'tc.resultado'
-                );
+            if ($item->cantidad_remitida <= 0) {
+                $item->estado_recepcion = 'SIN REMISION';
+            } elseif ($item->cantidad_en_transito > 0 && $item->cantidad_recibida > 0) {
+                $item->estado_recepcion = 'PARCIAL';
+            } elseif ($item->cantidad_en_transito > 0) {
+                $item->estado_recepcion = 'EN TRANSITO';
+            } else {
+                $item->estado_recepcion = 'RECIBIDO';
+            }
         }
 
-
         /*
-    |--------------------------------------------------------------------------
-    | DIFERENCIA ORDENADA - CORTADA
-    |--------------------------------------------------------------------------
-    |
-    | Ejemplo:
-    |
-    | Ordenada = 1000
-    | Cortada  = 949
-    |
-    | Diferencia = 51
-    |
-    */
-
-        $diferenciaOrdenadaCortada =
-            $totalCantidadOrdenada
-            -
-            $totalCantidadCortada;
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | DIFERENCIA CORTADA - ENVIADA
-    |--------------------------------------------------------------------------
-    |
-    | Ejemplo:
-    |
-    | Cortada = 949
-    | Enviada = 949
-    |
-    | Diferencia = 0
-    |
-    */
-
-        $diferenciaCortadaEnviada =
-            $totalCantidadCortada
-            -
-            $totalCantidadEnviada;
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | TOTAL SUCURSALES
-    |--------------------------------------------------------------------------
-    */
-
-        $totalSucursales = (clone $baseQuery)
-
-            ->whereNotNull(
-                'd.sucursal'
+         * Totales del período y filtros completos.
+         */
+        $totales = (clone $baseQuery)
+            ->selectRaw(
+                $tablaRemisionesDisponible
+                    ? "COUNT(DISTINCT d.id_ot) as total_ot,
+                       COUNT(DISTINCT d.sucursal) as total_sucursales,
+                       COUNT(d.id) as total_detalles,
+                       COALESCE(SUM(d.cantidad), 0) as total_logistica,
+                       COALESCE(SUM(r.cantidad_remitida), 0) as total_remitido,
+                       COALESCE(SUM(r.cantidad_recibida), 0) as total_recibido,
+                       COALESCE(SUM(r.cantidad_en_transito), 0) as total_en_transito"
+                    : "COUNT(DISTINCT d.id_ot) as total_ot,
+                       COUNT(DISTINCT d.sucursal) as total_sucursales,
+                       COUNT(d.id) as total_detalles,
+                       COALESCE(SUM(d.cantidad), 0) as total_logistica,
+                       0 as total_remitido,
+                       0 as total_recibido,
+                       0 as total_en_transito"
             )
+            ->first();
 
-            ->where(
-                'd.sucursal',
-                '<>',
-                ''
-            )
+        $totalOT = (int) ($totales->total_ot ?? 0);
+        $totalSucursales = (int) ($totales->total_sucursales ?? 0);
+        $totalRegistros = (int) ($totales->total_detalles ?? 0);
+        $totalCantidadEnviada = (int) ($totales->total_logistica ?? 0);
+        $totalRemitido = (int) ($totales->total_remitido ?? 0);
+        $totalRecibido = (int) ($totales->total_recibido ?? 0);
+        $totalEnTransito = (int) ($totales->total_en_transito ?? 0);
 
-            ->distinct()
-
-            ->count(
-                'd.sucursal'
+        /*
+         * Pendiente y exceso se calculan por OT para que una OT excedida no
+         * esconda el faltante documental de otra.
+         */
+        $resumenOt = (clone $baseQuery)
+            ->groupBy('d.id_ot')
+            ->select(
+                'd.id_ot',
+                DB::raw('SUM(d.cantidad) as plan')
             );
 
-
-        /*
-    |--------------------------------------------------------------------------
-    | INFORMACIÓN DE HOY
-    |--------------------------------------------------------------------------
-    */
-
-        $hoyQuery = clone $baseQuery;
-
-        $hoyQuery->whereDate(
-            't.fecha_proceso',
-            now()->toDateString()
-        );
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | CANTIDAD DE HOY
-    |--------------------------------------------------------------------------
-    */
-
-        $cantidadHoy = (clone $hoyQuery)
-            ->sum('d.cantidad');
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | OTs DE HOY
-    |--------------------------------------------------------------------------
-    */
-
-        $otHoy = (clone $hoyQuery)
-
-            ->distinct()
-
-            ->count(
-                'd.id_ot'
+        if ($tablaRemisionesDisponible) {
+            $resumenOt->addSelect(
+                DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as remitido')
             );
+        } else {
+            $resumenOt->addSelect(DB::raw('0 as remitido'));
+        }
 
+        $resumenOt = $resumenOt->get();
 
-        /*
-    |--------------------------------------------------------------------------
-    | REGISTROS DE HOY
-    |--------------------------------------------------------------------------
-    */
+        $totalPendienteRemitir = 0;
+        $totalExcesoRemitido = 0;
+        $otsSinRemision = 0;
+        $otsPendientes = 0;
+        $otsCompletas = 0;
+        $otsExcedidas = 0;
 
-        $registrosHoy = (clone $hoyQuery)
-            ->count('d.id');
+        foreach ($resumenOt as $resumen) {
+            $plan = (int) $resumen->plan;
+            $remitido = (int) $resumen->remitido;
 
+            $totalPendienteRemitir += max(0, $plan - $remitido);
+            $totalExcesoRemitido += max(0, $remitido - $plan);
 
-        /*
-    |--------------------------------------------------------------------------
-    | RESUMEN POR FECHA
-    |--------------------------------------------------------------------------
-    */
+            if ($remitido <= 0) {
+                $otsSinRemision++;
+            } elseif ($remitido < $plan) {
+                $otsPendientes++;
+            } elseif ($remitido > $plan) {
+                $otsExcedidas++;
+            } else {
+                $otsCompletas++;
+            }
+        }
 
-        $porFecha = (clone $baseQuery)
-
-            ->select([
-
-                DB::raw(
-                    'DATE(t.fecha_proceso) as fecha_proceso'
-                ),
-
-                DB::raw(
-                    'COUNT(DISTINCT d.id_ot) as total_ot'
-                ),
-
-                DB::raw(
-                    'COUNT(d.id) as total_registros'
-                ),
-
-                DB::raw(
-                    'COALESCE(SUM(d.cantidad), 0) as total_cantidad'
-                ),
-            ])
-
-            ->whereNotNull(
-                't.fecha_proceso'
-            )
-
-            ->groupBy(
-                DB::raw(
-                    'DATE(t.fecha_proceso)'
-                )
-            )
-
-            ->orderByDesc(
-                DB::raw(
-                    'DATE(t.fecha_proceso)'
-                )
-            )
-
-            ->get();
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | RESUMEN POR SUCURSAL
-    |--------------------------------------------------------------------------
-    */
-
-        $porSucursal = (clone $baseQuery)
-
-            ->select([
-
-                'd.sucursal',
-
-                DB::raw(
-                    'COUNT(DISTINCT o.nro_ot) as total_ot'
-                ),
-
-                DB::raw(
-                    'COUNT(d.id) as total_registros'
-                ),
-
-                DB::raw(
-                    'COALESCE(SUM(d.cantidad), 0) as total_cantidad'
-                ),
-            ])
-
-            ->whereNotNull(
-                'd.sucursal'
-            )
-
-            ->where(
-                'd.sucursal',
-                '<>',
-                ''
-            )
-
-            ->groupBy(
-                'd.sucursal'
-            )
-
-            ->orderByDesc(
-                'total_cantidad'
-            )
-
-            ->get();
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | PROMEDIO DE CANTIDAD POR OT
-    |--------------------------------------------------------------------------
-    */
-
-        $promedioCantidadOT = $totalOT > 0
-
-            ? round(
-                $totalCantidad / $totalOT,
-                2
-            )
-
+        $coberturaRemision = $totalCantidadEnviada > 0
+            ? round(($totalRemitido / $totalCantidadEnviada) * 100, 1)
             : 0;
 
+        $coberturaRecepcion = $totalRemitido > 0
+            ? round(($totalRecibido / $totalRemitido) * 100, 1)
+            : 0;
 
         /*
-    |--------------------------------------------------------------------------
-    | SUCURSALES PARA SELECT2
-    |--------------------------------------------------------------------------
-    */
+         * Ranking por sucursal: muestra plan, documentación y recepción.
+         */
+        $querySucursal = clone $baseQuery;
 
-        $sucursales = DB::table(
-            'ot_logistica_detalle'
-        )
+        $selectSucursal = [
+            'd.sucursal',
+            DB::raw('COUNT(DISTINCT d.id_ot) as total_ot'),
+            DB::raw('SUM(d.cantidad) as cantidad_logistica'),
+        ];
 
-            ->select(
-                'sucursal'
-            )
+        if ($tablaRemisionesDisponible) {
+            $selectSucursal[] = DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as cantidad_remitida');
+            $selectSucursal[] = DB::raw('COALESCE(SUM(r.cantidad_recibida), 0) as cantidad_recibida');
+            $selectSucursal[] = DB::raw('COALESCE(SUM(r.cantidad_en_transito), 0) as cantidad_en_transito');
+        } else {
+            $selectSucursal[] = DB::raw('0 as cantidad_remitida');
+            $selectSucursal[] = DB::raw('0 as cantidad_recibida');
+            $selectSucursal[] = DB::raw('0 as cantidad_en_transito');
+        }
 
-            ->whereNotNull(
-                'sucursal'
-            )
+        $porSucursal = $querySucursal
+            ->whereNotNull('d.sucursal')
+            ->where('d.sucursal', '<>', '')
+            ->groupBy('d.sucursal')
+            ->select($selectSucursal)
+            ->orderByDesc('cantidad_logistica')
+            ->get()
+            ->map(function ($item) {
+                $item->cantidad_logistica = (int) $item->cantidad_logistica;
+                $item->cantidad_remitida = (int) $item->cantidad_remitida;
+                $item->cantidad_recibida = (int) $item->cantidad_recibida;
+                $item->cantidad_en_transito = (int) $item->cantidad_en_transito;
+                $item->pendiente_remitir = max(
+                    0,
+                    $item->cantidad_logistica - $item->cantidad_remitida
+                );
 
-            ->where(
-                'sucursal',
-                '<>',
-                ''
-            )
+                return $item;
+            });
 
+        /*
+         * Actividad por fecha para rangos de varios días.
+         */
+        $selectFecha = [
+            DB::raw('DATE(t.fecha_proceso) as fecha_proceso'),
+            DB::raw('COUNT(DISTINCT d.id_ot) as total_ot'),
+            DB::raw('SUM(d.cantidad) as cantidad_logistica'),
+        ];
+
+        if ($tablaRemisionesDisponible) {
+            $selectFecha[] = DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as cantidad_remitida');
+            $selectFecha[] = DB::raw('COALESCE(SUM(r.cantidad_recibida), 0) as cantidad_recibida');
+        } else {
+            $selectFecha[] = DB::raw('0 as cantidad_remitida');
+            $selectFecha[] = DB::raw('0 as cantidad_recibida');
+        }
+
+        $porFecha = (clone $baseQuery)
+            ->groupBy(DB::raw('DATE(t.fecha_proceso)'))
+            ->select($selectFecha)
+            ->orderByDesc(DB::raw('DATE(t.fecha_proceso)'))
+            ->get();
+
+        $promedioCantidadOT = $totalOT > 0
+            ? round($totalCantidadEnviada / $totalOT, 1)
+            : 0;
+
+        $sucursales = DB::table('ot_logistica_detalle')
+            ->whereNotNull('sucursal')
+            ->where('sucursal', '<>', '')
             ->distinct()
+            ->orderBy('sucursal')
+            ->pluck('sucursal');
 
-            ->orderBy(
-                'sucursal'
-            )
-
-            ->pluck(
-                'sucursal'
-            );
-
-
-        /*
-    |--------------------------------------------------------------------------
-    | RETORNAR VISTA
-    |--------------------------------------------------------------------------
-    */
-
-        return view(
-            'dashboard.ot-logistica',
-            compact(
-                'detalles',
-                'totalRegistros',
-                'totalOT',
-                'totalCantidad',
-                'totalCantidadOrdenada',
-                'totalCantidadCortada',
-                'totalCantidadEnviada',
-                'diferenciaOrdenadaCortada',
-                'diferenciaCortadaEnviada',
-                'totalSucursales',
-                'cantidadHoy',
-                'otHoy',
-                'registrosHoy',
-                'promedioCantidadOT',
-                'porFecha',
-                'porSucursal',
-                'sucursales'
-            )
-        );
+        return view('dashboard.ot-logistica', compact(
+            'fechaDesde',
+            'fechaHasta',
+            'busqueda',
+            'sucursalesSeleccionadas',
+            'tablaRemisionesDisponible',
+            'detalles',
+            'totalRegistros',
+            'totalOT',
+            'totalSucursales',
+            'totalCantidadEnviada',
+            'totalRemitido',
+            'totalRecibido',
+            'totalEnTransito',
+            'totalPendienteRemitir',
+            'totalExcesoRemitido',
+            'otsSinRemision',
+            'otsPendientes',
+            'otsCompletas',
+            'otsExcedidas',
+            'coberturaRemision',
+            'coberturaRecepcion',
+            'promedioCantidadOT',
+            'porSucursal',
+            'porFecha',
+            'sucursales'
+        ));
     }
 
 
