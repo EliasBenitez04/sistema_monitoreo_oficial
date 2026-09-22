@@ -52,6 +52,8 @@ class OtLogisticaExport implements
                 'd.id_ot'
             )
 
+            ->where('t.proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
+
             ->select([
                 't.fecha_proceso',
 
