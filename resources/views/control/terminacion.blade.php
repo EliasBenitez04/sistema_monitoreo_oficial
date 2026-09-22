@@ -289,7 +289,7 @@
                     Mostrando {{ $produccionPaginada->firstItem() }}–{{ $produccionPaginada->lastItem() }}
                     de {{ $produccionPaginada->total() }} OTs
                 </small>
-                <div>{{ $produccionPaginada->links() }}</div>
+                <div>{{ $produccionPaginada->links('pagination::bootstrap-4') }}</div>
             </div>
         @endif
     </div>
