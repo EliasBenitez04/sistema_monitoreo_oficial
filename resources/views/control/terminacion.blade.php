@@ -136,7 +136,15 @@
             <div class="card ct-card ct-kpi h-100"><div class="card-body">
                 <div class="label">Remitido</div>
                 <div class="value">{{ number_format($totalRemitido, 0, ',', '.') }}</div>
-                <small class="text-muted">{{ number_format($totalPendienteRemitir, 0, ',', '.') }} pendiente</small>
+                <small class="text-muted d-block">
+                    {{ number_format($totalPendienteRemitir, 0, ',', '.') }} pendiente por OT
+                </small>
+                @if($totalExcesoRemitido > 0)
+                    <small class="text-warning d-block">
+                        {{ number_format($totalExcesoRemitido, 0, ',', '.') }} excedido en otras OTs
+                        · saldo neto {{ number_format($saldoNetoRemitir, 0, ',', '.') }}
+                    </small>
+                @endif
             </div></div>
         </div>
         <div class="col-xl-2 col-md-4 col-6 mb-2">
