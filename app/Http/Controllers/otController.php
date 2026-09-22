@@ -3379,21 +3379,94 @@ class OtController extends Controller
 
         $remisionesSinVinculo = 0;
         $cantidadSinVinculo = 0;
+        $detalleSinVinculo = collect();
+        $sinVinculoPorDestino = collect();
 
         if ($tablaRemisionesDisponible) {
-            $sinVinculo = DB::table('ot_logistica_remisiones')
-                ->whereNull('id_logistica_detalle')
+            $baseSinVinculo = DB::table('ot_logistica_remisiones as r')
+                ->leftJoin('ot as o', 'o.id_ot', '=', 'r.id_ot')
+                ->whereNull('r.id_logistica_detalle')
                 ->whereBetween(
-                    DB::raw('COALESCE(fecha_remision, fecha_creacion)'),
+                    DB::raw('COALESCE(r.fecha_remision, r.fecha_creacion)'),
                     [$fechaDesde, $fechaHasta]
-                )
+                );
+
+            $sinVinculo = (clone $baseSinVinculo)
                 ->selectRaw(
-                    'COUNT(*) as lineas, COALESCE(SUM(cantidad), 0) as cantidad'
+                    'COUNT(*) as lineas, COALESCE(SUM(r.cantidad), 0) as cantidad'
                 )
                 ->first();
 
             $remisionesSinVinculo = (int) ($sinVinculo->lineas ?? 0);
             $cantidadSinVinculo = (int) ($sinVinculo->cantidad ?? 0);
+
+            /*
+             * Detalle visible de cada línea sin vínculo.
+             *
+             * Motivos:
+             * - SIN OT: el importador todavía no pudo identificar la OT.
+             * - SIN ASIGNACION LOGISTICA: conoce la OT pero no pudo relacionar
+             *   la línea con un ot_logistica_detalle concreto.
+             */
+            $detalleSinVinculo = (clone $baseSinVinculo)
+                ->select(
+                    'r.id',
+                    'r.id_ot',
+                    'o.nro_ot',
+                    'o.codigo as codigo_ot',
+                    'r.serie',
+                    'r.numero_remision',
+                    'r.codigo',
+                    'r.descripcion',
+                    'r.cod_sucursal_destino',
+                    'r.sucursal_destino',
+                    'r.sucursal_logistica',
+                    'r.cantidad',
+                    'r.fecha_remision',
+                    'r.fecha_creacion',
+                    'r.fecha_recepcion',
+                    'r.estado'
+                )
+                ->orderByRaw('COALESCE(r.fecha_remision, r.fecha_creacion) ASC')
+                ->orderBy('r.serie')
+                ->orderBy('r.numero_remision')
+                ->orderBy('r.id')
+                ->get()
+                ->map(function ($item) {
+                    $codigoCompleto = strtoupper(trim((string) $item->codigo));
+                    $codigoCompleto = ltrim($codigoCompleto, "'’`");
+                    $codigoCompleto = preg_replace('/\s+/u', '', $codigoCompleto);
+
+                    if (preg_match('/^(\d{9})/', $codigoCompleto, $match)) {
+                        $item->codigo_base = $match[1];
+                    } else {
+                        $item->codigo_base = $codigoCompleto;
+                    }
+
+                    $item->destino_real = $item->sucursal_destino
+                        ?: $item->sucursal_logistica
+                        ?: 'SIN DESTINO';
+
+                    if (!$item->id_ot) {
+                        $item->motivo_sin_vinculo = 'SIN OT';
+                    } else {
+                        $item->motivo_sin_vinculo = 'SIN ASIGNACION LOGISTICA';
+                    }
+
+                    return $item;
+                });
+
+            $sinVinculoPorDestino = $detalleSinVinculo
+                ->groupBy('destino_real')
+                ->map(function ($items, $destino) {
+                    return (object) [
+                        'destino' => $destino,
+                        'lineas' => $items->count(),
+                        'cantidad' => (int) $items->sum('cantidad'),
+                    ];
+                })
+                ->sortByDesc('cantidad')
+                ->values();
         }
 
         return compact(
@@ -3404,7 +3477,9 @@ class OtController extends Controller
             'porDestinoReal',
             'resumenTipos',
             'remisionesSinVinculo',
-            'cantidadSinVinculo'
+            'cantidadSinVinculo',
+            'detalleSinVinculo',
+            'sinVinculoPorDestino'
         );
     }
 
