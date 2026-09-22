@@ -231,15 +231,37 @@ class OtController extends Controller
             'fecha_proceso' => 'required|date',
         ]);
 
+        $import = new LogisticaImport($request->fecha_proceso);
+
         Excel::import(
-            new LogisticaImport($request->fecha_proceso),
+            $import,
             $request->file('archivo')
         );
 
-        alert()->success(
-            'Éxito',
-            'Importación de logística realizada correctamente'
-        );
+        $mensaje = 'Filas: ' . $import->getProcesadas()
+            . ' | Cargadas: ' . $import->getCargadas()
+            . ' | OT no encontrada: ' . $import->getOtNoEncontrada()
+            . ' | Sin Producto Terminado: ' . $import->getSinProductoTerminado()
+            . ' | Sin código: ' . $import->getSinCodigo()
+            . ' | Diferencias resultado/detalle: ' . $import->getDiferencias()
+            . ' | Errores: ' . $import->getErrores();
+
+        if (
+            $import->getOtNoEncontrada() > 0
+            || $import->getSinProductoTerminado() > 0
+            || $import->getSinCodigo() > 0
+            || $import->getErrores() > 0
+        ) {
+            alert()->warning(
+                'Importación finalizada con observaciones',
+                $mensaje
+            );
+        } else {
+            alert()->success(
+                'Importación de logística completada',
+                $mensaje
+            );
+        }
 
         return back();
     }
