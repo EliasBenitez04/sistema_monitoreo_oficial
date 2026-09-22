@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Imports\ControlTerminacionRemisionImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -372,12 +373,18 @@ class ControlTerminacionController extends Controller
 
     public function importarRemisiones(Request $request)
     {
-        set_time_limit(0);
-        @ini_set('memory_limit', '768M');
+        // Importaciones grandes: dejamos que PHP termine el trabajo aunque
+        // el archivo tenga decenas de miles de líneas.
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+        @ini_set('max_input_time', '-1');
+        @ini_set('memory_limit', '1536M');
+        @ignore_user_abort(true);
+
         DB::disableQueryLog();
 
         $request->validate([
-            'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:20480',
+            'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:102400',
         ]);
 
         if (!Schema::hasTable('ot_logistica_remisiones')) {
@@ -387,9 +394,29 @@ class ControlTerminacionController extends Controller
         }
 
         try {
+            $archivo = $request->file('archivo_envios');
+
+            Log::info('INICIO IMPORTACION ENVIOS', [
+                'archivo' => $archivo->getClientOriginalName(),
+                'tamano_bytes' => $archivo->getSize(),
+                'memory_limit' => ini_get('memory_limit'),
+                'max_execution_time' => ini_get('max_execution_time'),
+            ]);
+
+            $inicio = microtime(true);
             $import = new ControlTerminacionRemisionImport();
 
-            Excel::import($import, $request->file('archivo_envios'));
+            Excel::import($import, $archivo);
+
+            Log::info('FIN IMPORTACION ENVIOS', [
+                'segundos' => round(microtime(true) - $inicio, 2),
+                'procesadas' => $import->getProcesadas(),
+                'vinculadas_ot' => $import->getVinculadasOt(),
+                'vinculadas_logistica' => $import->getVinculadas(),
+                'sin_detalle_logistico' => $import->getSinVincular(),
+                'sin_ot' => $import->getSinOt(),
+                'memoria_pico_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+            ]);
 
             $mensaje = 'Importación finalizada. '
                 . 'Documentos: ' . $import->getDocumentosArchivo()
@@ -408,6 +435,13 @@ class ControlTerminacionController extends Controller
                 ->route('control.terminacion', $request->only('fecha_desde', 'fecha_hasta'))
                 ->with('success', $mensaje);
         } catch (\Throwable $e) {
+            Log::error('ERROR IMPORTACION ENVIOS', [
+                'error' => $e->getMessage(),
+                'archivo' => $e->getFile(),
+                'linea' => $e->getLine(),
+                'memoria_pico_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
+            ]);
+
             report($e);
 
             return redirect()
