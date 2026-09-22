@@ -708,6 +708,8 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 );
             }
         }
+    }
+
     private function normalizarNroOt($valor)
     {
         if ($valor === null || $valor === '') {
