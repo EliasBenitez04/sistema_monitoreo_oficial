@@ -315,6 +315,56 @@
                                             </tbody>
                                         </table>
                                     </div>
+
+                                    @if($item->remisiones_sin_detalle->isNotEmpty())
+                                        <div class="alert alert-warning mt-3 mb-2 py-2">
+                                            <strong><i class="fas fa-link mr-1"></i>Remisiones asociadas a la OT, pero sin detalle logístico</strong>
+                                            <div class="small">
+                                                El código coincide con esta OT, pero no existe un <code>ot_logistica_detalle</code>
+                                                compatible para esa sucursal/fecha.
+                                            </div>
+                                        </div>
+
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-bordered mb-0 ct-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Destino</th>
+                                                        <th>Remisión</th>
+                                                        <th>Fecha remisión</th>
+                                                        <th class="text-right">Cantidad</th>
+                                                        <th>Fecha recepción</th>
+                                                        <th>Estado</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach($item->remisiones_sin_detalle as $remision)
+                                                        <tr>
+                                                            <td>
+                                                                <strong>{{ $remision->sucursal_destino ?: $remision->sucursal_logistica }}</strong>
+                                                                <br>
+                                                                <small class="text-muted">
+                                                                    Cod. suc. {{ $remision->cod_sucursal_destino }}
+                                                                    · {{ $remision->sucursal_logistica }}
+                                                                </small>
+                                                            </td>
+                                                            <td class="ct-remision">{{ $remision->serie }}-{{ $remision->numero_remision }}</td>
+                                                            <td>{{ $remision->fecha_remision ? \Carbon\Carbon::parse($remision->fecha_remision)->format('d/m/Y') : '—' }}</td>
+                                                            <td class="text-right">{{ number_format($remision->cantidad, 0, ',', '.') }}</td>
+                                                            <td>{{ $remision->fecha_recepcion ? \Carbon\Carbon::parse($remision->fecha_recepcion)->format('d/m/Y') : 'Pendiente' }}</td>
+                                                            <td>
+                                                                @if($remision->fecha_recepcion)
+                                                                    <span class="badge badge-success">RECIBIDO</span>
+                                                                @else
+                                                                    <span class="badge badge-primary">EN TRÁNSITO</span>
+                                                                @endif
+                                                            </td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
