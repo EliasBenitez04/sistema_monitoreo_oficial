@@ -125,7 +125,21 @@ class ControlTerminacionController extends Controller
 
                 foreach ($locales as $local) {
                     $local->fecha_logistica = $movimiento->fecha_proceso;
-                    $local->remisiones = collect($remisionesPorDetalle->get($local->id, collect()));
+                    $destinoPlanNormalizado = $this->normalizarDestinoMovimiento($local->sucursal);
+
+                    $local->remisiones = collect($remisionesPorDetalle->get($local->id, collect()))
+                        ->map(function ($remision) use ($local, $destinoPlanNormalizado) {
+                            $destinoReal = $remision->sucursal_destino
+                                ?: $remision->sucursal_logistica;
+
+                            $remision->destino_planificado = $local->sucursal;
+                            $remision->destino_real = $destinoReal;
+                            $remision->es_redireccion =
+                                $this->normalizarDestinoMovimiento($destinoReal)
+                                !== $destinoPlanNormalizado;
+
+                            return $remision;
+                        });
 
                     $local->cantidad_remitida = (int) $local->remisiones->sum('cantidad');
                     $local->cantidad_recibida = (int) $local->remisiones
@@ -369,6 +383,82 @@ class ControlTerminacionController extends Controller
             'remisionesSinVincularFilas',
             'resumenSinVincular'
         ));
+    }
+
+    private function normalizarDestinoMovimiento($valor): string
+    {
+        $texto = strtoupper(trim((string) $valor));
+
+        $texto = strtr($texto, [
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+            'Ñ' => 'N',
+        ]);
+
+        if (strpos($texto, 'MODELO') !== false) {
+            return 'MODELO';
+        }
+
+        if (strpos($texto, 'MATRIZ') !== false) {
+            return 'MATRIZ';
+        }
+
+        if (strpos($texto, 'AYALA') !== false) {
+            return 'AYALA';
+        }
+
+        if (strpos($texto, 'SAN LORENZO') !== false || $texto === 'SL') {
+            return 'SL';
+        }
+
+        if (strpos($texto, 'SHOP SAN LO') !== false || $texto === 'SHOPP') {
+            return 'SHOPP';
+        }
+
+        if (strpos($texto, 'MULTIPLAZA') !== false || $texto === 'MULTI') {
+            return 'MULTI';
+        }
+
+        if (strpos($texto, 'JARDINES') !== false) {
+            return 'JARDINES';
+        }
+
+        if (strpos($texto, 'MARIANO') !== false) {
+            return 'MARIANO';
+        }
+
+        if (strpos($texto, 'PINEDO') !== false) {
+            return 'PINEDO';
+        }
+
+        if (strpos($texto, 'BONANZA') !== false) {
+            return 'BONANZA';
+        }
+
+        if (strpos($texto, 'RURAL') !== false) {
+            return 'RURAL';
+        }
+
+        if (strpos($texto, 'NEMBY') !== false) {
+            return 'NEMBY';
+        }
+
+        if (strpos($texto, 'LUQUE') !== false) {
+            return 'LUQUE';
+        }
+
+        if (strpos($texto, 'MALL') !== false) {
+            return 'MALL';
+        }
+
+        if (strpos($texto, 'L06') !== false) {
+            return 'L06';
+        }
+
+        return $texto;
     }
 
     public function importarRemisiones(Request $request)
