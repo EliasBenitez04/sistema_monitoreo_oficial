@@ -12,6 +12,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use App\Exports\OtLogisticaExport;
+use App\Exports\ReporteSemanalLogisticaExport;
 use App\Models\OtTrazabilidad;
 
 class OtController extends Controller
@@ -2922,6 +2923,334 @@ class OtController extends Controller
      * EXPORTAR DASHBOARD LOGÍSTICA
      * ============================================================
      */
+    public function reporteSemanalLogistica(Request $request)
+    {
+        $fechaDesde = $request->input(
+            'fecha_desde',
+            now()->startOfWeek(Carbon::MONDAY)->toDateString()
+        );
+
+        $fechaHasta = $request->input(
+            'fecha_hasta',
+            now()->endOfWeek(Carbon::SUNDAY)->toDateString()
+        );
+
+        $busqueda = trim((string) $request->input('busqueda', ''));
+
+        $reporte = $this->construirReporteSemanalLogistica(
+            $fechaDesde,
+            $fechaHasta,
+            $busqueda
+        );
+
+        return view('reportes.logistica-semanal', array_merge(
+            $reporte,
+            compact('fechaDesde', 'fechaHasta', 'busqueda')
+        ));
+    }
+
+    public function exportarReporteSemanalLogistica(Request $request)
+    {
+        $fechaDesde = $request->input(
+            'fecha_desde',
+            now()->startOfWeek(Carbon::MONDAY)->toDateString()
+        );
+
+        $fechaHasta = $request->input(
+            'fecha_hasta',
+            now()->endOfWeek(Carbon::SUNDAY)->toDateString()
+        );
+
+        $busqueda = trim((string) $request->input('busqueda', ''));
+
+        $reporte = $this->construirReporteSemanalLogistica(
+            $fechaDesde,
+            $fechaHasta,
+            $busqueda
+        );
+
+        $nombre = 'reporte_semanal_logistica_'
+            . $fechaDesde
+            . '_'
+            . $fechaHasta
+            . '.xlsx';
+
+        return Excel::download(
+            new ReporteSemanalLogisticaExport(
+                $reporte['detalles'],
+                $reporte['totales']
+            ),
+            $nombre
+        );
+    }
+
+    private function construirReporteSemanalLogistica(
+        $fechaDesde,
+        $fechaHasta,
+        $busqueda = ''
+    ) {
+        $procesoLogistica = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
+        $tablaRemisionesDisponible = Schema::hasTable('ot_logistica_remisiones');
+
+        $productoTerminado = DB::table('ot_trazabilidad')
+            ->where('proceso', 'TERMINACION - PRODUCTO TERMINADO')
+            ->groupBy('id_ot')
+            ->select(
+                'id_ot',
+                DB::raw('SUM(resultado) as cantidad_pt'),
+                DB::raw('MAX(fecha_proceso) as ultima_fecha_pt')
+            );
+
+        $remisionPorDetalle = null;
+
+        if ($tablaRemisionesDisponible) {
+            $condicionMayorista = "(
+                cod_sucursal_destino = 25
+                OR UPPER(COALESCE(sucursal_destino, '')) LIKE '%MATRIZ%'
+                OR UPPER(COALESCE(sucursal_logistica, '')) = 'MATRIZ'
+            )";
+
+            $remisionPorDetalle = DB::table('ot_logistica_remisiones')
+                ->whereNotNull('id_logistica_detalle')
+                ->groupBy('id_logistica_detalle')
+                ->select(
+                    'id_logistica_detalle',
+                    DB::raw('SUM(cantidad) as cantidad_remitida'),
+                    DB::raw(
+                        "SUM(CASE WHEN {$condicionMayorista}
+                            THEN cantidad ELSE 0 END) as cantidad_mayorista"
+                    ),
+                    DB::raw(
+                        "SUM(CASE WHEN {$condicionMayorista}
+                            THEN 0 ELSE cantidad END) as cantidad_locales"
+                    ),
+                    DB::raw(
+                        'SUM(CASE WHEN fecha_recepcion IS NOT NULL
+                            THEN cantidad ELSE 0 END) as cantidad_recibida'
+                    ),
+                    DB::raw(
+                        'SUM(CASE WHEN fecha_recepcion IS NULL
+                            THEN cantidad ELSE 0 END) as cantidad_en_transito'
+                    )
+                );
+        }
+
+        $query = DB::table('ot_logistica_detalle as d')
+            ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
+            ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+            ->leftJoinSub($productoTerminado, 'pt', function ($join) {
+                $join->on('pt.id_ot', '=', 'o.id_ot');
+            })
+            ->where('t.proceso', $procesoLogistica)
+            ->whereBetween('t.fecha_proceso', [$fechaDesde, $fechaHasta]);
+
+        if ($tablaRemisionesDisponible) {
+            $query->leftJoinSub($remisionPorDetalle, 'r', function ($join) {
+                $join->on('r.id_logistica_detalle', '=', 'd.id');
+            });
+        }
+
+        if ($busqueda !== '') {
+            $query->where(function ($q) use ($busqueda) {
+                if (ctype_digit($busqueda)) {
+                    $q->where('o.nro_ot', (int) $busqueda)
+                        ->orWhere('o.codigo', 'ILIKE', '%' . $busqueda . '%');
+                } else {
+                    $q->where('o.codigo', 'ILIKE', '%' . $busqueda . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $busqueda . '%');
+                }
+            });
+        }
+
+        $select = [
+            DB::raw('DATE(t.fecha_proceso) as fecha_logistica'),
+            'o.id_ot',
+            'o.nro_ot',
+            'o.codigo',
+            'o.descripcion',
+            'o.cantidad_orden',
+            DB::raw('COALESCE(MAX(pt.cantidad_pt), 0) as cantidad_pt'),
+            DB::raw('SUM(d.cantidad) as distribucion'),
+            DB::raw(
+                "SUM(CASE WHEN UPPER(TRIM(d.sucursal)) = 'AYALA'
+                    THEN d.cantidad ELSE 0 END) as plan_ayala"
+            ),
+            DB::raw(
+                "SUM(CASE WHEN UPPER(TRIM(d.sucursal)) = 'MODELO MUESTRA'
+                    THEN d.cantidad ELSE 0 END) as plan_modelo_muestra"
+            ),
+            DB::raw(
+                "SUM(CASE WHEN UPPER(TRIM(d.sucursal)) NOT IN ('AYALA', 'MODELO MUESTRA')
+                    THEN d.cantidad ELSE 0 END) as plan_locales"
+            ),
+            DB::raw('COUNT(DISTINCT d.sucursal) as destinos_planificados'),
+        ];
+
+        if ($tablaRemisionesDisponible) {
+            $select[] = DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as remitido');
+            $select[] = DB::raw('COALESCE(SUM(r.cantidad_locales), 0) as locales_reales');
+            $select[] = DB::raw('COALESCE(SUM(r.cantidad_mayorista), 0) as mayorista_real');
+            $select[] = DB::raw('COALESCE(SUM(r.cantidad_recibida), 0) as recibido');
+            $select[] = DB::raw('COALESCE(SUM(r.cantidad_en_transito), 0) as en_transito');
+        } else {
+            $select[] = DB::raw('0 as remitido');
+            $select[] = DB::raw('0 as locales_reales');
+            $select[] = DB::raw('0 as mayorista_real');
+            $select[] = DB::raw('0 as recibido');
+            $select[] = DB::raw('0 as en_transito');
+        }
+
+        $detalles = $query
+            ->groupBy(
+                DB::raw('DATE(t.fecha_proceso)'),
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden'
+            )
+            ->select($select)
+            ->orderBy('fecha_logistica')
+            ->orderBy('o.nro_ot')
+            ->get()
+            ->map(function ($item) {
+                $item->cantidad_pt = (int) $item->cantidad_pt;
+                $item->distribucion = (int) $item->distribucion;
+                $item->plan_locales = (int) $item->plan_locales;
+                $item->plan_ayala = (int) $item->plan_ayala;
+                $item->plan_modelo_muestra = (int) $item->plan_modelo_muestra;
+                $item->remitido = (int) $item->remitido;
+                $item->locales_reales = (int) $item->locales_reales;
+                $item->mayorista_real = (int) $item->mayorista_real;
+                $item->recibido = (int) $item->recibido;
+                $item->en_transito = (int) $item->en_transito;
+                $item->destinos_planificados = (int) $item->destinos_planificados;
+
+                $item->pendiente_remitir = max(
+                    0,
+                    $item->distribucion - $item->remitido
+                );
+
+                $item->exceso_remitido = max(
+                    0,
+                    $item->remitido - $item->distribucion
+                );
+
+                $item->diferencia_pt_distribucion =
+                    $item->cantidad_pt - $item->distribucion;
+
+                if ($item->remitido <= 0) {
+                    $item->estado = 'SIN REMISION';
+                } elseif ($item->remitido < $item->distribucion) {
+                    $item->estado = 'PENDIENTE';
+                } elseif ($item->remitido > $item->distribucion) {
+                    $item->estado = 'EXCEDENTE';
+                } else {
+                    $item->estado = 'COMPLETO';
+                }
+
+                return $item;
+            });
+
+        $totales = [
+            'ots' => $detalles->pluck('id_ot')->unique()->count(),
+            'distribucion' => (int) $detalles->sum('distribucion'),
+            'plan_locales' => (int) $detalles->sum('plan_locales'),
+            'plan_ayala' => (int) $detalles->sum('plan_ayala'),
+            'plan_modelo_muestra' => (int) $detalles->sum('plan_modelo_muestra'),
+            'remitido' => (int) $detalles->sum('remitido'),
+            'locales_reales' => (int) $detalles->sum('locales_reales'),
+            'mayorista_real' => (int) $detalles->sum('mayorista_real'),
+            'recibido' => (int) $detalles->sum('recibido'),
+            'en_transito' => (int) $detalles->sum('en_transito'),
+            'pendiente_remitir' => (int) $detalles->sum('pendiente_remitir'),
+            'exceso_remitido' => (int) $detalles->sum('exceso_remitido'),
+        ];
+
+        $porDia = $detalles
+            ->groupBy('fecha_logistica')
+            ->map(function ($items, $fecha) {
+                return (object) [
+                    'fecha' => $fecha,
+                    'ots' => $items->pluck('id_ot')->unique()->count(),
+                    'distribucion' => (int) $items->sum('distribucion'),
+                    'locales_reales' => (int) $items->sum('locales_reales'),
+                    'mayorista_real' => (int) $items->sum('mayorista_real'),
+                    'pendiente_remitir' => (int) $items->sum('pendiente_remitir'),
+                    'recibido' => (int) $items->sum('recibido'),
+                ];
+            })
+            ->values();
+
+        $porDestinoReal = collect();
+
+        if ($tablaRemisionesDisponible) {
+            $porDestinoReal = DB::table('ot_logistica_remisiones as r')
+                ->join('ot_logistica_detalle as d', 'd.id', '=', 'r.id_logistica_detalle')
+                ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
+                ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+                ->where('t.proceso', $procesoLogistica)
+                ->whereBetween('t.fecha_proceso', [$fechaDesde, $fechaHasta]);
+
+            if ($busqueda !== '') {
+                $porDestinoReal->where(function ($q) use ($busqueda) {
+                    if (ctype_digit($busqueda)) {
+                        $q->where('o.nro_ot', (int) $busqueda)
+                            ->orWhere('o.codigo', 'ILIKE', '%' . $busqueda . '%');
+                    } else {
+                        $q->where('o.codigo', 'ILIKE', '%' . $busqueda . '%')
+                            ->orWhere('o.descripcion', 'ILIKE', '%' . $busqueda . '%');
+                    }
+                });
+            }
+
+            $porDestinoReal = $porDestinoReal
+                ->groupBy(
+                    DB::raw(
+                        "COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), 'SIN DESTINO')"
+                    )
+                )
+                ->select(
+                    DB::raw(
+                        "COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), 'SIN DESTINO') as destino"
+                    ),
+                    DB::raw('SUM(r.cantidad) as cantidad'),
+                    DB::raw('COUNT(DISTINCT r.id_ot) as ots')
+                )
+                ->orderByDesc('cantidad')
+                ->get();
+        }
+
+        $remisionesSinVinculo = 0;
+        $cantidadSinVinculo = 0;
+
+        if ($tablaRemisionesDisponible) {
+            $sinVinculo = DB::table('ot_logistica_remisiones')
+                ->whereNull('id_logistica_detalle')
+                ->whereBetween(
+                    DB::raw('COALESCE(fecha_remision, fecha_creacion)'),
+                    [$fechaDesde, $fechaHasta]
+                )
+                ->selectRaw(
+                    'COUNT(*) as lineas, COALESCE(SUM(cantidad), 0) as cantidad'
+                )
+                ->first();
+
+            $remisionesSinVinculo = (int) ($sinVinculo->lineas ?? 0);
+            $cantidadSinVinculo = (int) ($sinVinculo->cantidad ?? 0);
+        }
+
+        return compact(
+            'tablaRemisionesDisponible',
+            'detalles',
+            'totales',
+            'porDia',
+            'porDestinoReal',
+            'remisionesSinVinculo',
+            'cantidadSinVinculo'
+        );
+    }
+
     public function exportarDashboardLogistica(Request $request)
     {
         /*
