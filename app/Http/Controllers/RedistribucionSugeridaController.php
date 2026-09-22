@@ -384,7 +384,10 @@ class RedistribucionSugeridaController extends Controller
                 $diasMonitoreados,
                 $diasCobertura,
                 $seguridad,
+                $minimoOrigen,
+                $ventaMinima,
                 $diasBloqueo,
+                $metodoCobertura,
                 $bloquearPendientes,
                 $bloquearEnProceso,
                 $bloquearFinalizadosRecientes,
@@ -648,7 +651,10 @@ class RedistribucionSugeridaController extends Controller
                 'line' => $e->getLine(),
             ]);
             return redirect()->route('RedistribucionSugeridas.index')
-                ->with('error', 'No se pudo completar el analisis. No se guardaron cambios; revise el registro de errores.');
+                ->with(
+                    'error',
+                    'No se pudo completar el análisis. No se guardaron cambios. Error: ' . $e->getMessage()
+                );
         }
     }
 
