@@ -152,6 +152,11 @@ class ControlTerminacionController extends Controller
                 $item->cantidad_logistica - $item->cantidad_remitida
             );
 
+            $item->exceso_remitido = max(
+                0,
+                $item->cantidad_remitida - $item->cantidad_logistica
+            );
+
             $item->diferencia = $item->cantidad_terminada - $item->cantidad_logistica;
 
             if ($item->diferencia === 0) {
@@ -192,6 +197,8 @@ class ControlTerminacionController extends Controller
         $totalRecibido = (int) $produccionTerminada->sum('cantidad_recibida');
         $totalEnTransito = (int) $produccionTerminada->sum('cantidad_en_transito');
         $totalPendienteRemitir = (int) $produccionTerminada->sum('pendiente_remitir');
+        $totalExcesoRemitido = (int) $produccionTerminada->sum('exceso_remitido');
+        $saldoNetoRemitir = max(0, $totalLogistica - $totalRemitido);
         $totalDiferencia = $totalTerminado - $totalLogistica;
         $totalOTs = $produccionTerminada->count();
 
@@ -258,6 +265,8 @@ class ControlTerminacionController extends Controller
             'totalRecibido',
             'totalEnTransito',
             'totalPendienteRemitir',
+            'totalExcesoRemitido',
+            'saldoNetoRemitir',
             'totalDiferencia',
             'totalOTs',
             'porcentajeEnviado',
