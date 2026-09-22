@@ -357,10 +357,21 @@ class ControlTerminacionController extends Controller
                 ->get();
         }
 
+        $totalPlan = (int) $detalles->sum('cantidad');
+        $totalRemitido = (int) $detalles->sum('cantidad_remitida');
+        $totalRecibido = (int) $detalles->sum('cantidad_recibida');
+        $totalEnTransito = (int) $detalles->sum('cantidad_en_transito');
+        $totalPendiente = (int) $detalles->sum('pendiente_remitir');
+
         return view('control._terminacion_detalle', compact(
             'ot',
             'detalles',
-            'remisionesSinDetalle'
+            'remisionesSinDetalle',
+            'totalPlan',
+            'totalRemitido',
+            'totalRecibido',
+            'totalEnTransito',
+            'totalPendiente'
         ));
     }
 
