@@ -789,6 +789,16 @@ Route::get(
     [OtController::class, 'exportarDashboardLogistica']
 )->name('dashboard.logistica.exportar');
 
+Route::get(
+    '/reportes/logistica-semanal',
+    [OtController::class, 'reporteSemanalLogistica']
+)->name('reporte.logistica-semanal');
+
+Route::get(
+    '/reportes/logistica-semanal/exportar',
+    [OtController::class, 'exportarReporteSemanalLogistica']
+)->name('reporte.logistica-semanal.exportar');
+
 Route::get('/clientes/ciudades', [ClienteController::class, 'getCiudades'])
     ->name('clientes.ciudades');
 
