@@ -15,6 +15,14 @@ class LogisticaImport implements ToCollection, WithHeadingRow
 {
     private $fechaProceso;
 
+    private $procesadas = 0;
+    private $cargadas = 0;
+    private $sinCodigo = 0;
+    private $otNoEncontrada = 0;
+    private $sinProductoTerminado = 0;
+    private $diferencias = 0;
+    private $errores = 0;
+
     public function __construct($fechaProceso)
     {
         $this->fechaProceso = $fechaProceso;
@@ -25,6 +33,7 @@ class LogisticaImport implements ToCollection, WithHeadingRow
         set_time_limit(0);
 
         foreach ($rows as $index => $row) {
+            $this->procesadas++;
 
             DB::beginTransaction();
 
@@ -61,6 +70,7 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 // =========================================================
 
                 if ($codigo === '') {
+                    $this->sinCodigo++;
 
                     DB::rollBack();
 
@@ -140,6 +150,8 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 // =========================================================
 
                 if (!$ot) {
+                    $this->otNoEncontrada++;
+
                     Log::warning('CODIGO / OT NO ENCONTRADO', [
                         'fila' => $index + 2,
                         'codigo_original' => $codigoOriginal,
@@ -183,6 +195,7 @@ class LogisticaImport implements ToCollection, WithHeadingRow
 
 
                 if (!$productoTerminado) {
+                    $this->sinProductoTerminado++;
 
                     Log::warning('OT SIN PRODUCTO TERMINADO', [
 
@@ -576,6 +589,8 @@ class LogisticaImport implements ToCollection, WithHeadingRow
 
 
                 if ($totalDistribuido !== $resultado) {
+                    $this->diferencias++;
+
                     Log::warning('LOGISTICA - RESULTADO NO COINCIDE CON DETALLES', [
                         'fila' => $index + 2,
                         'ot' => $ot->nro_ot,
@@ -632,6 +647,7 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 // =========================================================
 
                 DB::commit();
+                $this->cargadas++;
 
 
                 Log::info(
@@ -678,6 +694,7 @@ class LogisticaImport implements ToCollection, WithHeadingRow
             // =============================================================
 
             catch (\Throwable $e) {
+                $this->errores++;
 
                 DB::rollBack();
 
@@ -708,6 +725,41 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                 );
             }
         }
+    }
+
+    public function getProcesadas()
+    {
+        return $this->procesadas;
+    }
+
+    public function getCargadas()
+    {
+        return $this->cargadas;
+    }
+
+    public function getSinCodigo()
+    {
+        return $this->sinCodigo;
+    }
+
+    public function getOtNoEncontrada()
+    {
+        return $this->otNoEncontrada;
+    }
+
+    public function getSinProductoTerminado()
+    {
+        return $this->sinProductoTerminado;
+    }
+
+    public function getDiferencias()
+    {
+        return $this->diferencias;
+    }
+
+    public function getErrores()
+    {
+        return $this->errores;
     }
 
     private function normalizarNroOt($valor)
