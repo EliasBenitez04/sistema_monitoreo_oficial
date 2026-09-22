@@ -16,7 +16,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
     private $insertadas = 0;
     private $actualizadas = 0;
     private $vinculadas = 0;
+    private $vinculadasOt = 0;
     private $sinVincular = 0;
+    private $sinOt = 0;
     private $omitidas = 0;
 
     private $documentosArchivo = 0;
@@ -69,6 +71,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         |
         */
         $vinculos = $this->precargarVinculos($filas);
+        $otsPorCodigo = $this->precargarOtsPorCodigo($filas);
 
         /*
         |--------------------------------------------------------------------------
@@ -138,10 +141,28 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             $fechaRecepcion = $fila['fecha_recepcion']
                 ?: ($existente->fecha_recepcion ?? null);
 
+            if (!$idOt) {
+                $otFallback = $this->resolverOtEnMemoria(
+                    $otsPorCodigo,
+                    $fila['codigo'],
+                    $fila['fecha_remision'] ?: $fila['fecha_creacion']
+                );
+
+                if ($otFallback) {
+                    $idOt = $otFallback->id_ot;
+                }
+            }
+
             if ($idLogisticaDetalle) {
                 $this->vinculadas++;
             } else {
                 $this->sinVincular++;
+            }
+
+            if ($idOt) {
+                $this->vinculadasOt++;
+            } else {
+                $this->sinOt++;
             }
 
             if ($existente) {
@@ -360,12 +381,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                 't.fecha_proceso'
             );
 
-        if ($fechas->isNotEmpty()) {
-            $fechaMin = Carbon::parse($fechas->min())->subDays(120)->toDateString();
-            $fechaMax = Carbon::parse($fechas->max())->addDays(15)->toDateString();
-            $query->whereBetween('t.fecha_proceso', [$fechaMin, $fechaMax]);
-        }
-
         $candidatos = $query
             ->orderBy('t.fecha_proceso', 'desc')
             ->orderBy('d.id', 'desc')
@@ -388,6 +403,119 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
                     $item->sucursal_normalizada
                 );
             });
+    }
+
+    private function precargarOtsPorCodigo(Collection $filas)
+    {
+        $codigos = $filas
+            ->pluck('codigo')
+            ->filter()
+            ->map(function ($codigo) {
+                return $this->normalizarCodigo($codigo);
+            })
+            ->unique()
+            ->flip();
+
+        if ($codigos->isEmpty()) {
+            return collect();
+        }
+
+        return DB::table('ot as o')
+            ->leftJoin('ot_trazabilidad as pt', function ($join) {
+                $join->on('pt.id_ot', '=', 'o.id_ot')
+                    ->where('pt.proceso', '=', 'TERMINACION - PRODUCTO TERMINADO');
+            })
+            ->select(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'pt.id_trazabilidad as id_producto_terminado',
+                'pt.fecha_proceso as fecha_producto_terminado',
+                'pt.resultado as cantidad_producto_terminado'
+            )
+            ->orderBy('pt.fecha_proceso', 'desc')
+            ->orderBy('o.id_ot', 'desc')
+            ->get()
+            ->map(function ($item) {
+                $item->codigo_normalizado = $this->normalizarCodigo($item->codigo);
+                return $item;
+            })
+            ->filter(function ($item) use ($codigos) {
+                return $item->codigo_normalizado !== ''
+                    && isset($codigos[$item->codigo_normalizado]);
+            })
+            ->groupBy('codigo_normalizado');
+    }
+
+    private function resolverOtEnMemoria(
+        Collection $otsPorCodigo,
+        $codigo,
+        $fechaReferencia
+    ) {
+        $codigoNormalizado = $this->normalizarCodigo($codigo);
+        $candidatos = collect($otsPorCodigo->get($codigoNormalizado, collect()));
+
+        if ($candidatos->isEmpty()) {
+            return null;
+        }
+
+        if ($candidatos->count() === 1) {
+            return $candidatos->first();
+        }
+
+        $fecha = null;
+
+        if ($fechaReferencia) {
+            try {
+                $fecha = Carbon::parse($fechaReferencia)->startOfDay();
+            } catch (\Throwable $e) {
+                $fecha = null;
+            }
+        }
+
+        if (!$fecha) {
+            return $candidatos
+                ->sortByDesc(function ($item) {
+                    return (int) $item->id_ot;
+                })
+                ->first();
+        }
+
+        $anteriores = $candidatos
+            ->filter(function ($item) use ($fecha) {
+                if (empty($item->fecha_producto_terminado)) {
+                    return false;
+                }
+
+                try {
+                    return Carbon::parse($item->fecha_producto_terminado)
+                        ->startOfDay()
+                        ->lte($fecha);
+                } catch (\Throwable $e) {
+                    return false;
+                }
+            })
+            ->sort(function ($a, $b) use ($fecha) {
+                $fa = Carbon::parse($a->fecha_producto_terminado)->startOfDay();
+                $fb = Carbon::parse($b->fecha_producto_terminado)->startOfDay();
+
+                $da = $fa->diffInDays($fecha);
+                $db = $fb->diffInDays($fecha);
+
+                if ($da !== $db) {
+                    return $da < $db ? -1 : 1;
+                }
+
+                return ((int) $b->id_ot) <=> ((int) $a->id_ot);
+            })
+            ->values();
+
+        if ($anteriores->isNotEmpty()) {
+            return $anteriores->first();
+        }
+
+        return null;
     }
 
     private function precargarUsoDetalles(Collection $vinculos)
@@ -480,7 +608,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         if ($fecha) {
             $cercanos = $evaluados
                 ->filter(function ($item) {
-                    return $item->_distancia_dias <= 120;
+                    return $item->_distancia_dias <= 365;
                 })
                 ->values();
 
@@ -858,6 +986,16 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
     public function getSinVincular()
     {
         return $this->sinVincular;
+    }
+
+    public function getVinculadasOt()
+    {
+        return $this->vinculadasOt;
+    }
+
+    public function getSinOt()
+    {
+        return $this->sinOt;
     }
 
     public function getOmitidas()
