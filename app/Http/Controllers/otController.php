@@ -3152,6 +3152,162 @@ class OtController extends Controller
                 return $item;
             });
 
+        /*
+         * CLASIFICAR CADA SALIDA COMO MOVIMIENTO, NO COMO TOTAL DE LA OT.
+         *
+         * Ejemplo:
+         *   OT PT = 360
+         *   01/09 distribución = 359
+         *   10/09 Multi = 1
+         *
+         * Reporte:
+         *   01/09 DISTRIBUCION       movimiento 359 | acumulado 359 | pendiente 1
+         *   10/09 CANCELACION/CIERRE movimiento   1 | acumulado 360 | pendiente 0
+         *
+         * De esta manera nunca mostramos 360 como si hubieran salido 360 en
+         * la segunda fecha.
+         */
+        $idsOtReporte = $detalles
+            ->pluck('id_ot')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $historialPorOt = collect();
+
+        if ($idsOtReporte->isNotEmpty()) {
+            $historialPorOt = DB::table('ot_trazabilidad as th')
+                ->join('ot_logistica_detalle as dh', 'dh.id_trazabilidad', '=', 'th.id_trazabilidad')
+                ->whereIn('th.id_ot', $idsOtReporte->all())
+                ->where('th.proceso', $procesoLogistica)
+                ->whereDate('th.fecha_proceso', '<=', $fechaHasta)
+                ->groupBy('th.id_ot', 'th.id_trazabilidad', 'th.fecha_proceso')
+                ->select(
+                    'th.id_ot',
+                    'th.id_trazabilidad',
+                    'th.fecha_proceso',
+                    DB::raw('SUM(dh.cantidad) as cantidad_movimiento')
+                )
+                ->orderBy('th.id_ot')
+                ->orderBy('th.fecha_proceso')
+                ->orderBy('th.id_trazabilidad')
+                ->get()
+                ->groupBy('id_ot');
+        }
+
+        $referenciaPt = $detalles
+            ->groupBy('id_ot')
+            ->map(function ($items) {
+                return (int) $items->max('cantidad_pt');
+            });
+
+        $clasificacionMovimientos = [];
+
+        foreach ($historialPorOt as $idOt => $movimientos) {
+            $acumulado = 0;
+            $fechaAnterior = null;
+            $ptOt = (int) ($referenciaPt->get($idOt, 0));
+
+            foreach ($movimientos as $indice => $movimiento) {
+                $cantidadMovimiento = (int) $movimiento->cantidad_movimiento;
+                $pendienteAntes = $ptOt > 0
+                    ? max(0, $ptOt - $acumulado)
+                    : null;
+
+                $acumuladoAntes = $acumulado;
+                $acumulado += $cantidadMovimiento;
+
+                $pendienteDespues = $ptOt > 0
+                    ? max(0, $ptOt - $acumulado)
+                    : null;
+
+                $diasDesdeAnterior = null;
+
+                if ($fechaAnterior) {
+                    $diasDesdeAnterior = Carbon::parse($fechaAnterior)
+                        ->startOfDay()
+                        ->diffInDays(
+                            Carbon::parse($movimiento->fecha_proceso)->startOfDay()
+                        );
+                }
+
+                if ($indice === 0) {
+                    $tipoMovimiento = 'DISTRIBUCION';
+                } elseif (
+                    $ptOt > 0
+                    && $pendienteAntes > 0
+                    && $cantidadMovimiento === $pendienteAntes
+                ) {
+                    // Cierra exactamente el saldo pendiente de la OT.
+                    $tipoMovimiento = 'CANCELACION / CIERRE';
+                } elseif (
+                    $ptOt > 0
+                    && $pendienteAntes > 0
+                    && $cantidadMovimiento < $pendienteAntes
+                ) {
+                    $tipoMovimiento = 'COMPLEMENTO';
+                } else {
+                    $tipoMovimiento = 'AJUSTE / EXCEDENTE';
+                }
+
+                $claveMovimiento = $idOt . '|' . Carbon::parse(
+                    $movimiento->fecha_proceso
+                )->toDateString();
+
+                $clasificacionMovimientos[$claveMovimiento] = [
+                    'tipo_movimiento' => $tipoMovimiento,
+                    'cantidad_movimiento' => $cantidadMovimiento,
+                    'acumulado_antes' => $acumuladoAntes,
+                    'acumulado_ot' => $acumulado,
+                    'pendiente_antes' => $pendienteAntes,
+                    'pendiente_ot' => $pendienteDespues,
+                    'dias_desde_anterior' => $diasDesdeAnterior,
+                ];
+
+                $fechaAnterior = $movimiento->fecha_proceso;
+            }
+        }
+
+        $detalles = $detalles
+            ->map(function ($item) use ($clasificacionMovimientos) {
+                $clave = $item->id_ot . '|' . Carbon::parse(
+                    $item->fecha_logistica
+                )->toDateString();
+
+                $movimiento = $clasificacionMovimientos[$clave] ?? null;
+
+                $item->tipo_movimiento = $movimiento['tipo_movimiento']
+                    ?? 'DISTRIBUCION';
+
+                // La cantidad visible del reporte es la salida de ESA fecha.
+                $item->cantidad_movimiento = $movimiento['cantidad_movimiento']
+                    ?? $item->distribucion;
+
+                $item->acumulado_ot = $movimiento['acumulado_ot']
+                    ?? $item->distribucion;
+
+                $item->pendiente_ot = $movimiento['pendiente_ot'];
+
+                $item->dias_desde_anterior = $movimiento['dias_desde_anterior'];
+
+                $item->es_cancelacion =
+                    $item->tipo_movimiento === 'CANCELACION / CIERRE';
+
+                return $item;
+            });
+
+        $resumenTipos = $detalles
+            ->groupBy('tipo_movimiento')
+            ->map(function ($items, $tipo) {
+                return (object) [
+                    'tipo' => $tipo,
+                    'movimientos' => $items->count(),
+                    'ots' => $items->pluck('id_ot')->unique()->count(),
+                    'cantidad' => (int) $items->sum('cantidad_movimiento'),
+                ];
+            })
+            ->values();
+
         $totales = [
             'ots' => $detalles->pluck('id_ot')->unique()->count(),
             'distribucion' => (int) $detalles->sum('distribucion'),
@@ -3246,6 +3402,7 @@ class OtController extends Controller
             'totales',
             'porDia',
             'porDestinoReal',
+            'resumenTipos',
             'remisionesSinVinculo',
             'cantidadSinVinculo'
         );
