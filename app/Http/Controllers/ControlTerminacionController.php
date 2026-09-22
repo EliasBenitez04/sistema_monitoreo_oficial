@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Imports\ControlTerminacionRemisionImport;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -15,28 +16,63 @@ class ControlTerminacionController extends Controller
     {
         $fechaDesde = $request->input('fecha_desde', now()->format('Y-m-d'));
         $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
+        $buscar = trim((string) $request->input('buscar', ''));
+        $estados = $request->input('estado', []);
+
+        if (!is_array($estados)) {
+            $estados = [$estados];
+        }
 
         $procesoProductoTerminado = 'TERMINACION - PRODUCTO TERMINADO';
         $procesoLogistica = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
         $tablaRemisionesDisponible = Schema::hasTable('ot_logistica_remisiones');
 
-        $produccionTerminada = DB::table('ot_trazabilidad as tp')
+        /*
+         * Una sola fila operativa por OT.
+         *
+         * Si Producto Terminado fue registrado más de una vez para la misma OT,
+         * se acumula el resultado y se conservan primera/última fecha de PT.
+         */
+        $queryProduccion = DB::table('ot_trazabilidad as tp')
             ->join('ot as o', 'o.id_ot', '=', 'tp.id_ot')
             ->where('tp.proceso', $procesoProductoTerminado)
-            ->whereBetween('tp.fecha_proceso', [$fechaDesde, $fechaHasta])
-            ->select(
-                'tp.id_trazabilidad as id_trazabilidad_producto',
-                'tp.id_ot',
-                'tp.fecha_proceso as fecha_producto_terminado',
-                'tp.resultado as cantidad_terminada',
+            ->whereBetween('tp.fecha_proceso', [$fechaDesde, $fechaHasta]);
+
+        if ($buscar !== '') {
+            $queryProduccion->where(function ($q) use ($buscar) {
+                if (is_numeric($buscar)) {
+                    $q->where('o.nro_ot', (int) $buscar)
+                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                } else {
+                    $q->where('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                }
+            });
+        }
+
+        $produccionTerminada = $queryProduccion
+            ->groupBy(
+                'o.id_ot',
                 'o.nro_ot',
                 'o.codigo',
                 'o.descripcion',
                 'o.cantidad_orden',
                 'o.estado'
             )
-            ->orderBy('tp.fecha_proceso')
-            ->orderBy('o.nro_ot')
+            ->select(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                'o.estado',
+                DB::raw('SUM(tp.resultado) as cantidad_terminada'),
+                DB::raw('MIN(tp.fecha_proceso) as fecha_producto_terminado'),
+                DB::raw('MAX(tp.fecha_proceso) as ultima_fecha_producto_terminado')
+            )
+            ->orderBy('fecha_producto_terminado', 'desc')
+            ->orderBy('o.nro_ot', 'desc')
             ->get();
 
         $idsOt = $produccionTerminada
@@ -45,50 +81,229 @@ class ControlTerminacionController extends Controller
             ->unique()
             ->values();
 
-        $logisticaGeneral = collect();
+        $logisticaPorOt = collect();
+        $remisionesPorOt = collect();
 
         if ($idsOt->isNotEmpty()) {
-            $logisticaGeneral = DB::table('ot_trazabilidad')
+            /*
+             * Resumen de logística. Solo agregados: no cargamos cada detalle ni
+             * cada remisión en la pantalla principal.
+             */
+            $ptMinimo = DB::table('ot_trazabilidad')
+                ->where('proceso', $procesoProductoTerminado)
+                ->whereBetween('fecha_proceso', [$fechaDesde, $fechaHasta])
                 ->whereIn('id_ot', $idsOt->all())
-                ->where('proceso', $procesoLogistica)
-                ->select('id_trazabilidad', 'id_ot', 'resultado', 'fecha_proceso')
-                ->orderBy('fecha_proceso')
-                ->orderBy('id_trazabilidad')
-                ->get();
+                ->groupBy('id_ot')
+                ->select('id_ot', DB::raw('MIN(fecha_proceso) as fecha_pt'));
+
+            $logisticaPorOt = DB::table('ot_trazabilidad as tl')
+                ->join('ot_logistica_detalle as d', 'd.id_trazabilidad', '=', 'tl.id_trazabilidad')
+                ->joinSub($ptMinimo, 'ptx', function ($join) {
+                    $join->on('ptx.id_ot', '=', 'tl.id_ot')
+                        ->whereColumn('tl.fecha_proceso', '>=', 'ptx.fecha_pt');
+                })
+                ->where('tl.proceso', $procesoLogistica)
+                ->whereIn('tl.id_ot', $idsOt->all())
+                ->groupBy('tl.id_ot')
+                ->select(
+                    'tl.id_ot',
+                    DB::raw('SUM(d.cantidad) as cantidad_logistica'),
+                    DB::raw('MIN(tl.fecha_proceso) as primera_salida'),
+                    DB::raw('MAX(tl.fecha_proceso) as ultima_salida'),
+                    DB::raw('COUNT(d.id) as destinos_logisticos')
+                )
+                ->get()
+                ->keyBy('id_ot');
+
+            if ($tablaRemisionesDisponible) {
+                $remisionesPorOt = DB::table('ot_logistica_remisiones')
+                    ->whereIn('id_ot', $idsOt->all())
+                    ->groupBy('id_ot')
+                    ->select(
+                        'id_ot',
+                        DB::raw('SUM(cantidad) as cantidad_remitida'),
+                        DB::raw("SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as cantidad_recibida"),
+                        DB::raw("SUM(CASE WHEN fecha_recepcion IS NULL THEN cantidad ELSE 0 END) as cantidad_en_transito"),
+                        DB::raw('COUNT(*) as lineas_remision'),
+                        DB::raw("COUNT(DISTINCT CONCAT_WS('|', COALESCE(serie, ''), COALESCE(numero_remision, ''), COALESCE(CAST(cod_sucursal_destino AS TEXT), ''))) as documentos_remision")
+                    )
+                    ->get()
+                    ->keyBy('id_ot');
+            }
         }
 
-        $logisticaPorOt = $logisticaGeneral->groupBy('id_ot');
+        foreach ($produccionTerminada as $item) {
+            $logistica = $logisticaPorOt->get($item->id_ot);
+            $remisiones = $remisionesPorOt->get($item->id_ot);
 
-        $idsTrazabilidad = $logisticaGeneral
-            ->pluck('id_trazabilidad')
-            ->filter()
-            ->unique()
+            $item->cantidad_terminada = (int) $item->cantidad_terminada;
+            $item->cantidad_logistica = (int) ($logistica->cantidad_logistica ?? 0);
+            $item->primera_salida = $logistica->primera_salida ?? null;
+            $item->ultima_salida = $logistica->ultima_salida ?? null;
+            $item->destinos_logisticos = (int) ($logistica->destinos_logisticos ?? 0);
+
+            $item->cantidad_remitida = (int) ($remisiones->cantidad_remitida ?? 0);
+            $item->cantidad_recibida = (int) ($remisiones->cantidad_recibida ?? 0);
+            $item->cantidad_en_transito = (int) ($remisiones->cantidad_en_transito ?? 0);
+            $item->documentos_remision = (int) ($remisiones->documentos_remision ?? 0);
+
+            $item->pendiente_remitir = max(
+                0,
+                $item->cantidad_logistica - $item->cantidad_remitida
+            );
+
+            $item->diferencia = $item->cantidad_terminada - $item->cantidad_logistica;
+
+            if ($item->diferencia === 0) {
+                $item->estado_control = 'FINALIZADO';
+            } elseif ($item->cantidad_logistica === 0) {
+                $item->estado_control = 'NO ENVIADO';
+            } else {
+                $item->estado_control = 'PARCIAL';
+            }
+
+            if ($item->cantidad_remitida <= 0) {
+                $item->confirmacion_local = 'SIN REMISION';
+            } elseif ($item->cantidad_en_transito > 0 && $item->cantidad_recibida > 0) {
+                $item->confirmacion_local = 'PARCIAL';
+            } elseif ($item->cantidad_en_transito > 0) {
+                $item->confirmacion_local = 'EN TRANSITO';
+            } elseif ($item->cantidad_recibida >= $item->cantidad_remitida) {
+                $item->confirmacion_local = 'RECIBIDO';
+            } else {
+                $item->confirmacion_local = 'PARCIAL';
+            }
+        }
+
+        if (!empty($estados)) {
+            $produccionTerminada = $produccionTerminada
+                ->filter(function ($item) use ($estados) {
+                    return in_array($item->estado_control, $estados, true);
+                })
+                ->values();
+        }
+
+        /*
+         * KPIs del período completo filtrado. Se calculan antes de paginar.
+         */
+        $totalTerminado = (int) $produccionTerminada->sum('cantidad_terminada');
+        $totalLogistica = (int) $produccionTerminada->sum('cantidad_logistica');
+        $totalRemitido = (int) $produccionTerminada->sum('cantidad_remitida');
+        $totalRecibido = (int) $produccionTerminada->sum('cantidad_recibida');
+        $totalEnTransito = (int) $produccionTerminada->sum('cantidad_en_transito');
+        $totalPendienteRemitir = (int) $produccionTerminada->sum('pendiente_remitir');
+        $totalDiferencia = $totalTerminado - $totalLogistica;
+        $totalOTs = $produccionTerminada->count();
+
+        $porcentajeEnviado = $totalTerminado > 0
+            ? round(($totalLogistica / $totalTerminado) * 100, 2)
+            : 0;
+
+        /*
+         * Inconsistencias únicamente del período consultado. Antes se contaba
+         * toda la historia de ot_logistica_remisiones.
+         */
+        $remisionesSinVincular = 0;
+        $remisionesSinVincularFilas = 0;
+
+        if ($tablaRemisionesDisponible) {
+            $baseSinVinculo = DB::table('ot_logistica_remisiones')
+                ->whereNull('id_logistica_detalle')
+                ->whereBetween(
+                    DB::raw('COALESCE(fecha_remision, fecha_creacion)'),
+                    [$fechaDesde, $fechaHasta]
+                );
+
+            $remisionesSinVincularFilas = (clone $baseSinVinculo)->count();
+
+            $remisionesSinVincular = (int) (
+                (clone $baseSinVinculo)
+                    ->selectRaw(
+                        "COUNT(DISTINCT CONCAT_WS('|', COALESCE(serie, ''), COALESCE(numero_remision, ''), COALESCE(CAST(cod_sucursal_destino AS TEXT), ''))) as total"
+                    )
+                    ->value('total') ?? 0
+            );
+        }
+
+        /*
+         * Paginación en memoria: el conjunto principal ya es una fila por OT y
+         * normalmente es pequeño, mientras los detalles pesados se cargan AJAX.
+         */
+        $porPagina = 50;
+        $paginaActual = max(1, (int) $request->input('page', 1));
+        $itemsPagina = $produccionTerminada
+            ->slice(($paginaActual - 1) * $porPagina, $porPagina)
             ->values();
 
-        $detallesGeneral = collect();
+        $produccionPaginada = new LengthAwarePaginator(
+            $itemsPagina,
+            $produccionTerminada->count(),
+            $porPagina,
+            $paginaActual,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
 
-        if ($idsTrazabilidad->isNotEmpty()) {
-            $detallesGeneral = DB::table('ot_logistica_detalle')
-                ->whereIn('id_trazabilidad', $idsTrazabilidad->all())
-                ->select('id', 'id_ot', 'id_trazabilidad', 'sucursal', 'cantidad', 'created_at')
-                ->orderBy('id_trazabilidad')
-                ->orderBy('id')
-                ->get();
+        return view('control.terminacion', compact(
+            'fechaDesde',
+            'fechaHasta',
+            'buscar',
+            'estados',
+            'produccionPaginada',
+            'totalTerminado',
+            'totalLogistica',
+            'totalRemitido',
+            'totalRecibido',
+            'totalEnTransito',
+            'totalPendienteRemitir',
+            'totalDiferencia',
+            'totalOTs',
+            'porcentajeEnviado',
+            'tablaRemisionesDisponible',
+            'remisionesSinVincular',
+            'remisionesSinVincularFilas'
+        ));
+    }
+
+    public function detalle(Request $request, $idOt)
+    {
+        $fechaPt = $request->input('fecha_pt');
+        $procesoLogistica = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
+
+        $ot = DB::table('ot')
+            ->where('id_ot', $idOt)
+            ->select('id_ot', 'nro_ot', 'codigo', 'descripcion', 'cantidad_orden')
+            ->first();
+
+        abort_if(!$ot, 404);
+
+        $queryDetalles = DB::table('ot_trazabilidad as tl')
+            ->join('ot_logistica_detalle as d', 'd.id_trazabilidad', '=', 'tl.id_trazabilidad')
+            ->where('tl.id_ot', $idOt)
+            ->where('tl.proceso', $procesoLogistica);
+
+        if ($fechaPt) {
+            $queryDetalles->where('tl.fecha_proceso', '>=', $fechaPt);
         }
 
-        $detallesPorTrazabilidad = $detallesGeneral->groupBy('id_trazabilidad');
+        $detalles = $queryDetalles
+            ->select(
+                'd.id',
+                'd.sucursal',
+                'd.cantidad',
+                'tl.fecha_proceso as fecha_logistica'
+            )
+            ->orderBy('tl.fecha_proceso')
+            ->orderBy('d.id')
+            ->get();
+
         $remisionesPorDetalle = collect();
-        $remisionesSinDetallePorOt = collect();
 
-        if ($tablaRemisionesDisponible && $detallesGeneral->isNotEmpty()) {
-            $idsDetalle = $detallesGeneral
-                ->pluck('id')
-                ->filter()
-                ->unique()
-                ->values();
-
+        if (Schema::hasTable('ot_logistica_remisiones') && $detalles->isNotEmpty()) {
             $remisionesPorDetalle = DB::table('ot_logistica_remisiones')
-                ->whereIn('id_logistica_detalle', $idsDetalle->all())
+                ->whereIn('id_logistica_detalle', $detalles->pluck('id')->all())
                 ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
                 ->orderBy('serie')
                 ->orderBy('numero_remision')
@@ -96,292 +311,56 @@ class ControlTerminacionController extends Controller
                 ->groupBy('id_logistica_detalle');
         }
 
-        if ($tablaRemisionesDisponible && $idsOt->isNotEmpty()) {
-            $remisionesSinDetallePorOt = DB::table('ot_logistica_remisiones')
-                ->whereIn('id_ot', $idsOt->all())
-                ->whereNull('id_logistica_detalle')
-                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
-                ->orderBy('serie')
-                ->orderBy('numero_remision')
-                ->get()
-                ->groupBy('id_ot');
-        }
+        foreach ($detalles as $detalle) {
+            $planNormalizado = $this->normalizarDestinoMovimiento($detalle->sucursal);
 
-        foreach ($produccionTerminada as $item) {
-            $logistica = collect($logisticaPorOt->get($item->id_ot, collect()))
-                ->filter(function ($movimiento) use ($item) {
-                    return $movimiento->fecha_proceso >= $item->fecha_producto_terminado;
-                })
-                ->values();
+            $detalle->remisiones = collect(
+                $remisionesPorDetalle->get($detalle->id, collect())
+            )->map(function ($remision) use ($detalle, $planNormalizado) {
+                $destinoReal = $remision->sucursal_destino
+                    ?: $remision->sucursal_logistica;
 
-            $item->logistica = $logistica;
-            $item->primera_salida = optional($logistica->first())->fecha_proceso;
-            $item->ultima_salida = optional($logistica->last())->fecha_proceso;
+                $remision->destino_planificado = $detalle->sucursal;
+                $remision->destino_real = $destinoReal;
+                $remision->es_redireccion =
+                    $this->normalizarDestinoMovimiento($destinoReal)
+                    !== $planNormalizado;
 
-            $detalle = collect();
+                return $remision;
+            });
 
-            foreach ($logistica as $movimiento) {
-                $locales = collect($detallesPorTrazabilidad->get($movimiento->id_trazabilidad, collect()));
-
-                foreach ($locales as $local) {
-                    $local->fecha_logistica = $movimiento->fecha_proceso;
-                    $destinoPlanNormalizado = $this->normalizarDestinoMovimiento($local->sucursal);
-
-                    $local->remisiones = collect($remisionesPorDetalle->get($local->id, collect()))
-                        ->map(function ($remision) use ($local, $destinoPlanNormalizado) {
-                            $destinoReal = $remision->sucursal_destino
-                                ?: $remision->sucursal_logistica;
-
-                            $remision->destino_planificado = $local->sucursal;
-                            $remision->destino_real = $destinoReal;
-                            $remision->es_redireccion =
-                                $this->normalizarDestinoMovimiento($destinoReal)
-                                !== $destinoPlanNormalizado;
-
-                            return $remision;
-                        });
-
-                    $local->cantidad_remitida = (int) $local->remisiones->sum('cantidad');
-                    $local->cantidad_recibida = (int) $local->remisiones
-                        ->filter(function ($remision) {
-                            return !empty($remision->fecha_recepcion);
-                        })
-                        ->sum('cantidad');
-
-                    $local->cantidad_en_transito = max(
-                        0,
-                        $local->cantidad_remitida - $local->cantidad_recibida
-                    );
-
-                    $local->pendiente_remision = max(
-                        0,
-                        (int) $local->cantidad - $local->cantidad_remitida
-                    );
-
-                    $local->exceso_remision = max(
-                        0,
-                        $local->cantidad_remitida - (int) $local->cantidad
-                    );
-
-                    if ($local->cantidad_remitida <= 0) {
-                        $local->estado_confirmacion = 'SIN REMISION';
-                    } elseif ($local->cantidad_recibida >= (int) $local->cantidad) {
-                        $local->estado_confirmacion = 'RECIBIDO';
-                    } elseif ($local->cantidad_recibida > 0) {
-                        $local->estado_confirmacion = 'PARCIAL';
-                    } else {
-                        $local->estado_confirmacion = 'EN TRANSITO';
-                    }
-                }
-
-                $detalle = $detalle->merge($locales);
-            }
-
-            $item->detalle_logistica = $detalle;
-            $item->remisiones_sin_detalle = collect(
-                $remisionesSinDetallePorOt->get($item->id_ot, collect())
-            );
-
-            $item->cantidad_logistica = (int) $detalle->sum('cantidad');
-            $item->cantidad_enviada = $item->cantidad_logistica;
-
-            $item->cantidad_remitida_detalle = (int) $detalle->sum('cantidad_remitida');
-            $item->cantidad_recibida_detalle = (int) $detalle->sum('cantidad_recibida');
-
-            $item->cantidad_remitida_sin_detalle = (int) $item->remisiones_sin_detalle->sum('cantidad');
-            $item->cantidad_recibida_sin_detalle = (int) $item->remisiones_sin_detalle
+            $detalle->cantidad_remitida = (int) $detalle->remisiones->sum('cantidad');
+            $detalle->cantidad_recibida = (int) $detalle->remisiones
                 ->filter(function ($remision) {
                     return !empty($remision->fecha_recepcion);
                 })
                 ->sum('cantidad');
-
-            $item->cantidad_remitida =
-                $item->cantidad_remitida_detalle + $item->cantidad_remitida_sin_detalle;
-
-            $item->cantidad_recibida =
-                $item->cantidad_recibida_detalle + $item->cantidad_recibida_sin_detalle;
-            $item->cantidad_en_transito = max(
+            $detalle->cantidad_en_transito = max(
                 0,
-                $item->cantidad_remitida - $item->cantidad_recibida
+                $detalle->cantidad_remitida - $detalle->cantidad_recibida
             );
-            $item->pendiente_remitir = max(
+            $detalle->pendiente_remitir = max(
                 0,
-                $item->cantidad_logistica - $item->cantidad_remitida
+                (int) $detalle->cantidad - $detalle->cantidad_remitida
             );
-            $item->diferencia = (int) $item->cantidad_terminada - $item->cantidad_logistica;
-
-            if ($detalle->isEmpty() && $item->remisiones_sin_detalle->isEmpty()) {
-                $item->confirmacion_local = 'SIN ENVIOS';
-            } elseif (
-                $item->cantidad_remitida > 0
-                && $item->cantidad_recibida >= $item->cantidad_remitida
-            ) {
-                $item->confirmacion_local = 'RECIBIDO';
-            } elseif ($item->cantidad_recibida > 0) {
-                $item->confirmacion_local = 'PARCIAL';
-            } elseif ($item->cantidad_remitida > 0) {
-                $item->confirmacion_local = 'EN TRANSITO';
-            } else {
-                $item->confirmacion_local = 'SIN REMISION';
-            }
         }
 
-        $estados = $request->input('estado', []);
+        $remisionesSinDetalle = collect();
 
-        if (!is_array($estados)) {
-            $estados = [$estados];
-        }
-
-        $produccionTerminada = $produccionTerminada->map(function ($item) {
-            if ($item->diferencia == 0) {
-                $item->estado_control = 'FINALIZADO';
-            } elseif ($item->cantidad_logistica == 0) {
-                $item->estado_control = 'NO ENVIADO';
-            } else {
-                $item->estado_control = 'PARCIAL';
-            }
-
-            return $item;
-        });
-
-        if (count($estados) > 0) {
-            $produccionTerminada = $produccionTerminada
-                ->filter(function ($item) use ($estados) {
-                    return in_array($item->estado_control, $estados);
-                })
-                ->values();
-        }
-
-        $detalleLogistica = collect();
-
-        foreach ($produccionTerminada as $item) {
-            foreach ($item->detalle_logistica as $detalle) {
-                $detalle->nro_ot = $item->nro_ot;
-                $detalle->codigo = $item->codigo;
-                $detalle->descripcion = $item->descripcion;
-                $detalleLogistica->push($detalle);
-            }
-        }
-
-        $totalTerminado = (int) $produccionTerminada->sum('cantidad_terminada');
-        $totalLogistica = (int) $produccionTerminada->sum('cantidad_logistica');
-        $totalEnviado = $totalLogistica;
-        $totalRemitido = (int) $produccionTerminada->sum('cantidad_remitida');
-        $totalRecibido = (int) $produccionTerminada->sum('cantidad_recibida');
-        $totalEnTransito = max(0, $totalRemitido - $totalRecibido);
-        $totalPendienteRemitir = max(0, $totalLogistica - $totalRemitido);
-        $totalDiferencia = $totalTerminado - $totalLogistica;
-        $totalOTs = $produccionTerminada->count();
-
-        $otsCompletas = $produccionTerminada
-            ->filter(function ($item) {
-                return $item->diferencia == 0;
-            })
-            ->count();
-
-        $otsPendientes = $produccionTerminada
-            ->filter(function ($item) {
-                return $item->diferencia > 0;
-            })
-            ->count();
-
-        $otsNoEnviadas = $produccionTerminada
-            ->filter(function ($item) {
-                return $item->cantidad_logistica == 0;
-            })
-            ->count();
-
-        $porcentajeEnviado = $totalTerminado > 0
-            ? round(($totalLogistica / $totalTerminado) * 100, 2)
-            : 0;
-
-        $totalRemisiones = 0;
-        $remisionesRecibidas = 0;
-        $remisionesEnTransito = 0;
-        $detallesSinRemision = 0;
-
-        foreach ($detalleLogistica as $detalle) {
-            if ($detalle->remisiones->isEmpty()) {
-                $detallesSinRemision++;
-                continue;
-            }
-
-            foreach ($detalle->remisiones as $remision) {
-                $totalRemisiones++;
-
-                if (!empty($remision->fecha_recepcion)) {
-                    $remisionesRecibidas++;
-                } else {
-                    $remisionesEnTransito++;
-                }
-            }
-        }
-
-        $remisionesSinVincular = 0;
-        $remisionesSinVincularFilas = 0;
-        $resumenSinVincular = collect();
-
-        if ($tablaRemisionesDisponible) {
-            $baseSinVinculo = DB::table('ot_logistica_remisiones')
-                ->whereNull('id_logistica_detalle');
-
-            $remisionesSinVincularFilas = (clone $baseSinVinculo)->count();
-
-            $documentosSinVinculo = $baseSinVinculo
-                ->select(
-                    'serie',
-                    'numero_remision',
-                    'cod_sucursal_destino',
-                    'sucursal_destino',
-                    'sucursal_logistica',
-                    'fecha_remision',
-                    'fecha_recepcion',
-                    DB::raw('COUNT(*) as lineas'),
-                    DB::raw('SUM(cantidad) as cantidad')
-                )
-                ->groupBy(
-                    'serie',
-                    'numero_remision',
-                    'cod_sucursal_destino',
-                    'sucursal_destino',
-                    'sucursal_logistica',
-                    'fecha_remision',
-                    'fecha_recepcion'
-                )
-                ->orderBy('fecha_remision', 'desc')
-                ->orderBy('numero_remision', 'desc')
+        if (Schema::hasTable('ot_logistica_remisiones')) {
+            $remisionesSinDetalle = DB::table('ot_logistica_remisiones')
+                ->where('id_ot', $idOt)
+                ->whereNull('id_logistica_detalle')
+                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
+                ->orderBy('serie')
+                ->orderBy('numero_remision')
                 ->get();
-
-            $remisionesSinVincular = $documentosSinVinculo->count();
-            $resumenSinVincular = $documentosSinVinculo->take(50)->values();
         }
 
-        return view('control.terminacion', compact(
-            'fechaDesde',
-            'fechaHasta',
-            'produccionTerminada',
-            'detalleLogistica',
-            'totalTerminado',
-            'totalLogistica',
-            'totalEnviado',
-            'totalRemitido',
-            'totalRecibido',
-            'totalEnTransito',
-            'totalPendienteRemitir',
-            'totalDiferencia',
-            'totalOTs',
-            'otsCompletas',
-            'otsPendientes',
-            'otsNoEnviadas',
-            'porcentajeEnviado',
-            'tablaRemisionesDisponible',
-            'totalRemisiones',
-            'remisionesRecibidas',
-            'remisionesEnTransito',
-            'detallesSinRemision',
-            'remisionesSinVincular',
-            'remisionesSinVincularFilas',
-            'resumenSinVincular'
+        return view('control._terminacion_detalle', compact(
+            'ot',
+            'detalles',
+            'remisionesSinDetalle'
         ));
     }
 
