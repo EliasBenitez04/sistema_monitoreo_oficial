@@ -265,7 +265,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         }
 
         foreach ($rows as $row) {
-            $codigo = $this->normalizarCodigo($row['cod_articulo'] ?? null);
+            $codigo = $this->normalizarCodigoCompleto($row['cod_articulo'] ?? null);
             $serie = trim((string) ($row['serie'] ?? ''));
             $numeroRemision = trim((string) ($row['numero_remision'] ?? ''));
             $codSalida = $this->enteroONull($row['cod_sucursal_salida'] ?? null);
@@ -343,7 +343,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             ->pluck('codigo')
             ->filter()
             ->map(function ($codigo) {
-                return $this->normalizarCodigo($codigo);
+                return $this->normalizarCodigoBase($codigo);
             })
             ->unique()
             ->flip();
@@ -360,8 +360,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             ->values();
 
         /*
-         * Traemos las salidas logísticas del rango real del ENVIOS y después
-         * normalizamos código + sucursal en PHP. Esto evita depender de un
+         * Traemos las salidas logísticas y después normalizamos código + sucursal
+         * en PHP. Para asociar usamos el código base de 9 dígitos:
+         * 050616220VD04 (ENVIOS) -> 050616220 (OT). Esto evita depender de un
          * WHERE IN gigante con miles de códigos transformados en PostgreSQL 9.5.
          */
         $query = DB::table('ot_logistica_detalle as d')
@@ -388,7 +389,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
 
         return $candidatos
             ->map(function ($item) {
-                $item->codigo_normalizado = $this->normalizarCodigo($item->codigo);
+                $item->codigo_normalizado = $this->normalizarCodigoBase($item->codigo);
                 $item->sucursal_normalizada = $this->normalizarSucursalBase($item->sucursal);
                 return $item;
             })
@@ -411,7 +412,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             ->pluck('codigo')
             ->filter()
             ->map(function ($codigo) {
-                return $this->normalizarCodigo($codigo);
+                return $this->normalizarCodigoBase($codigo);
             })
             ->unique()
             ->flip();
@@ -438,7 +439,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             ->orderBy('o.id_ot', 'desc')
             ->get()
             ->map(function ($item) {
-                $item->codigo_normalizado = $this->normalizarCodigo($item->codigo);
+                $item->codigo_normalizado = $this->normalizarCodigoBase($item->codigo);
                 return $item;
             })
             ->filter(function ($item) use ($codigos) {
@@ -453,7 +454,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         $codigo,
         $fechaReferencia
     ) {
-        $codigoNormalizado = $this->normalizarCodigo($codigo);
+        $codigoNormalizado = $this->normalizarCodigoBase($codigo);
         $candidatos = collect($otsPorCodigo->get($codigoNormalizado, collect()));
 
         if ($candidatos->isEmpty()) {
@@ -560,7 +561,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         }
 
         $clave = $this->claveVinculo(
-            $this->normalizarCodigo($codigo),
+            $this->normalizarCodigoBase($codigo),
             $this->normalizarSucursalBase($sucursal)
         );
 
@@ -837,7 +838,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
         return implode('|', [
             (string) $serie,
             (string) $numero,
-            strtoupper($this->normalizarCodigo($codigo)),
+            $this->normalizarCodigoCompleto($codigo),
             (string) $origen,
             (string) $destino,
         ]);
@@ -850,13 +851,44 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow
             . strtoupper(trim((string) $sucursal));
     }
 
-    private function normalizarCodigo($valor)
+    /**
+     * Código completo tal como identifica la variante en ENVIOS.
+     * Ej.: '050616220VD04 -> 050616220VD04
+     *
+     * Se usa para guardar la remisión y para su clave única.
+     */
+    private function normalizarCodigoCompleto($valor)
     {
         $codigo = strtoupper(trim((string) $valor));
         $codigo = ltrim($codigo, "'’`");
         $codigo = preg_replace('/\\s+/u', '', $codigo);
 
         return $codigo ?: '';
+    }
+
+    /**
+     * Código base usado únicamente para relacionar ENVIOS con OT/Logística.
+     *
+     * En la OT se guarda, por ejemplo:
+     *   050616220
+     *
+     * Mientras que ENVIOS puede traer:
+     *   050616220VD04
+     *   460615895COTP
+     *
+     * Si el código comienza con 9 dígitos, esos 9 dígitos son el código base.
+     * Para códigos históricos que no sigan ese patrón conservamos el código
+     * completo para no inventar una asociación.
+     */
+    private function normalizarCodigoBase($valor)
+    {
+        $codigo = $this->normalizarCodigoCompleto($valor);
+
+        if (preg_match('/^(\\d{9})/', $codigo, $coincidencia)) {
+            return $coincidencia[1];
+        }
+
+        return $codigo;
     }
 
     private function enteroONull($valor)
