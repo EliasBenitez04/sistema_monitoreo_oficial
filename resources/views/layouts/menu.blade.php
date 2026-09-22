@@ -226,7 +226,7 @@
 
 
     <li
-        class="nav-item {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas') ? 'menu-open' : '' }}">
+        class="nav-item {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'reporte.logistica-semanal*', 'dashboard.ot-atrasadas') ? 'menu-open' : '' }}">
 
         <a href="#"
             class="nav-link {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas') ? 'active' : '' }}">
@@ -285,6 +285,19 @@
                     <i class="nav-icon fas fa-chart-line"></i>
 
                     <p>Dashboard Logística</p>
+
+                </a>
+
+            </li>
+
+            <li class="nav-item">
+
+                <a href="{{ route('reporte.logistica-semanal') }}"
+                    class="nav-link {{ request()->routeIs('reporte.logistica-semanal*') ? 'active' : '' }}">
+
+                    <i class="nav-icon fas fa-calendar-week"></i>
+
+                    <p>Reporte Semanal</p>
 
                 </a>
 
