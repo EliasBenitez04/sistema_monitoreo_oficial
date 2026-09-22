@@ -214,12 +214,26 @@ class OtController extends Controller
             'archivo' => 'required|mimes:xlsx,xls'
         ]);
 
+        $import = new OtImport();
+
         Excel::import(
-            new OtImport,
+            $import,
             $request->file('archivo')
         );
 
-        alert()->success('Éxito', 'Importación realizada correctamente');
+        $mensaje = 'Filas: ' . $import->getProcesadas()
+            . ' | OT creadas: ' . $import->getOtCreadas()
+            . ' | OT actualizadas: ' . $import->getOtActualizadas()
+            . ' | Trazabilidades nuevas: ' . $import->getTrazabilidadesNuevas()
+            . ' | Trazabilidades ya existentes: ' . $import->getTrazabilidadesExistentes()
+            . ' | Omitidas: ' . $import->getOmitidas()
+            . ' | Errores: ' . $import->getErrores();
+
+        if ($import->getOmitidas() > 0 || $import->getErrores() > 0) {
+            alert()->warning('Importación OT con observaciones', $mensaje);
+        } else {
+            alert()->success('Importación OT completada', $mensaje);
+        }
 
         return redirect()->route('ots.index');
     }
