@@ -139,10 +139,10 @@ class ControlTerminacionController extends Controller
                 $item->cantidad_logistica - $item->cantidad_terminada
             );
 
-            $fechaPt = CarbonCarbon::parse($item->fecha_producto_terminado)->startOfDay();
+            $fechaPt = \Carbon\Carbon::parse($item->fecha_producto_terminado)->startOfDay();
 
             if ($item->primera_salida) {
-                $fechaPrimeraSalida = CarbonCarbon::parse($item->primera_salida)->startOfDay();
+                $fechaPrimeraSalida = \Carbon\Carbon::parse($item->primera_salida)->startOfDay();
                 $item->dias_primera_salida = max(0, $fechaPt->diffInDays($fechaPrimeraSalida, false));
             } else {
                 $item->dias_primera_salida = null;
