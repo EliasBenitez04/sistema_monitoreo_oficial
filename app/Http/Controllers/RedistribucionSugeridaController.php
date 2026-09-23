@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\LoteRedistribucionExport;
 use Maatwebsite\Excel\Facades\Excel;
-use App\Imports\RedistribucionRemisionImport;
+use App\Imports\ControlTerminacionRemisionImport;
 
 class RedistribucionSugeridaController extends Controller
 {
@@ -3502,24 +3502,39 @@ class RedistribucionSugeridaController extends Controller
 
     public function importarRemisiones(Request $request)
     {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+        @ini_set('max_input_time', '-1');
+        @ini_set('memory_limit', '1536M');
+        @ignore_user_abort(true);
+
+        DB::disableQueryLog();
+
         $request->validate([
-            'archivo' => 'required|file|mimes:xlsx,xls',
+            'archivo' => 'required|file|mimes:xlsx,xls,csv|max:102400',
         ]);
 
         try {
+            $archivo = $request->file('archivo');
+            $import = new ControlTerminacionRemisionImport();
+            $extension = strtolower($archivo->getClientOriginalExtension());
 
-            Excel::import(
-                new RedistribucionRemisionImport(),
-                $request->file('archivo')
-            );
+            if ($extension === 'xlsx') {
+                $import->importarXlsxStreaming($archivo->getRealPath());
+            } else {
+                Excel::import($import, $archivo);
+            }
 
-            return back()->with(
-                'success',
-                'Las redistribuciones coincidentes fueron actualizadas automáticamente.'
-            );
-        } catch (\Exception $e) {
+            $mensaje = 'Importación unificada finalizada. '
+                . 'Líneas: ' . $import->getProcesadas()
+                . ' | OT/logística vinculadas: ' . $import->getVinculadas()
+                . ' | Redistribuciones actualizadas: ' . $import->getRedistribucionActualizadas()
+                . ' | Redistribuciones sin coincidencia: ' . $import->getRedistribucionSinCoincidencia()
+                . ' | Omitidas: ' . $import->getOmitidas() . '.';
 
-            Log::error('ERROR IMPORTANDO REMISIONES', [
+            return back()->with('success', $mensaje);
+        } catch (\Throwable $e) {
+            Log::error('ERROR IMPORTACION UNIFICADA REMISIONES', [
                 'error' => $e->getMessage(),
                 'line' => $e->getLine(),
                 'file' => $e->getFile(),
