@@ -25,7 +25,7 @@
             <div class="card-header">
                 <h3 class="card-title"><i class="fas fa-file-excel text-success mr-2"></i>Archivo ENVIOS / Remisiones</h3>
             </div>
-            <form method="POST" action="{{ route('remisiones.importar') }}" enctype="multipart/form-data">
+            <form id="form-importar-remisiones" method="POST" action="{{ route('remisiones.importar') }}" enctype="multipart/form-data">
                 @csrf
                 <div class="card-body">
                     <div class="alert alert-info">
@@ -60,10 +60,26 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-footer text-right">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-upload mr-1"></i> Importar y actualizar todo
-                    </button>
+                <div class="card-footer">
+                    <div id="estado-importacion" class="alert alert-light border mb-3 d-none">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap">
+                            <div>
+                                <i class="fas fa-spinner fa-spin text-primary mr-2"></i>
+                                <strong>Importando remisiones...</strong>
+                                <div class="text-muted small mt-1">Procesando OT/Logística y Redistribución. No cierre esta pantalla.</div>
+                            </div>
+                            <div class="text-right mt-2 mt-md-0">
+                                <div class="text-muted small">Tiempo transcurrido</div>
+                                <div id="contador-importacion" class="h4 mb-0 font-weight-bold">00:00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-right">
+                        <button id="btn-importar-remisiones" type="submit" class="btn btn-primary">
+                            <i class="fas fa-upload mr-1"></i> Importar y actualizar todo
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -77,5 +93,39 @@ document.getElementById('archivo_envios').addEventListener('change', function ()
     var nombre = this.files.length ? this.files[0].name : 'Seleccionar XLSX, XLS o CSV...';
     this.nextElementSibling.textContent = nombre;
 });
+
+(function () {
+    var form = document.getElementById('form-importar-remisiones');
+    var boton = document.getElementById('btn-importar-remisiones');
+    var estado = document.getElementById('estado-importacion');
+    var contador = document.getElementById('contador-importacion');
+    var intervalo = null;
+
+    form.addEventListener('submit', function () {
+        var inicio = Date.now();
+
+        boton.disabled = true;
+        boton.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Procesando...';
+        estado.classList.remove('d-none');
+
+        function actualizarContador() {
+            var total = Math.floor((Date.now() - inicio) / 1000);
+            var horas = Math.floor(total / 3600);
+            var minutos = Math.floor((total % 3600) / 60);
+            var segundos = total % 60;
+
+            var texto = String(minutos).padStart(2, '0') + ':' + String(segundos).padStart(2, '0');
+
+            if (horas > 0) {
+                texto = String(horas).padStart(2, '0') + ':' + texto;
+            }
+
+            contador.textContent = texto;
+        }
+
+        actualizarContador();
+        intervalo = setInterval(actualizarContador, 1000);
+    });
+})();
 </script>
 @endpush
