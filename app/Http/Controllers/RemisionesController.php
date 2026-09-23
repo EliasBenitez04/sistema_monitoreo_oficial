@@ -19,7 +19,14 @@ class RemisionesController extends Controller
 
     public function index()
     {
-        return view('remisiones.index');
+        $ultimaActualizacion = null;
+
+        if (Schema::hasTable('ot_logistica_remisiones')) {
+            $ultimaActualizacion = DB::table('ot_logistica_remisiones')
+                ->max('updated_at');
+        }
+
+        return view('remisiones.index', compact('ultimaActualizacion'));
     }
 
     public function importar(Request $request)
