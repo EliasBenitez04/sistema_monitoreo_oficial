@@ -156,7 +156,27 @@ class SeguimientoPedidoController extends Controller
             $ot->distribuido = (int) ($salidaLogistica->cantidad ?? 0);
             $ot->fecha_ingreso = $entrada->primera_fecha ?? null;
             $ot->fecha_pt = $pt->ultima_fecha ?? null;
-            $ot->fecha_logistica = $salidaLogistica->ultima_fecha ?? null;
+            $ot->fecha_logistica = $salidaLogistica->primera_fecha ?? null;
+            $ot->fecha_logistica_primera = $salidaLogistica->primera_fecha ?? null;
+            $ot->fecha_logistica_ultima = $salidaLogistica->ultima_fecha ?? null;
+
+            // Historial cronológico real de remisiones/salidas de esta OT.
+            // Permite distinguir la distribución inicial de los complementos posteriores.
+            $ot->historial_salidas = collect($remisiones->get($ot->id_ot, collect()))
+                ->filter(function ($r) { return !empty($r->ultima_remision); })
+                ->groupBy(function ($r) { return (string) $r->ultima_remision; })
+                ->map(function ($items, $fecha) {
+                    return (object) [
+                        'fecha' => $fecha,
+                        'cantidad' => (int) $items->sum('enviado'),
+                        'locales' => $items->map(function ($r) {
+                            return (object) [
+                                'local' => $r->sucursal_logistica ?: $r->sucursal_destino ?: ('Sucursal ' . $r->cod_sucursal_destino),
+                                'cantidad' => (int) $r->enviado,
+                            ];
+                        })->values(),
+                    ];
+                })->sortBy('fecha')->values();
 
             $ot->locales = collect($remisiones->get($ot->id_ot, collect()))->map(function ($r) {
                 $r->local = $r->sucursal_logistica ?: $r->sucursal_destino ?: ('Sucursal ' . $r->cod_sucursal_destino);
