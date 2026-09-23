@@ -1,4 +1,3 @@
-@include('redistribucion_sugeridas.importar-remisiones')
 <style>
     :root {
         --corporate-primary: #2563eb;
@@ -1565,22 +1564,6 @@
                 {{-- ACCIONES + BREADCRUMB --}}
                 <div class="col-md-5">
 
-                    {{-- BOTÓN IMPORTAR --}}
-                    @can('redistribucionsugerencia importarRemisiones')
-                        <div class="text-md-right mb-3">
-
-                            <button type="button" class="btn btn-import-remisiones" data-toggle="modal"
-                                data-target="#modalImportarRemisiones">
-
-                                <span class="import-btn-icon">
-                                    <i class="fas fa-file-import"></i>
-                                </span>
-
-                                <span>Importar remisiones</span>
-
-                            </button>
-                        </div>
-                    @endcan
                     <style>
                         .btn-import-remisiones {
                             display: inline-flex;
