@@ -97,6 +97,7 @@ class SeguimientoPedidoController extends Controller
         $trazas = collect();
         $logistica = collect();
         $remisiones = collect();
+        $movimientosRemision = collect();
 
         if (!empty($idsOt)) {
             $trazas = DB::table('ot_trazabilidad')
@@ -125,6 +126,19 @@ class SeguimientoPedidoController extends Controller
                 ->groupBy('id_ot');
 
             if (Schema::hasTable('ot_logistica_remisiones')) {
+                $movimientosRemision = DB::table('ot_logistica_remisiones')
+                    ->whereIn('id_ot', $idsOt)
+                    ->select(
+                        'id_ot', 'fecha_remision', 'fecha_recepcion',
+                        'sucursal_salida', 'sucursal_destino', 'sucursal_logistica',
+                        'cod_sucursal_salida', 'cod_sucursal_destino',
+                        'serie', 'numero_remision', 'cantidad'
+                    )
+                    ->orderBy('fecha_remision')
+                    ->orderBy('id')
+                    ->get()
+                    ->groupBy('id_ot');
+
                 $remisiones = DB::table('ot_logistica_remisiones')
                     ->whereIn('id_ot', $idsOt)
                     ->select(
@@ -160,24 +174,6 @@ class SeguimientoPedidoController extends Controller
             $ot->fecha_logistica_primera = $salidaLogistica->primera_fecha ?? null;
             $ot->fecha_logistica_ultima = $salidaLogistica->ultima_fecha ?? null;
 
-            // Historial cronológico real de remisiones/salidas de esta OT.
-            // Permite distinguir la distribución inicial de los complementos posteriores.
-            $ot->historial_salidas = collect($remisiones->get($ot->id_ot, collect()))
-                ->filter(function ($r) { return !empty($r->ultima_remision); })
-                ->groupBy(function ($r) { return (string) $r->ultima_remision; })
-                ->map(function ($items, $fecha) {
-                    return (object) [
-                        'fecha' => $fecha,
-                        'cantidad' => (int) $items->sum('enviado'),
-                        'locales' => $items->map(function ($r) {
-                            return (object) [
-                                'local' => $r->sucursal_logistica ?: $r->sucursal_destino ?: ('Sucursal ' . $r->cod_sucursal_destino),
-                                'cantidad' => (int) $r->enviado,
-                            ];
-                        })->values(),
-                    ];
-                })->sortBy('fecha')->values();
-
             $ot->locales = collect($remisiones->get($ot->id_ot, collect()))->map(function ($r) {
                 $r->local = $r->sucursal_logistica ?: $r->sucursal_destino ?: ('Sucursal ' . $r->cod_sucursal_destino);
                 $r->enviado = (int) $r->enviado;
@@ -188,6 +184,22 @@ class SeguimientoPedidoController extends Controller
                     : ($r->recibido > 0 ? 'PARCIAL' : 'EN TRANSITO');
                 return $r;
             })->values();
+
+            // Auditoría de movimientos: conserva origen -> destino. No se suma como prendas nuevas.
+            $movsOt = collect($movimientosRemision->get($ot->id_ot, collect()));
+            $ot->movimientos_detalle = $movsOt->map(function ($m) {
+                $origen = trim((string) ($m->sucursal_salida ?? ''));
+                $destino = trim((string) ($m->sucursal_logistica ?: $m->sucursal_destino));
+                $m->origen_mostrar = $origen !== '' ? $origen : ('Sucursal ' . ($m->cod_sucursal_salida ?? '-'));
+                $m->destino_mostrar = $destino !== '' ? $destino : ('Sucursal ' . ($m->cod_sucursal_destino ?? '-'));
+                $m->cantidad = (int) $m->cantidad;
+                $origenNorm = strtoupper($m->origen_mostrar);
+                $m->tipo_movimiento = in_array($origenNorm, ['CASA CENTRAL', 'MATRIZ'], true)
+                    ? 'DESPACHO CENTRAL'
+                    : 'REDISTRIBUCION';
+                return $m;
+            })->values();
+            $ot->cantidad_movimientos = $ot->movimientos_detalle->count();
 
             // Los 12 locales comerciales se controlan separados del canal Mayorista/Depósito.
             // CASA CENTRAL y MATRIZ son nodos del canal mayorista y no deben inflar el contador de locales.
