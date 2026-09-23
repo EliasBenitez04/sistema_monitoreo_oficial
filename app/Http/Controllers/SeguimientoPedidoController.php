@@ -167,19 +167,37 @@ class SeguimientoPedidoController extends Controller
             $ot->locales_confirmados = $ot->locales_comerciales->where('estado_local', 'RECIBIDO')->count();
             $ot->pendiente_recepcion = max(0, $topeOt - $ot->recibido);
 
+            // Etapa real de punta a punta. No se infiere por una etiqueta manual:
+            // se determina por la evidencia existente en trazabilidad/remisiones.
             if ($ot->ingreso_terminacion <= 0) {
+                $ot->etapa_actual = 'PENDIENTE TERMINACION';
+                $ot->etapa_numero = 0;
                 $ot->estado_seguimiento = 'SIN TERMINACION';
             } elseif ($ot->producto_terminado < $ot->ingreso_terminacion) {
+                $ot->etapa_actual = 'TERMINACION';
+                $ot->etapa_numero = 1;
                 $ot->estado_seguimiento = 'EN TERMINACION';
-            } elseif ($ot->enviado <= 0) {
+            } elseif ($ot->distribuido <= 0) {
+                $ot->etapa_actual = 'PRODUCTO TERMINADO';
+                $ot->etapa_numero = 2;
                 $ot->estado_seguimiento = 'TERMINADO';
+            } elseif ($ot->movimientos_fisicos <= 0) {
+                $ot->etapa_actual = 'LOGISTICA';
+                $ot->etapa_numero = 3;
+                $ot->estado_seguimiento = 'EN LOGISTICA';
             } elseif ($ot->recibido < $ot->enviado) {
+                $ot->etapa_actual = 'REMISION';
+                $ot->etapa_numero = 4;
                 $ot->estado_seguimiento = $ot->recibido > 0 ? 'RECEPCION PARCIAL' : 'EN TRANSITO';
-            } elseif ($ot->locales_enviados > 0 && $ot->locales_confirmados === $ot->locales_enviados) {
-                $ot->estado_seguimiento = 'COMPLETO';
             } else {
-                $ot->estado_seguimiento = 'EN SEGUIMIENTO';
+                $ot->etapa_actual = 'RECEPCION LOCAL';
+                $ot->etapa_numero = 5;
+                $ot->estado_seguimiento = 'COMPLETO';
             }
+
+            $ot->porcentaje_seguimiento = $ot->etapa_numero > 0
+                ? (int) round(($ot->etapa_numero / 5) * 100)
+                : 0;
         }
 
         $resumen = (object) [
