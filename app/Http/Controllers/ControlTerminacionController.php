@@ -550,6 +550,8 @@ class ControlTerminacionController extends Controller
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
                 . ' | Sin detalle logístico: ' . $import->getSinVincular()
                 . ' | Sin OT: ' . $import->getSinOt()
+                . ' | Redistribuciones actualizadas: ' . $import->getRedistribucionActualizadas()
+                . ' | Redistribuciones sin coincidencia: ' . $import->getRedistribucionSinCoincidencia()
                 . ' | Omitidas: ' . $import->getOmitidas() . '.';
 
             return redirect()
