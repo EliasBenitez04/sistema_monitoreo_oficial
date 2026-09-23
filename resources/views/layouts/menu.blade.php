@@ -226,10 +226,10 @@
 
 
     <li
-        class="nav-item {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'reporte.logistica-semanal*', 'dashboard.ot-atrasadas') ? 'menu-open' : '' }}">
+        class="nav-item {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'reporte.logistica-semanal*', 'dashboard.ot-atrasadas', 'seguimiento-pedidos.*') ? 'menu-open' : '' }}">
 
         <a href="#"
-            class="nav-link {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas') ? 'active' : '' }}">
+            class="nav-link {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas', 'seguimiento-pedidos.*') ? 'active' : '' }}">
 
             <i class="nav-icon fas fa-tasks"></i>
 
@@ -318,6 +318,15 @@
 
             </li>
 
+
+
+            <li class="nav-item">
+                <a href="{{ route('seguimiento-pedidos.index') }}"
+                    class="nav-link {{ request()->routeIs('seguimiento-pedidos.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-route"></i>
+                    <p>Seguimiento Pedidos</p>
+                </a>
+            </li>
 
 
             {{-- <li class="nav-item">
