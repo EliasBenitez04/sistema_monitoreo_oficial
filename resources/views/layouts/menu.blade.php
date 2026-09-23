@@ -26,7 +26,7 @@
 
 
 @php
-    $menuMonitoreo = request()->routeIs('stock_ventas_sucursales.*', 'RedistribucionSugeridas.*', 'redistribucion-configs.*');
+    $menuMonitoreo = request()->routeIs('stock_ventas_sucursales.*', 'RedistribucionSugeridas.*', 'redistribucion-configs.*', 'remisiones.*');
 @endphp
 
 
@@ -392,6 +392,17 @@
                 </li>
             @endcan
 
+
+
+            @can('redistribucionsugerencia update')
+                <li class="nav-item">
+                    <a href="{{ route('remisiones.index') }}"
+                        class="nav-link {{ request()->routeIs('remisiones.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-file-import"></i>
+                        <p>Importar Remisiones</p>
+                    </a>
+                </li>
+            @endcan
 
 
             @can('redistribucionsugerencia index')
