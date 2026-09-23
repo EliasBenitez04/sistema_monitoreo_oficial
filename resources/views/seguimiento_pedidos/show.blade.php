@@ -45,12 +45,53 @@
             <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
         </div>
 
-        <div class="d-flex align-items-center mb-3">
-            <span class="badge badge-secondary mr-2">TERMINACIÓN</span><i class="fas fa-arrow-right text-muted mr-2"></i>
-            <span class="badge badge-info mr-2">PRODUCTO TERMINADO</span><i class="fas fa-arrow-right text-muted mr-2"></i>
-            <span class="badge badge-primary mr-2">LOGÍSTICA</span><i class="fas fa-arrow-right text-muted mr-2"></i>
-            <span class="badge badge-warning mr-2">REMISIÓN</span><i class="fas fa-arrow-right text-muted mr-2"></i>
-            <span class="badge badge-success">RECEPCIÓN LOCAL</span>
+        @php
+            $etapas = [
+                1 => ['TERMINACIÓN', 'fa-industry'],
+                2 => ['PRODUCTO TERMINADO', 'fa-box'],
+                3 => ['LOGÍSTICA', 'fa-truck-loading'],
+                4 => ['REMISIÓN', 'fa-file-invoice'],
+                5 => ['RECEPCIÓN LOCAL', 'fa-store'],
+            ];
+        @endphp
+
+        <div class="seguimiento-panel mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+                <div>
+                    <div class="text-muted small text-uppercase font-weight-bold">Etapa actual</div>
+                    <div class="seguimiento-etapa-actual">
+                        <i class="fas fa-map-marker-alt mr-2"></i>{{ $ot->etapa_actual }}
+                    </div>
+                </div>
+                <div class="text-right mt-2 mt-md-0">
+                    <strong>{{ $ot->porcentaje_seguimiento }}%</strong>
+                    <div class="small text-muted">avance del flujo</div>
+                </div>
+            </div>
+
+            <div class="seguimiento-linea">
+                @foreach($etapas as $numero => $etapa)
+                    @php
+                        $completada = $ot->etapa_numero > $numero;
+                        $actual = $ot->etapa_numero === $numero;
+                    @endphp
+                    <div class="seguimiento-paso {{ $completada ? 'completado' : '' }} {{ $actual ? 'actual' : '' }}">
+                        <div class="seguimiento-circulo">
+                            <i class="fas {{ $completada ? 'fa-check' : $etapa[1] }}"></i>
+                        </div>
+                        <div class="seguimiento-nombre">{{ $etapa[0] }}</div>
+                        <div class="seguimiento-estado">
+                            @if($completada)
+                                Completado
+                            @elseif($actual)
+                                Etapa actual
+                            @else
+                                Pendiente
+                            @endif
+                        </div>
+                    </div>
+                @endforeach
+            </div>
         </div>
 
         <div class="row mb-3">
@@ -107,3 +148,31 @@
 @endforeach
 </div></section>
 @endsection
+
+
+@push('page_css')
+<style>
+.seguimiento-panel{background:#f8fafc;border:1px solid #e3e8ef;border-radius:12px;padding:18px 20px}
+.seguimiento-etapa-actual{font-size:1.05rem;font-weight:700;color:#212529}
+.seguimiento-linea{display:flex;position:relative;justify-content:space-between;margin-top:8px}
+.seguimiento-linea:before{content:"";position:absolute;left:8%;right:8%;top:19px;height:3px;background:#dce2e8;z-index:0}
+.seguimiento-paso{position:relative;z-index:1;width:20%;text-align:center;padding:0 4px}
+.seguimiento-circulo{width:40px;height:40px;margin:0 auto 8px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:3px solid #ced4da;color:#adb5bd}
+.seguimiento-nombre{font-size:.74rem;font-weight:700;color:#6c757d;line-height:1.15}
+.seguimiento-estado{font-size:.68rem;color:#adb5bd;margin-top:3px}
+.seguimiento-paso.completado .seguimiento-circulo{background:#28a745;border-color:#28a745;color:#fff}
+.seguimiento-paso.completado .seguimiento-nombre{color:#218838}
+.seguimiento-paso.completado .seguimiento-estado{color:#28a745}
+.seguimiento-paso.actual .seguimiento-circulo{background:#007bff;border-color:#007bff;color:#fff;box-shadow:0 0 0 5px rgba(0,123,255,.12)}
+.seguimiento-paso.actual .seguimiento-nombre{color:#0056b3}
+.seguimiento-paso.actual .seguimiento-estado{color:#007bff;font-weight:700}
+@media(max-width:767.98px){
+ .seguimiento-linea{display:block}
+ .seguimiento-linea:before{display:none}
+ .seguimiento-paso{width:100%;display:flex;align-items:center;text-align:left;margin:9px 0}
+ .seguimiento-circulo{margin:0 12px 0 0;min-width:38px;width:38px;height:38px}
+ .seguimiento-nombre{width:48%}
+ .seguimiento-estado{margin:0 0 0 auto}
+}
+</style>
+@endpush
