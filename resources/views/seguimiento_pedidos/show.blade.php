@@ -118,36 +118,46 @@
             </div>
         </div>
 
-        @if($ot->historial_salidas->count())
-        <div class="card border-0 bg-light mb-3">
-            <div class="card-header bg-transparent border-0 pb-1 text-center">
-                <strong><i class="fas fa-history mr-1"></i> Historial de salidas / complementos</strong>
-                <div class="small text-muted">La primera fecha representa la salida inicial; las siguientes son movimientos posteriores de la misma OT.</div>
-            </div>
-            <div class="card-body pt-2">
-                <div class="row justify-content-center">
-                    @foreach($ot->historial_salidas as $i => $salida)
-                    <div class="col-xl-3 col-lg-4 col-md-6 mb-2">
-                        <div class="border rounded bg-white p-2 h-100 text-center">
-                            <div class="small text-muted">{{ $i === 0 ? 'SALIDA INICIAL' : 'MOVIMIENTO POSTERIOR' }}</div>
-                            <strong>{{ date('d/m/Y', strtotime($salida->fecha)) }}</strong>
-                            <div class="h5 mb-1">{{ number_format($salida->cantidad,0,',','.') }} prendas</div>
-                            <div class="small text-muted">
-                                @foreach($salida->locales as $destino)
-                                    <span class="badge badge-light border mb-1">{{ $destino->local }}: {{ number_format($destino->cantidad,0,',','.') }}</span>
-                                @endforeach
-                            </div>
-                        </div>
+        @if($ot->cantidad_movimientos > 0)
+        <div class="text-center mb-3">
+            <button class="btn btn-sm btn-outline-secondary px-3" type="button" data-toggle="collapse" data-target="#movimientos-ot-{{ $ot->id_ot }}" aria-expanded="false">
+                <i class="fas fa-exchange-alt mr-1"></i> Ver movimientos ({{ $ot->cantidad_movimientos }})
+                <i class="fas fa-chevron-down ml-1"></i>
+            </button>
+        </div>
+        <div class="collapse mb-3" id="movimientos-ot-{{ $ot->id_ot }}">
+            <div class="card border-0 bg-light mb-0">
+                <div class="card-header bg-transparent text-center border-0 pb-1">
+                    <strong><i class="fas fa-route mr-1"></i> Auditoría de movimientos</strong>
+                    <div class="small text-muted">Muestra el recorrido físico. Una redistribución no representa prendas nuevas de la OT.</div>
+                </div>
+                <div class="card-body pt-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover text-center align-middle bg-white mb-0">
+                            <thead><tr><th>Fecha</th><th>Origen</th><th></th><th>Destino</th><th>Cantidad</th><th>Tipo</th><th>Recepción</th></tr></thead>
+                            <tbody>
+                            @foreach($ot->movimientos_detalle as $mov)
+                                <tr>
+                                    <td>{{ $mov->fecha_remision ? date('d/m/Y', strtotime($mov->fecha_remision)) : '-' }}</td>
+                                    <td><strong>{{ $mov->origen_mostrar }}</strong></td>
+                                    <td><i class="fas fa-long-arrow-alt-right text-muted"></i></td>
+                                    <td><strong>{{ $mov->destino_mostrar }}</strong></td>
+                                    <td><span class="badge badge-primary px-2">{{ number_format($mov->cantidad,0,',','.') }}</span></td>
+                                    <td><span class="badge {{ $mov->tipo_movimiento === 'DESPACHO CENTRAL' ? 'badge-info' : 'badge-warning' }}">{{ $mov->tipo_movimiento }}</span></td>
+                                    <td>{{ $mov->fecha_recepcion ? date('d/m/Y', strtotime($mov->fecha_recepcion)) : 'Pendiente' }}</td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
                     </div>
-                    @endforeach
                 </div>
             </div>
         </div>
         @endif
 
         <div class="row mb-3">
-            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Movimientos físicos</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
-            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Movimientos adicionales</small><strong>{{ number_format($ot->movimientos_adicionales,0,',','.') }}</strong></div></div>
+            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen movido (auditoría)</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
+            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen re-movido</small><strong>{{ number_format($ot->movimientos_adicionales,0,',','.') }}</strong></div></div>
             <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Locales comerciales confirmados</small><strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> <span class="text-muted">(máximo operativo: 12)</span></div></div>
         </div>
 
