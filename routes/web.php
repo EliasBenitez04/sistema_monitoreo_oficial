@@ -14,6 +14,7 @@ use App\Http\Controllers\StockController;
 use App\Http\Controllers\OtController;
 use App\Http\Controllers\ProcesadorImagenController;
 use App\Http\Controllers\RedistribucionSugeridaController;
+use App\Http\Controllers\RemisionesController;
 
 
 /*
@@ -774,11 +775,6 @@ Route::get(
 
 
 
-Route::post(
-    '/redistribucion-sugeridas/importar-remisiones',
-    [RedistribucionSugeridaController::class, 'importarRemisiones']
-)->name('RedistribucionSugeridas.importarRemisiones');
-
 Route::get(
     '/dashboard/ot-logistica',
     [OtController::class, 'dashboardlogistica']
@@ -817,10 +813,8 @@ Route::get(
     [ControlTerminacionController::class, 'detalle']
 )->name('control.terminacion.detalle');
 
-Route::post(
-    '/control/terminacion/importar-remisiones',
-    [ControlTerminacionController::class, 'importarRemisiones']
-)->name('control.terminacion.importar-remisiones');
+Route::get('/remisiones/importar', [RemisionesController::class, 'index'])->name('remisiones.index');
+Route::post('/remisiones/importar', [RemisionesController::class, 'importar'])->name('remisiones.importar');
 
 Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionConfigController::class)
     ->only(['index', 'store']);
