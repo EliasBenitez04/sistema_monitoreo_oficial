@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\LoteRedistribucionExport;
 use Maatwebsite\Excel\Facades\Excel;
-use App\Imports\ControlTerminacionRemisionImport;
 
 class RedistribucionSugeridaController extends Controller
 {
@@ -3500,50 +3499,4 @@ class RedistribucionSugeridaController extends Controller
         );
     }
 
-    public function importarRemisiones(Request $request)
-    {
-        @set_time_limit(0);
-        @ini_set('max_execution_time', '0');
-        @ini_set('max_input_time', '-1');
-        @ini_set('memory_limit', '1536M');
-        @ignore_user_abort(true);
-
-        DB::disableQueryLog();
-
-        $request->validate([
-            'archivo' => 'required|file|mimes:xlsx,xls,csv|max:102400',
-        ]);
-
-        try {
-            $archivo = $request->file('archivo');
-            $import = new ControlTerminacionRemisionImport();
-            $extension = strtolower($archivo->getClientOriginalExtension());
-
-            if ($extension === 'xlsx') {
-                $import->importarXlsxStreaming($archivo->getRealPath());
-            } else {
-                Excel::import($import, $archivo);
-            }
-
-            $mensaje = 'Importación unificada finalizada. '
-                . 'Líneas: ' . $import->getProcesadas()
-                . ' | OT/logística vinculadas: ' . $import->getVinculadas()
-                . ' | Redistribuciones actualizadas: ' . $import->getRedistribucionActualizadas()
-                . ' | Redistribuciones sin coincidencia: ' . $import->getRedistribucionSinCoincidencia()
-                . ' | Omitidas: ' . $import->getOmitidas() . '.';
-
-            return back()->with('success', $mensaje);
-        } catch (\Throwable $e) {
-            Log::error('ERROR IMPORTACION UNIFICADA REMISIONES', [
-                'error' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
-            ]);
-
-            return back()->with(
-                'error',
-                'Error al importar el archivo: ' . $e->getMessage()
-            );
-        }
-    }
 }
