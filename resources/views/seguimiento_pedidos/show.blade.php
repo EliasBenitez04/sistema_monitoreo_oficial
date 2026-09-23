@@ -64,7 +64,7 @@
             <div class="col-md"><small class="text-muted d-block">Orden</small><strong>{{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
             <div class="col-md"><small class="text-muted d-block">Ingreso Terminación</small><strong>{{ number_format($ot->ingreso_terminacion,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_ingreso ? date('d/m/Y', strtotime($ot->fecha_ingreso)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Producto Terminado</small><strong>{{ number_format($ot->producto_terminado,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_pt ? date('d/m/Y', strtotime($ot->fecha_pt)) : '-' }}</div></div>
-            <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_logistica ? date('d/m/Y', strtotime($ot->fecha_logistica)) : '-' }}</div></div>
+            <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª salida: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. movimiento: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
             <div class="col-md"><small class="text-muted d-block">Distribución efectiva</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
             <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
         </div>
@@ -117,6 +117,33 @@
                 @endforeach
             </div>
         </div>
+
+        @if($ot->historial_salidas->count())
+        <div class="card border-0 bg-light mb-3">
+            <div class="card-header bg-transparent border-0 pb-1 text-center">
+                <strong><i class="fas fa-history mr-1"></i> Historial de salidas / complementos</strong>
+                <div class="small text-muted">La primera fecha representa la salida inicial; las siguientes son movimientos posteriores de la misma OT.</div>
+            </div>
+            <div class="card-body pt-2">
+                <div class="row justify-content-center">
+                    @foreach($ot->historial_salidas as $i => $salida)
+                    <div class="col-xl-3 col-lg-4 col-md-6 mb-2">
+                        <div class="border rounded bg-white p-2 h-100 text-center">
+                            <div class="small text-muted">{{ $i === 0 ? 'SALIDA INICIAL' : 'MOVIMIENTO POSTERIOR' }}</div>
+                            <strong>{{ date('d/m/Y', strtotime($salida->fecha)) }}</strong>
+                            <div class="h5 mb-1">{{ number_format($salida->cantidad,0,',','.') }} prendas</div>
+                            <div class="small text-muted">
+                                @foreach($salida->locales as $destino)
+                                    <span class="badge badge-light border mb-1">{{ $destino->local }}: {{ number_format($destino->cantidad,0,',','.') }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+        @endif
 
         <div class="row mb-3">
             <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Movimientos físicos</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
