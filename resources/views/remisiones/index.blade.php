@@ -6,7 +6,16 @@
         <div class="row align-items-center">
             <div class="col">
                 <h1><i class="fas fa-file-import mr-2"></i>Importación de Remisiones</h1>
-                <p class="text-muted mb-0">Un único archivo actualiza OT/Logística y Redistribución.</p>
+                <p class="text-muted mb-1">Un único archivo actualiza OT/Logística y Redistribución.</p>
+                <div class="small">
+                    <i class="far fa-clock mr-1 text-primary"></i>
+                    <strong>Última vez actualizado:</strong>
+                    @if($ultimaActualizacion)
+                        {{ \Carbon\Carbon::parse($ultimaActualizacion)->format('d/m/Y H:i:s') }}
+                    @else
+                        <span class="text-muted">Aún no hay importaciones registradas</span>
+                    @endif
+                </div>
             </div>
         </div>
     </div>
