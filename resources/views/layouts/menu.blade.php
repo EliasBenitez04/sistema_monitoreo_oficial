@@ -1,6 +1,6 @@
 <li class="nav-item">
     <a href="{{ route('home') }}" class="nav-link {{ Request::is('home') ? 'active' : '' }}">
-        <i class="nav-icon fas fa-home"></i>
+        <i class="nav-icon fas fa-house-user"></i>
         <p>Inicio</p>
     </a>
 </li>
@@ -40,7 +40,7 @@
 
         <a href="#" class="nav-link {{ $menuCargaDatos ? 'active' : '' }}">
 
-            <i class="nav-icon fas fa-database"></i>
+            <i class="nav-icon fas fa-folder-open"></i>
 
             <p>
                 Gestión
@@ -56,9 +56,9 @@
                 <a href="{{ route('articulos.index') }}"
                     class="nav-link {{ request()->routeIs('articulos.*') ? 'active' : '' }}">
 
-                    <i class="nav-icon fas fa-box-open"></i>
+                    <i class="nav-icon fas fa-boxes"></i>
 
-                    <p>- Artículos</p>
+                    <p>Artículos</p>
 
                 </a>
             </li>
@@ -68,9 +68,9 @@
                 <li class="nav-item">
                     <a href="{{ route('stocks.index') }}" class="nav-link {{ request()->routeIs('stocks.*') ? 'active' : '' }}">
 
-                        <i class="nav-icon fas fa-sync-alt"></i>
+                        <i class="nav-icon fas fa-file-upload"></i>
 
-                        <p>- Importar Stock</p>
+                        <p>Importar Stock</p>
 
                     </a>
                 </li>
@@ -82,7 +82,7 @@
 
                     <i class="nav-icon fas fa-tshirt"></i>
 
-                    <p>- Líneas</p>
+                    <p>Líneas</p>
 
                 </a>
             </li>
@@ -94,7 +94,7 @@
 
                     <i class="nav-icon fas fa-store"></i>
 
-                    <p>- Sucursales</p>
+                    <p>Sucursales</p>
 
                 </a>
             </li>
@@ -104,9 +104,9 @@
                 <a href="{{ route('clientes.index') }}"
                     class="nav-link {{ request()->routeIs('clientes.*') ? 'active' : '' }}">
 
-                    <i class="nav-icon fas fa-user-friends"></i>
+                    <i class="nav-icon fas fa-address-book"></i>
 
-                    <p>- Clientes</p>
+                    <p>Clientes</p>
 
                 </a>
             </li>
@@ -118,7 +118,7 @@
 
                     <i class="nav-icon fas fa-map-marked-alt"></i>
 
-                    <p>- Departamentos</p>
+                    <p>Departamentos</p>
 
                 </a>
             </li>
@@ -130,7 +130,7 @@
 
                     <i class="nav-icon fas fa-city"></i>
 
-                    <p>- Ciudades</p>
+                    <p>Ciudades</p>
 
                 </a>
             </li>
@@ -154,7 +154,7 @@
 
         <a href="#" class="nav-link {{ request()->routeIs('pedido_compras.*') ? 'active' : '' }}">
 
-            <i class="nav-icon fas fa-file-invoice"></i>
+            <i class="nav-icon fas fa-clipboard-list"></i>
 
             <p>
                 Pedidos
@@ -231,7 +231,7 @@
         <a href="#"
             class="nav-link {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas') ? 'active' : '' }}">
 
-            <i class="nav-icon fas fa-file"></i>
+            <i class="nav-icon fas fa-tasks"></i>
 
             <p>
                 OT
@@ -364,7 +364,7 @@
 
         <a href="#" class="nav-link {{ $menuMonitoreo ? 'active' : '' }}">
 
-            <i class="nav-icon fas fa-desktop"></i>
+            <i class="nav-icon fas fa-chart-pie"></i>
 
             <p>
                 MONITOREO
@@ -398,7 +398,7 @@
                 <li class="nav-item">
                     <a href="{{ route('remisiones.index') }}"
                         class="nav-link {{ request()->routeIs('remisiones.*') ? 'active' : '' }}">
-                        <i class="nav-icon fas fa-file-import"></i>
+                        <i class="nav-icon fas fa-file-excel"></i>
                         <p>Importar Remisiones</p>
                     </a>
                 </li>
@@ -577,7 +577,7 @@
 
 {{-- <li class="nav-item">
     <a href="{{ route('redistribucionConfigs.index') }}" class="nav-link {{ Request::is('redistribucionConfigs*') ? 'active' : '' }}">
-            <i class="nav-icon fas fa-home"></i>
+            <i class="nav-icon fas fa-house-user"></i>
         <p>Redistribucion Configs</p>
     </a>
 </li> --}}
