@@ -23,6 +23,33 @@ class SeguimientoPedidoController extends Controller
 
         $query = SeguimientoPedido::query()
             ->withCount('detalles')
+            ->select('seguimiento_pedido.*')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->selectRaw('COALESCE(SUM(o.cantidad_orden), 0)');
+            }, 'cantidad_total')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_trazabilidad as t', 't.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->where('t.proceso', 'TERMINACION - PRODUCTO TERMINADO')
+                    ->selectRaw('COALESCE(SUM(t.resultado), 0)');
+            }, 'producto_terminado')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
+            }, 'movimientos')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->whereNotNull('r.fecha_recepcion')
+                    ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
+            }, 'confirmado')
             ->orderByDesc('id');
 
         if ($buscar !== '') {
