@@ -142,11 +142,30 @@ class SeguimientoPedidoController extends Controller
                 return $r;
             })->values();
 
-            $ot->enviado = (int) $ot->locales->sum('enviado');
-            $ot->recibido = (int) $ot->locales->sum('recibido');
-            $ot->locales_enviados = $ot->locales->count();
-            $ot->locales_confirmados = $ot->locales->where('estado_local', 'RECIBIDO')->count();
-            $ot->pendiente_recepcion = max(0, $ot->enviado - $ot->recibido);
+            // Los 12 locales comerciales se controlan separados del canal Mayorista/Depósito.
+            // CASA CENTRAL y MATRIZ son nodos del canal mayorista y no deben inflar el contador de locales.
+            $esMayorista = function ($local) {
+                $nombre = strtoupper(trim((string) $local->local));
+                return in_array($nombre, ['CASA CENTRAL', 'MATRIZ'], true);
+            };
+
+            $ot->locales_comerciales = $ot->locales->reject($esMayorista)->values();
+            $ot->canal_mayorista = $ot->locales->filter($esMayorista)->values();
+
+            // Movimientos físicos: auditoría. Pueden superar la cantidad de la OT por retornos/reenvíos.
+            $ot->movimientos_fisicos = (int) $ot->locales->sum('enviado');
+            $ot->movimientos_confirmados = (int) $ot->locales->sum('recibido');
+
+            // Avance efectivo: nunca supera las prendas reales de la OT.
+            $topeOt = max(0, (int) $ot->cantidad_orden);
+            $ot->enviado = min($topeOt, $ot->movimientos_fisicos);
+            $ot->recibido = min($topeOt, $ot->movimientos_confirmados);
+            $ot->movimientos_adicionales = max(0, $ot->movimientos_fisicos - $topeOt);
+            $ot->movimientos_confirmados_adicionales = max(0, $ot->movimientos_confirmados - $topeOt);
+
+            $ot->locales_enviados = $ot->locales_comerciales->count();
+            $ot->locales_confirmados = $ot->locales_comerciales->where('estado_local', 'RECIBIDO')->count();
+            $ot->pendiente_recepcion = max(0, $topeOt - $ot->recibido);
 
             if ($ot->ingreso_terminacion <= 0) {
                 $ot->estado_seguimiento = 'SIN TERMINACION';
