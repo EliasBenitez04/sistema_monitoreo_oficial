@@ -15,6 +15,7 @@ use App\Http\Controllers\OtController;
 use App\Http\Controllers\ProcesadorImagenController;
 use App\Http\Controllers\RedistribucionSugeridaController;
 use App\Http\Controllers\RemisionesController;
+use App\Http\Controllers\SeguimientoPedidoController;
 
 
 /*
@@ -818,3 +819,12 @@ Route::post('/remisiones/importar', [RemisionesController::class, 'importar'])->
 
 Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionConfigController::class)
     ->only(['index', 'store']);
+
+/*
+|--------------------------------------------------------------------------
+| SEGUIMIENTO DE PEDIDOS
+|--------------------------------------------------------------------------
+*/
+Route::get('/seguimiento-pedidos', [SeguimientoPedidoController::class, 'index'])->name('seguimiento-pedidos.index');
+Route::post('/seguimiento-pedidos/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-pedidos.importar');
+Route::get('/seguimiento-pedidos/{id}', [SeguimientoPedidoController::class, 'show'])->name('seguimiento-pedidos.show');
