@@ -2,6 +2,8 @@
 
 namespace App\Imports;
 
+use App\Models\RedistribucionProcesoDetalle;
+use App\Models\RedistribucionRemision;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +25,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     private $sinVincular = 0;
     private $sinOt = 0;
     private $omitidas = 0;
+    private $redistribucionActualizadas = 0;
+    private $redistribucionSinCoincidencia = 0;
 
     private $documentosEstado = [];
 
@@ -524,6 +528,116 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                     'updated_at',
                 ]
             );
+        }
+
+        // El mismo archivo ENVIOS actualiza también la redistribución.
+        $this->sincronizarRedistribucion($filas);
+    }
+
+    private function sincronizarRedistribucion(Collection $filas): void
+    {
+        foreach ($filas as $fila) {
+            $origen = (int) $fila['cod_sucursal_salida'];
+            $destino = (int) $fila['cod_sucursal_destino'];
+            $codigo = $this->normalizarCodigoCompleto($fila['codigo']);
+            $serie = trim((string) $fila['serie']);
+            $numero = (int) $fila['numero_remision'];
+            $cantidad = (int) $fila['cantidad'];
+
+            $detalles = RedistribucionProcesoDetalle::where('sucursal_origen', $origen)
+                ->where('sucursal_destino', $destino)
+                ->where('codigo', $codigo)
+                ->orderBy('id')
+                ->get();
+
+            if ($detalles->isEmpty()) {
+                $this->redistribucionSinCoincidencia++;
+                continue;
+            }
+
+            $detalle = null;
+            $remision = null;
+
+            foreach ($detalles as $candidato) {
+                $existente = RedistribucionRemision::where('detalle_id', $candidato->id)
+                    ->where('serie', $serie)
+                    ->where('numero_remision', $numero)
+                    ->first();
+
+                if ($existente) {
+                    $detalle = $candidato;
+                    $remision = $existente;
+                    break;
+                }
+            }
+
+            if (!$detalle) {
+                foreach ($detalles as $candidato) {
+                    $transferido = (int) RedistribucionRemision::where('detalle_id', $candidato->id)->sum('cantidad_transferida');
+                    if (((int) $candidato->cantidad - $transferido) >= $cantidad) {
+                        $detalle = $candidato;
+                        break;
+                    }
+                }
+            }
+
+            if (!$detalle) {
+                foreach ($detalles as $candidato) {
+                    $transferido = (int) RedistribucionRemision::where('detalle_id', $candidato->id)->sum('cantidad_transferida');
+                    if (((int) $candidato->cantidad - $transferido) > 0) {
+                        $detalle = $candidato;
+                        break;
+                    }
+                }
+            }
+
+            if (!$detalle) {
+                $this->redistribucionSinCoincidencia++;
+                continue;
+            }
+
+            DB::transaction(function () use ($fila, $detalle, $remision, $serie, $numero, $cantidad) {
+                if (!$remision) {
+                    $remision = new RedistribucionRemision();
+                    $remision->detalle_id = $detalle->id;
+                    $remision->serie = $serie;
+                    $remision->numero_remision = $numero;
+                    $remision->cantidad_transferida = $cantidad;
+                }
+
+                if (!empty($fila['fecha_remision'])) {
+                    $remision->fecha_remision = $fila['fecha_remision'];
+                    $detalle->fecha_remision = $fila['fecha_remision'];
+                }
+                if (!empty($fila['fecha_creacion'])) {
+                    $remision->fecha_creacion = $fila['fecha_creacion'];
+                }
+                if (!empty($fila['fecha_recepcion'])) {
+                    $remision->fecha_recepcion = $fila['fecha_recepcion'];
+                    $detalle->fecha_recepcion = $fila['fecha_recepcion'];
+                }
+
+                $remision->save();
+
+                $totalTransferido = (int) RedistribucionRemision::where('detalle_id', $detalle->id)->sum('cantidad_transferida');
+                $cantidadPedida = (int) $detalle->cantidad;
+                $diferencia = $cantidadPedida - $totalTransferido;
+                $resultado = $totalTransferido > $cantidadPedida ? 'EXCEDENTE' : ($totalTransferido === $cantidadPedida ? 'COMPLETO' : 'PARCIAL');
+
+                if (!empty($fila['fecha_recepcion'])) {
+                    $detalle->estado = 'FINALIZADO';
+                } elseif (!empty($fila['fecha_remision'])) {
+                    $detalle->estado = 'REALIZADO';
+                }
+
+                $detalle->observacion = 'Pedido: ' . $cantidadPedida
+                    . ' | Transferido: ' . $totalTransferido
+                    . ' | Diferencia: ' . $diferencia
+                    . ' | Resultado: ' . $resultado;
+                $detalle->save();
+            });
+
+            $this->redistribucionActualizadas++;
         }
     }
 
@@ -1378,6 +1492,16 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     public function getOmitidas()
     {
         return $this->omitidas;
+    }
+
+    public function getRedistribucionActualizadas()
+    {
+        return $this->redistribucionActualizadas;
+    }
+
+    public function getRedistribucionSinCoincidencia()
+    {
+        return $this->redistribucionSinCoincidencia;
     }
 
     public function getDocumentosArchivo()
