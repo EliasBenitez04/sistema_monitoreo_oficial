@@ -31,10 +31,34 @@
 
 @foreach($ots as $ot)
 <div class="card card-outline {{ $ot->estado_seguimiento === 'COMPLETO' ? 'card-success' : 'card-primary' }}">
-    <div class="card-header">
-        <h3 class="card-title"><strong>OT {{ $ot->nro_ot }}</strong> · {{ $ot->codigo }} · {{ $ot->descripcion }}</h3>
-        <div class="card-tools"><span class="badge {{ $ot->estado_seguimiento === 'COMPLETO' ? 'badge-success' : 'badge-warning' }}">{{ $ot->estado_seguimiento }}</span></div>
+    <div class="card-header seguimiento-card-header" data-toggle="collapse" data-target="#detalle-ot-{{ $ot->id_ot }}" aria-expanded="false" aria-controls="detalle-ot-{{ $ot->id_ot }}">
+        <div class="row align-items-center text-center w-100 mx-0">
+            <div class="col-lg-2 col-md-3 mb-2 mb-md-0">
+                <div class="text-muted small text-uppercase">Orden de trabajo</div>
+                <div class="h5 mb-0 font-weight-bold">OT {{ $ot->nro_ot }}</div>
+            </div>
+            <div class="col-lg-3 col-md-4 mb-2 mb-md-0">
+                <div class="text-muted small text-uppercase">Código</div>
+                <div class="font-weight-bold">{{ $ot->codigo }}</div>
+                <div class="small text-muted text-truncate" title="{{ $ot->descripcion }}">{{ $ot->descripcion }}</div>
+            </div>
+            <div class="col-lg-2 col-md-2 mb-2 mb-md-0">
+                <div class="text-muted small text-uppercase">Cantidad</div>
+                <div class="h5 mb-0 font-weight-bold">{{ number_format($ot->cantidad_orden,0,',','.') }}</div>
+            </div>
+            <div class="col-lg-3 col-md-3 mb-2 mb-md-0">
+                <div class="text-muted small text-uppercase">Etapa actual</div>
+                <span class="badge badge-pill badge-primary px-3 py-2">{{ $ot->etapa_actual }}</span>
+            </div>
+            <div class="col-lg-2 mt-2 mt-lg-0">
+                <span class="badge {{ $ot->estado_seguimiento === 'COMPLETO' ? 'badge-success' : 'badge-warning' }} px-2 py-2">{{ $ot->estado_seguimiento }}</span>
+                <button type="button" class="btn btn-sm btn-light border ml-2 seguimiento-toggle" aria-label="Desplegar detalle">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+        </div>
     </div>
+    <div id="detalle-ot-{{ $ot->id_ot }}" class="collapse seguimiento-detalle">
     <div class="card-body">
         <div class="row text-center mb-4">
             <div class="col-md"><small class="text-muted d-block">Orden</small><strong>{{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
@@ -102,7 +126,7 @@
 
         <h6 class="font-weight-bold mb-2"><i class="fas fa-store mr-1"></i> Locales comerciales</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-hover">
+            <table class="table table-sm table-hover text-center align-middle">
                 <thead><tr><th>Local</th><th class="text-right">Enviado</th><th class="text-right">Recibido</th><th class="text-right">Pendiente</th><th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
                 <tbody>
                 @forelse($ot->locales_comerciales as $local)
@@ -123,7 +147,7 @@
         </div>
         <h6 class="font-weight-bold mt-4 mb-2"><i class="fas fa-warehouse mr-1"></i> Mayorista / Depósito</h6>
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-2">
+            <table class="table table-sm table-hover text-center align-middle mb-2">
                 <thead><tr><th>Nodo</th><th class="text-right">Movimiento</th><th class="text-right">Confirmado</th><th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
                 <tbody>
                 @forelse($ot->canal_mayorista as $local)
@@ -142,7 +166,8 @@
             </table>
         </div>
 
-        <div class="small text-muted">Locales comerciales confirmados: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
+        <div class="small text-muted text-center mt-3">Locales comerciales confirmados: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
+    </div>
     </div>
 </div>
 @endforeach
@@ -166,6 +191,14 @@
 .seguimiento-paso.actual .seguimiento-circulo{background:#007bff;border-color:#007bff;color:#fff;box-shadow:0 0 0 5px rgba(0,123,255,.12)}
 .seguimiento-paso.actual .seguimiento-nombre{color:#0056b3}
 .seguimiento-paso.actual .seguimiento-estado{color:#007bff;font-weight:700}
+.seguimiento-card-header{cursor:pointer;padding:.9rem .75rem;background:#fff;transition:background-color .15s ease}
+.seguimiento-card-header:hover{background:#f8fafc}
+.seguimiento-card-header .seguimiento-toggle{min-width:34px}
+.seguimiento-card-header[aria-expanded="true"] .seguimiento-toggle i{transform:rotate(180deg)}
+.seguimiento-toggle i{transition:transform .2s ease}
+.seguimiento-detalle .card-body{padding-top:1.35rem}
+.seguimiento-detalle .table th,.seguimiento-detalle .table td{vertical-align:middle}
+.seguimiento-detalle h6{text-align:center}
 @media(max-width:767.98px){
  .seguimiento-linea{display:block}
  .seguimiento-linea:before{display:none}
