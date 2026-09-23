@@ -752,12 +752,13 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                     ? 'EXCEDENTE'
                     : ($totalTransferido === $cantidadPedida ? 'COMPLETO' : 'PARCIAL');
 
+                // redistribucion_proceso_detalle NO tiene created_at/updated_at.
+                // El modelo histórico usa public $timestamps = false.
                 $datos = [
                     'observacion' => 'Pedido: ' . $cantidadPedida
                         . ' | Transferido: ' . $totalTransferido
                         . ' | Diferencia: ' . $diferencia
                         . ' | Resultado: ' . $resultado,
-                    'updated_at' => $ahora,
                 ];
 
                 if (!empty($info['fecha_remision'])) {
