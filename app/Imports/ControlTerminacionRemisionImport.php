@@ -548,31 +548,29 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
          * Ahora precargamos en memoria todos los detalles/remisiones que
          * pueden participar en este bloque y hacemos escrituras agrupadas.
          */
-        $claves = $filas
-            ->map(function ($fila) {
-                return [
-                    'origen' => (int) $fila['cod_sucursal_salida'],
-                    'destino' => (int) $fila['cod_sucursal_destino'],
-                    'codigo' => $this->normalizarCodigoCompleto($fila['codigo']),
-                ];
-            })
-            ->unique(function ($item) {
-                return $item['origen'] . '|' . $item['destino'] . '|' . $item['codigo'];
-            })
-            ->values();
-
-        $origenes = $claves->pluck('origen')->unique()->values()->all();
-        $destinos = $claves->pluck('destino')->unique()->values()->all();
-        $codigos = $claves->pluck('codigo')->filter()->unique()->values()->all();
-
-        if (empty($origenes) || empty($destinos) || empty($codigos)) {
-            $this->redistribucionSinCoincidencia += $filas->count();
-            return;
-        }
-
-        $detalles = RedistribucionProcesoDetalle::whereIn('sucursal_origen', $origenes)
-            ->whereIn('sucursal_destino', $destinos)
-            ->whereIn('codigo', $codigos)
+        /*
+         * La versión histórica de RedistribucionRemisionImport hacía la
+         * coincidencia por:
+         *   código completo + sucursal origen + sucursal destino.
+         *
+         * Conservamos exactamente ese patrón. La diferencia es que NO hacemos
+         * una consulta por fila. Precargamos los detalles (son pocos miles),
+         * normalizamos código/sucursales en PHP y resolvemos todo en memoria.
+         *
+         * Esto además evita falsos "sin coincidencia" por espacios, apóstrofes
+         * o diferencias de mayúsculas almacenadas históricamente en PostgreSQL.
+         */
+        $detalles = RedistribucionProcesoDetalle::query()
+            ->select(
+                'id',
+                'codigo',
+                'sucursal_origen',
+                'sucursal_destino',
+                'cantidad',
+                'estado',
+                'fecha_remision',
+                'fecha_recepcion'
+            )
             ->orderBy('id')
             ->get();
 
