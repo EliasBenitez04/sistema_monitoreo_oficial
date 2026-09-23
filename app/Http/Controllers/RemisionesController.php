@@ -41,6 +41,7 @@ class RemisionesController extends Controller
         }
 
         try {
+            $inicio = microtime(true);
             $archivo = $request->file('archivo_envios');
             $import = new ControlTerminacionRemisionImport();
             $extension = strtolower($archivo->getClientOriginalExtension());
@@ -56,6 +57,13 @@ class RemisionesController extends Controller
                 Excel::import($import, $archivo);
             }
 
+            $segundos = microtime(true) - $inicio;
+            $minutos = floor($segundos / 60);
+            $segundosRestantes = $segundos - ($minutos * 60);
+            $tiempo = $minutos > 0
+                ? $minutos . ' min ' . number_format($segundosRestantes, 2, ',', '.') . ' s'
+                : number_format($segundosRestantes, 2, ',', '.') . ' s';
+
             $mensaje = 'Importación finalizada. '
                 . 'Líneas: ' . $import->getProcesadas()
                 . ' | Nuevas OT/logística: ' . $import->getInsertadas()
@@ -64,7 +72,14 @@ class RemisionesController extends Controller
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
                 . ' | Redistribuciones actualizadas: ' . $import->getRedistribucionActualizadas()
                 . ' | Redistribuciones sin coincidencia: ' . $import->getRedistribucionSinCoincidencia()
-                . ' | Omitidas: ' . $import->getOmitidas() . '.';
+                . ' | Omitidas: ' . $import->getOmitidas()
+                . ' | Tiempo total: ' . $tiempo . '.';
+
+            Log::info('FIN IMPORTACION CENTRAL REMISIONES', [
+                'lineas' => $import->getProcesadas(),
+                'redistribuciones_actualizadas' => $import->getRedistribucionActualizadas(),
+                'segundos' => round($segundos, 3),
+            ]);
 
             return back()->with('success', $mensaje);
         } catch (\Throwable $e) {
