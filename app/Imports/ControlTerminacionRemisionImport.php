@@ -731,7 +731,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         ) {
             foreach (array_chunk($nuevas, 500) as $lote) {
                 if (!empty($lote)) {
-                    DB::table('redistribucion_remisiones')->insert($lote);
+                    DB::table('redistribucion_remision')->insert($lote);
                 }
             }
 
@@ -740,7 +740,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
              * archivo. Se actualizan por id, pero sin repetir búsquedas ni SUM.
              */
             foreach ($actualizacionesRemision as $id => $datos) {
-                DB::table('redistribucion_remisiones')
+                DB::table('redistribucion_remision')
                     ->where('id', $id)
                     ->update($datos);
             }
