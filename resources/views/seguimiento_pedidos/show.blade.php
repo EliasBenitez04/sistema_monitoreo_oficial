@@ -102,11 +102,10 @@
                 <thead>
                     <tr>
                         <th>OT</th>
-                        <th>Fecha pedido</th>
-                        <th>Logística OT</th>
-                        <th>Despacho del pedido</th>
-                        <th>Recepción local</th>
-                        <th>Tiempo</th>
+                        <th>Entrada a Terminación</th>
+                        <th>Entrada a Logística</th>
+                        <th>Confirmación del local</th>
+                        <th>Tiempo desde pedido</th>
                         <th>Estado KPI</th>
                     </tr>
                 </thead>
@@ -114,14 +113,13 @@
                 @foreach($ots as $otKpi)
                     <tr>
                         <td><strong>{{ $otKpi->nro_ot }}</strong></td>
-                        <td>{{ $resumen->fecha_pedido ? $resumen->fecha_pedido->format('d/m/Y') : '-' }}</td>
+                        <td>{{ $otKpi->fecha_terminacion ? date('d/m/Y', strtotime($otKpi->fecha_terminacion)) : '-' }}</td>
                         <td>
                             {{ $otKpi->kpi_fecha_logistica ? date('d/m/Y', strtotime($otKpi->kpi_fecha_logistica)) : '-' }}
                             @if($otKpi->kpi_ot_disponible_previamente)
                                 <small class="d-block text-info">OT disponible previamente</small>
                             @endif
                         </td>
-                        <td>{{ $otKpi->kpi_fecha_envio ? date('d/m/Y', strtotime($otKpi->kpi_fecha_envio)) : '-' }}</td>
                         <td>{{ $otKpi->kpi_fecha_recepcion ? date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) : '-' }}</td>
                         <td>
                             @if($otKpi->kpi_dias !== null)
