@@ -71,8 +71,11 @@ class RemisionesController extends Controller
              * cada módulo procesa el mismo archivo con la lógica que ya funcionaba
              * cuando estaban separados.
              */
+            $redisAntes = (int) DB::table('redistribucion_remision')->count();
             $redisImport = new RedistribucionRemisionImport();
             Excel::import($redisImport, $archivo);
+            $redisDespues = (int) DB::table('redistribucion_remision')->count();
+            $redisNuevas = max(0, $redisDespues - $redisAntes);
 
             $import = new ControlTerminacionRemisionImport();
 
@@ -95,23 +98,15 @@ class RemisionesController extends Controller
                 . ' | Actualizadas OT/logística: ' . $import->getActualizadas()
                 . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
-                . ' | Redistribución procesadas: ' . $redisImport->getProcesadas()
-                . ' | Redistribución coincidentes: ' . $redisImport->getCoincidentes()
-                . ' | Redistribución nuevas: ' . $redisImport->getInsertadas()
-                . ' | Redistribución actualizadas: ' . $redisImport->getActualizadas()
-                . ' | Redistribución sin coincidencia: ' . $redisImport->getSinCoincidencia()
-                . ' | Redistribución sin saldo: ' . $redisImport->getSinSaldo()
-                . ' | Redistribución errores: ' . $redisImport->getErrores()
+                . ' | Redistribución: importador original ejecutado'
+                . ' | Nuevas remisiones redistribución: ' . $redisNuevas
                 . ' | Omitidas: ' . $import->getOmitidas()
                 . ' | Tiempo total: ' . $tiempo . '.';
 
             Log::info('FIN IMPORTACION CENTRAL REMISIONES', [
                 'lineas' => $import->getProcesadas(),
-                'redistribucion_procesadas' => $redisImport->getProcesadas(),
-                'redistribucion_coincidentes' => $redisImport->getCoincidentes(),
-                'redistribucion_nuevas' => $redisImport->getInsertadas(),
-                'redistribucion_actualizadas' => $redisImport->getActualizadas(),
-                'redistribucion_errores' => $redisImport->getErrores(),
+                'redistribucion_importador_original' => true,
+                'redistribucion_nuevas_remisiones' => $redisNuevas,
                 'segundos' => round($segundos, 3),
             ]);
 
