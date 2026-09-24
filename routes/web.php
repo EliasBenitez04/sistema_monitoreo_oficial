@@ -814,6 +814,16 @@ Route::get(
     [ControlTerminacionController::class, 'detalle']
 )->name('control.terminacion.detalle');
 
+Route::post(
+    '/redistribucion-sugeridas/importar-remisiones',
+    [RedistribucionSugeridaController::class, 'importarRemisiones']
+)->name('RedistribucionSugeridas.importarRemisiones');
+
+Route::post(
+    '/control/terminacion/importar-remisiones',
+    [ControlTerminacionController::class, 'importarRemisiones']
+)->name('control.terminacion.importar-remisiones');
+
 Route::get('/remisiones/importar', [RemisionesController::class, 'index'])->name('remisiones.index');
 Route::post('/remisiones/importar', [RemisionesController::class, 'importar'])->name('remisiones.importar');
 
