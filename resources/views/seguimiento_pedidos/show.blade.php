@@ -126,6 +126,8 @@
                         <td>
                             @if($otKpi->kpi_dias !== null)
                                 <strong>{{ $otKpi->kpi_dias }} días</strong>
+                            @elseif($otKpi->kpi_estado === 'DISTRIBUIDA ANTES DEL PEDIDO')
+                                <span class="text-muted">N/A</span>
                             @else
                                 -
                             @endif
@@ -137,6 +139,9 @@
                                 <span class="badge badge-info">CONFIRMADO - OT DISPONIBLE</span>
                             @elseif($otKpi->kpi_estado === 'DESPACHADO SIN CONFIRMAR')
                                 <span class="badge badge-warning">DESPACHADO SIN CONFIRMAR</span>
+                            @elseif($otKpi->kpi_estado === 'DISTRIBUIDA ANTES DEL PEDIDO')
+                                <span class="badge badge-info">DISTRIBUIDA ANTES DEL PEDIDO</span>
+                                <small class="d-block text-muted mt-1">Fuera del promedio de días</small>
                             @else
                                 <span class="badge badge-secondary">{{ $otKpi->kpi_estado }}</span>
                             @endif
