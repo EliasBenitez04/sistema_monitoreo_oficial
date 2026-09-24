@@ -303,13 +303,10 @@
 
                 <tfoot>
                     <tr>
-                        <td colspan="3"><strong>TOTAL FILTRADO</strong></td>
-                        <td class="text-right"><strong>{{ number_format($totalIngresoTerminacion, 0, ',', '.') }}</strong></td>
-                        <td></td>
-                        <td class="text-right"><strong>{{ number_format($totalTerminado, 0, ',', '.') }}</strong></td>
-                        <td class="text-right"><strong>{{ number_format($totalEntregadoLogistica, 0, ',', '.') }}</strong></td>
-                        <td class="text-right"><strong>{{ number_format($totalPendienteTerminar, 0, ',', '.') }}</strong></td>
-                        <td colspan="3"></td>
+                        <td colspan="2"><strong>TOTAL FILTRADO</strong><br><small class="text-muted">{{ number_format($totalOTs,0,',','.') }} OTs</small></td>
+                        <td class="text-center"><strong>{{ number_format($totalIngresoTerminacion,0,',','.') }}</strong></td>
+                        <td class="text-center"><strong>{{ number_format($totalTerminado,0,',','.') }}</strong></td>
+                        <td colspan="7"></td>
                     </tr>
                 </tfoot>
             </table>
