@@ -79,8 +79,15 @@ class SeguimientoPedidoController extends Controller
             $inicio = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
             $fin = $pedido->ultima_confirmacion ? Carbon::parse($pedido->ultima_confirmacion)->startOfDay() : null;
 
-            $pedido->dias_confirmacion = ($inicio && $fin) ? $inicio->diffInDays($fin, false) : null;
-            $pedido->dias_transcurridos = ($inicio && !$fin) ? $inicio->diffInDays(Carbon::today(), false) : null;
+            $completo = (int) $pedido->cantidad_total > 0
+                && (int) $pedido->confirmado >= (int) $pedido->cantidad_total;
+
+            $pedido->dias_confirmacion = ($inicio && $fin && $completo)
+                ? $inicio->diffInDays($fin, false)
+                : null;
+            $pedido->dias_transcurridos = ($inicio && !$completo)
+                ? $inicio->diffInDays(Carbon::today(), false)
+                : null;
 
             return $pedido;
         });
@@ -304,6 +311,9 @@ class SeguimientoPedidoController extends Controller
         $ultimaConfirmacion = $recepcionesLocales->pluck('ultima')->filter()->max();
         $fechaPedido = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
 
+        $pedidoCompleto = $ots->count() > 0
+            && $ots->where('estado_seguimiento', 'COMPLETO')->count() === $ots->count();
+
         $diasPorLocal = $recepcionesLocales
             ->pluck('ultima')
             ->filter()
@@ -327,13 +337,13 @@ class SeguimientoPedidoController extends Controller
             'dias_primera_confirmacion' => ($fechaPedido && $primeraConfirmacion)
                 ? $fechaPedido->diffInDays(Carbon::parse($primeraConfirmacion)->startOfDay(), false)
                 : null,
-            'dias_confirmacion_total' => ($fechaPedido && $ultimaConfirmacion)
+            'dias_confirmacion_total' => ($fechaPedido && $ultimaConfirmacion && $pedidoCompleto)
                 ? $fechaPedido->diffInDays(Carbon::parse($ultimaConfirmacion)->startOfDay(), false)
                 : null,
             'dias_promedio_confirmacion' => $diasPorLocal->isNotEmpty()
                 ? round($diasPorLocal->avg(), 1)
                 : null,
-            'dias_transcurridos' => ($fechaPedido && !$ultimaConfirmacion)
+            'dias_transcurridos' => ($fechaPedido && !$pedidoCompleto)
                 ? $fechaPedido->diffInDays(Carbon::today(), false)
                 : null,
         ];
