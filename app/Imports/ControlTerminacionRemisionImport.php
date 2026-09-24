@@ -544,58 +544,37 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         }
 
         /*
-         * Redistribución antes hacía varias consultas por CADA fila:
-         * detalle -> remisión existente -> SUM -> transacción -> SUM.
-         * Con archivos grandes eso era el cuello de botella principal.
-         *
-         * Ahora precargamos en memoria todos los detalles/remisiones que
-         * pueden participar en este bloque y hacemos escrituras agrupadas.
-         */
-        /*
-         * La versión histórica de RedistribucionRemisionImport hacía la
-         * coincidencia por:
-         *   código completo + sucursal origen + sucursal destino.
-         *
-         * Conservamos exactamente ese patrón. La diferencia es que NO hacemos
-         * una consulta por fila. Precargamos los detalles (son pocos miles),
-         * normalizamos código/sucursales en PHP y resolvemos todo en memoria.
-         *
-         * Esto además evita falsos "sin coincidencia" por espacios, apóstrofes
-         * o diferencias de mayúsculas almacenadas históricamente en PostgreSQL.
+         * Esta rutina replica la lógica del importador histórico que funcionaba
+         * correctamente para Redistribución. La unificación sólo comparte la
+         * lectura/normalización del Excel; Redistribución conserva su propia
+         * regla de negocio.
          */
         $detalles = RedistribucionProcesoDetalle::query()
             ->select(
-                'id',
-                'proceso_id',
-                'codigo',
-                'sucursal_origen',
-                'sucursal_destino',
-                'cantidad',
-                'estado',
-                'fecha',
-                'fecha_remision',
-                'fecha_recepcion'
+                'id', 'codigo', 'sucursal_origen', 'sucursal_destino',
+                'cantidad', 'estado', 'fecha_remision', 'fecha_recepcion'
             )
             ->orderBy('id')
             ->get();
 
         if ($detalles->isEmpty()) {
             $this->redistribucionSinCoincidencia += $filas->count();
+            $this->redistribucionSinDetalle += $filas->count();
             return;
         }
 
         $detallesPorClave = $detalles->groupBy(function ($detalle) {
-            return (int) $detalle->sucursal_origen
-                . '|' . (int) $detalle->sucursal_destino
-                . '|' . $this->normalizarCodigoCompleto($detalle->codigo);
+            return (int) $detalle->sucursal_origen . '|'
+                . (int) $detalle->sucursal_destino . '|'
+                . $this->normalizarCodigoCompleto($detalle->codigo);
         });
 
-        $idsDetalle = $detalles->pluck('id')->all();
+        $idsDetalle = $detalles->pluck('id')->values();
         $remisiones = collect();
 
-        foreach (array_chunk($idsDetalle, 1000) as $ids) {
+        foreach ($idsDetalle->chunk(1000) as $ids) {
             $remisiones = $remisiones->concat(
-                RedistribucionRemision::whereIn('detalle_id', $ids)->get()
+                RedistribucionRemision::whereIn('detalle_id', $ids->all())->get()
             );
         }
 
@@ -608,17 +587,12 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 ($transferidoPorDetalle[$idDetalle] ?? 0)
                 + (int) $remision->cantidad_transferida;
 
-            $claveDocumento = $idDetalle
-                . '|' . trim((string) $remision->serie)
-                . '|' . trim((string) $remision->numero_remision);
-
-            $remisionesPorDocumento[$claveDocumento] = $remision;
+            $remisionesPorDocumento[
+                $idDetalle . '|'
+                . trim((string) $remision->serie) . '|'
+                . trim((string) $remision->numero_remision)
+            ] = $remision;
         }
-
-        $ahora = now();
-        $nuevas = [];
-        $actualizacionesRemision = [];
-        $detallesTocados = [];
 
         foreach ($filas as $fila) {
             $origen = (int) $fila['cod_sucursal_salida'];
@@ -628,8 +602,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $numero = trim((string) $fila['numero_remision']);
             $cantidad = (int) $fila['cantidad'];
 
-            $claveDetalle = $origen . '|' . $destino . '|' . $codigo;
-            $candidatos = $detallesPorClave->get($claveDetalle, collect());
+            $clave = $origen . '|' . $destino . '|' . $codigo;
+            $candidatos = collect($detallesPorClave->get($clave, collect()));
 
             if ($candidatos->isEmpty()) {
                 $this->redistribucionSinCoincidencia++;
@@ -637,68 +611,46 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 continue;
             }
 
+            // Igual que el importador anterior: antes del saldo buscamos el
+            // mismo documento entre TODOS los detalles candidatos.
             $detalle = null;
-            $remision = null;
+            $remisionExistente = null;
 
             foreach ($candidatos as $candidato) {
-                $claveDocumento = (int) $candidato->id . '|' . $serie . '|' . $numero;
-                if (isset($remisionesPorDocumento[$claveDocumento])) {
+                $docKey = (int) $candidato->id . '|' . $serie . '|' . $numero;
+                if (isset($remisionesPorDocumento[$docKey])) {
                     $detalle = $candidato;
-                    $remision = $remisionesPorDocumento[$claveDocumento];
+                    $remisionExistente = $remisionesPorDocumento[$docKey];
                     break;
                 }
             }
 
-            if ($remision) {
+            if ($remisionExistente) {
                 $this->redistribucionReimportadas++;
-            }
-
-            // Para una remisión nueva pueden existir varios detalles con el mismo
-            // código/origen/destino. Priorizamos el detalle cronológicamente más
-            // cercano que NO sea posterior a la remisión. Luego aplicamos saldo.
-            if (!$detalle) {
-                $fechaDocumento = !empty($fila['fecha_remision'])
-                    ? Carbon::parse($fila['fecha_remision'])->startOfDay()
-                    : (!empty($fila['fecha_creacion']) ? Carbon::parse($fila['fecha_creacion'])->startOfDay() : null);
-
-                $candidatos = $candidatos->sort(function ($a, $b) use ($fechaDocumento) {
-                    if (!$fechaDocumento) {
-                        return ((int) $b->id) <=> ((int) $a->id);
-                    }
-
-                    $fechaA = !empty($a->fecha) ? Carbon::parse($a->fecha)->startOfDay() : null;
-                    $fechaB = !empty($b->fecha) ? Carbon::parse($b->fecha)->startOfDay() : null;
-
-                    $posteriorA = $fechaA && $fechaA->gt($fechaDocumento) ? 1 : 0;
-                    $posteriorB = $fechaB && $fechaB->gt($fechaDocumento) ? 1 : 0;
-                    if ($posteriorA !== $posteriorB) return $posteriorA <=> $posteriorB;
-
-                    $distA = $fechaA ? abs($fechaA->diffInDays($fechaDocumento, false)) : 999999;
-                    $distB = $fechaB ? abs($fechaB->diffInDays($fechaDocumento, false)) : 999999;
-                    if ($distA !== $distB) return $distA <=> $distB;
-
-                    return ((int) $b->id) <=> ((int) $a->id);
-                })->values();
-
+            } else {
+                // Exactamente como la versión separada: primer detalle por id
+                // con saldo suficiente; si no, primer detalle con saldo > 0.
                 foreach ($candidatos as $candidato) {
+                    $id = (int) $candidato->id;
                     $pendiente = (int) $candidato->cantidad
-                        - (int) ($transferidoPorDetalle[(int) $candidato->id] ?? 0);
+                        - (int) ($transferidoPorDetalle[$id] ?? 0);
 
                     if ($pendiente >= $cantidad) {
                         $detalle = $candidato;
                         break;
                     }
                 }
-            }
 
-            if (!$detalle) {
-                foreach ($candidatos as $candidato) {
-                    $pendiente = (int) $candidato->cantidad
-                        - (int) ($transferidoPorDetalle[(int) $candidato->id] ?? 0);
+                if (!$detalle) {
+                    foreach ($candidatos as $candidato) {
+                        $id = (int) $candidato->id;
+                        $pendiente = (int) $candidato->cantidad
+                            - (int) ($transferidoPorDetalle[$id] ?? 0);
 
-                    if ($pendiente > 0) {
-                        $detalle = $candidato;
-                        break;
+                        if ($pendiente > 0) {
+                            $detalle = $candidato;
+                            break;
+                        }
                     }
                 }
             }
@@ -710,109 +662,113 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             }
 
             $idDetalle = (int) $detalle->id;
-            $claveDocumento = $idDetalle . '|' . $serie . '|' . $numero;
+            $docKey = $idDetalle . '|' . $serie . '|' . $numero;
 
-            if ($remision) {
-                // Conservamos cantidad_transferida igual que la lógica anterior:
-                // reimportar el mismo documento actualiza fechas, no duplica cantidad.
-                $actualizacionesRemision[(int) $remision->id] = [
-                    'fecha_remision' => $fila['fecha_remision'] ?: $remision->fecha_remision,
-                    'fecha_creacion' => $fila['fecha_creacion'] ?: $remision->fecha_creacion,
-                    'fecha_recepcion' => $fila['fecha_recepcion'] ?: $remision->fecha_recepcion,
-                    'updated_at' => $ahora,
-                ];
-            } else {
-                $nuevas[] = [
-                    'detalle_id' => $idDetalle,
-                    'serie' => $serie,
-                    'numero_remision' => $numero,
-                    'cantidad_transferida' => $cantidad,
-                    'fecha_remision' => $fila['fecha_remision'],
-                    'fecha_creacion' => $fila['fecha_creacion'],
-                    'fecha_recepcion' => $fila['fecha_recepcion'],
-                    'created_at' => $ahora,
-                    'updated_at' => $ahora,
-                ];
+            DB::transaction(function () use (
+                $fila, $detalle, $idDetalle, $docKey, $serie, $numero,
+                $cantidad, $remisionExistente, &$remisionesPorDocumento,
+                &$transferidoPorDetalle
+            ) {
+                if ($remisionExistente) {
+                    // Reimportación: sólo fechas. Nunca duplicar cantidad.
+                    $cambios = [];
 
-                // Marcamos el documento como existente dentro de ESTE bloque
-                // para que una repetición accidental no vuelva a sumar cantidad.
-                $remisionesPorDocumento[$claveDocumento] = (object) [
-                    'id' => 0,
-                    'detalle_id' => $idDetalle,
-                    'serie' => $serie,
-                    'numero_remision' => $numero,
-                    'cantidad_transferida' => $cantidad,
-                ];
+                    if (!empty($fila['fecha_remision'])) {
+                        $cambios['fecha_remision'] = $fila['fecha_remision'];
+                    }
+                    if (!empty($fila['fecha_creacion'])) {
+                        $cambios['fecha_creacion'] = $fila['fecha_creacion'];
+                    }
+                    if (!empty($fila['fecha_recepcion'])) {
+                        $cambios['fecha_recepcion'] = $fila['fecha_recepcion'];
+                    }
 
-                $transferidoPorDetalle[$idDetalle] =
-                    ($transferidoPorDetalle[$idDetalle] ?? 0) + $cantidad;
-            }
+                    if (!empty($cambios)) {
+                        $cambios['updated_at'] = now();
+                        DB::table('redistribucion_remision')
+                            ->where('id', $remisionExistente->id)
+                            ->update($cambios);
+                    }
+                } else {
+                    $idRemision = DB::table('redistribucion_remision')->insertGetId([
+                        'detalle_id' => $idDetalle,
+                        'serie' => $serie,
+                        'numero_remision' => $numero,
+                        'fecha_remision' => $fila['fecha_remision'],
+                        'fecha_creacion' => $fila['fecha_creacion'],
+                        'fecha_recepcion' => $fila['fecha_recepcion'],
+                        'cantidad_transferida' => $cantidad,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
 
-            $detallesTocados[$idDetalle] = [
-                'detalle' => $detalle,
-                'fecha_remision' => $fila['fecha_remision'],
-                'fecha_recepcion' => $fila['fecha_recepcion'],
-            ];
+                    $remisionNueva = (object) [
+                        'id' => $idRemision,
+                        'detalle_id' => $idDetalle,
+                        'serie' => $serie,
+                        'numero_remision' => $numero,
+                        'cantidad_transferida' => $cantidad,
+                    ];
 
-            $this->redistribucionActualizadas++;
-        }
-
-        DB::transaction(function () use (
-            $nuevas,
-            $actualizacionesRemision,
-            $detallesTocados,
-            $transferidoPorDetalle,
-            $ahora
-        ) {
-            foreach (array_chunk($nuevas, 500) as $lote) {
-                if (!empty($lote)) {
-                    DB::table('redistribucion_remision')->insert($lote);
+                    $remisionesPorDocumento[$docKey] = $remisionNueva;
+                    $transferidoPorDetalle[$idDetalle] =
+                        ($transferidoPorDetalle[$idDetalle] ?? 0) + $cantidad;
                 }
-            }
 
-            /*
-             * Las remisiones ya existentes normalmente son una fracción del
-             * archivo. Se actualizan por id, pero sin repetir búsquedas ni SUM.
-             */
-            foreach ($actualizacionesRemision as $id => $datos) {
-                DB::table('redistribucion_remision')
-                    ->where('id', $id)
-                    ->update($datos);
-            }
+                // Recalcular desde BD después de insertar/actualizar, igual que
+                // hacía el importador separado. Así export y estado usan la
+                // misma fuente real: redistribucion_remision.
+                $totalTransferido = (int) DB::table('redistribucion_remision')
+                    ->where('detalle_id', $idDetalle)
+                    ->sum('cantidad_transferida');
 
-            foreach ($detallesTocados as $idDetalle => $info) {
-                $detalle = $info['detalle'];
                 $cantidadPedida = (int) $detalle->cantidad;
-                $totalTransferido = (int) ($transferidoPorDetalle[$idDetalle] ?? 0);
                 $diferencia = $cantidadPedida - $totalTransferido;
-                $resultado = $totalTransferido > $cantidadPedida
-                    ? 'EXCEDENTE'
-                    : ($totalTransferido === $cantidadPedida ? 'COMPLETO' : 'PARCIAL');
 
-                // redistribucion_proceso_detalle NO tiene created_at/updated_at.
-                // El modelo histórico usa public $timestamps = false.
-                $datos = [
+                if ($totalTransferido > $cantidadPedida) {
+                    $resultado = 'EXCEDENTE';
+                } elseif ($totalTransferido === $cantidadPedida) {
+                    $resultado = 'COMPLETO';
+                } elseif ($totalTransferido > 0) {
+                    $resultado = 'PARCIAL';
+                } else {
+                    $resultado = 'PENDIENTE';
+                }
+
+                $datosDetalle = [
                     'observacion' => 'Pedido: ' . $cantidadPedida
                         . ' | Transferido: ' . $totalTransferido
                         . ' | Diferencia: ' . $diferencia
                         . ' | Resultado: ' . $resultado,
                 ];
 
-                if (!empty($info['fecha_remision'])) {
-                    $datos['fecha_remision'] = $info['fecha_remision'];
-                    $datos['estado'] = 'REALIZADO';
+                $fechaRemision = !empty($fila['fecha_remision'])
+                    ? $fila['fecha_remision']
+                    : $detalle->fecha_remision;
+                $fechaRecepcion = !empty($fila['fecha_recepcion'])
+                    ? $fila['fecha_recepcion']
+                    : $detalle->fecha_recepcion;
+
+                if ($fechaRemision) {
+                    $datosDetalle['fecha_remision'] = $fechaRemision;
+                }
+                if ($fechaRecepcion) {
+                    $datosDetalle['fecha_recepcion'] = $fechaRecepcion;
                 }
 
-                if (!empty($info['fecha_recepcion'])) {
-                    $datos['fecha_recepcion'] = $info['fecha_recepcion'];
-                    $datos['estado'] = 'FINALIZADO';
+                if ($totalTransferido > 0) {
+                    $datosDetalle['estado'] = $fechaRecepcion
+                        ? 'FINALIZADO'
+                        : 'REALIZADO';
                 }
 
                 DB::table('redistribucion_proceso_detalle')
                     ->where('id', $idDetalle)
-                    ->update($datos);
-            }
-        });
+                    ->update($datosDetalle);
+            });
+
+            $this->redistribucionActualizadas++;
+        }
     }
 
     private function normalizarFilas(Collection $rows)
