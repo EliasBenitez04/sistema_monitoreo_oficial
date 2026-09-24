@@ -295,108 +295,140 @@ class SeguimientoPedidoController extends Controller
         }
 
         /*
-         * KPI operativo por OT:
-         * FECHA PEDIDO -> PRIMERA REMISION VALIDA (>= fecha pedido) -> RECEPCION DE ESA REMISION.
+         * KPI operativo por OT.
          *
-         * No usamos MIN/MAX global de todas las remisiones porque una OT puede tener
-         * movimientos anteriores, reposiciones o redistribuciones posteriores.
+         * Fuente principal de salida: ot_trazabilidad /
+         * LOGISTICA - LOGISTICA Y DISTRIBUCION.
+         *
+         * Las remisiones NO definen cuándo salió la OT de Logística. Se usan solamente
+         * para encontrar la primera recepción local coherente posterior a esa salida.
+         * Además se ignoran redistribuciones: para confirmar el pedido sólo consideramos
+         * movimientos cuyo origen sea CASA CENTRAL/MATRIZ (despacho central).
          */
         $fechaPedido = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
         $kpisOt = collect();
         $movimientosAnteriores = 0;
 
         foreach ($ots as $ot) {
+            $fechaLogistica = !empty($ot->fecha_logistica_primera)
+                ? Carbon::parse($ot->fecha_logistica_primera)->startOfDay()
+                : null;
+
+            // Una fecha logística anterior al pedido no puede medir este pedido.
+            $fechaLogisticaValida = $fechaLogistica
+                && (!$fechaPedido || $fechaLogistica->gte($fechaPedido))
+                ? $fechaLogistica
+                : null;
+
             $movsOt = collect($movimientosRemision->get($ot->id_ot, collect()));
 
-            $movsComerciales = $movsOt->filter(function ($mov) {
+            // Sólo despachos originales desde Central/Matriz hacia locales comerciales.
+            // Así una redistribución Local A -> Local B no se confunde con atención inicial.
+            $despachosCentral = $movsOt->filter(function ($mov) {
+                $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
                 $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
-                return !in_array($destino, ['CASA CENTRAL', 'MATRIZ'], true);
+
+                return in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true)
+                    && !in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true);
             });
 
             if ($fechaPedido) {
-                $movimientosAnteriores += $movsComerciales->filter(function ($mov) use ($fechaPedido) {
-                    if (empty($mov->fecha_remision)) {
-                        return false;
-                    }
-                    return Carbon::parse($mov->fecha_remision)->startOfDay()->lt($fechaPedido);
+                $movimientosAnteriores += $despachosCentral->filter(function ($mov) use ($fechaPedido) {
+                    return !empty($mov->fecha_remision)
+                        && Carbon::parse($mov->fecha_remision)->startOfDay()->lt($fechaPedido);
                 })->count();
-
-                $movsComerciales = $movsComerciales->filter(function ($mov) use ($fechaPedido) {
-                    if (empty($mov->fecha_remision)) {
-                        return false;
-                    }
-                    return Carbon::parse($mov->fecha_remision)->startOfDay()->gte($fechaPedido);
-                });
             }
 
-            // Primera salida válida de ESTA OT posterior (o igual) a la fecha del pedido.
-            $primerMovimiento = $movsComerciales
-                ->filter(function ($mov) {
-                    return !empty($mov->fecha_remision);
+            /*
+             * La confirmación debe ser posterior a la salida REAL de logística.
+             * No exigimos que fecha_remision sea exactamente igual a fecha_logistica,
+             * porque el documento puede emitirse después; sí exigimos coherencia temporal.
+             */
+            $recepcionesValidasOt = $despachosCentral
+                ->filter(function ($mov) use ($fechaPedido, $fechaLogisticaValida) {
+                    if (empty($mov->fecha_recepcion)) {
+                        return false;
+                    }
+
+                    $recepcion = Carbon::parse($mov->fecha_recepcion)->startOfDay();
+
+                    if ($fechaPedido && $recepcion->lt($fechaPedido)) {
+                        return false;
+                    }
+
+                    if ($fechaLogisticaValida && $recepcion->lt($fechaLogisticaValida)) {
+                        return false;
+                    }
+
+                    if (!empty($mov->fecha_remision)) {
+                        $remision = Carbon::parse($mov->fecha_remision)->startOfDay();
+                        if ($fechaPedido && $remision->lt($fechaPedido)) {
+                            return false;
+                        }
+                        if ($fechaLogisticaValida && $remision->lt($fechaLogisticaValida)) {
+                            return false;
+                        }
+                        if ($recepcion->lt($remision)) {
+                            return false;
+                        }
+                    }
+
+                    return true;
                 })
                 ->sortBy(function ($mov) {
-                    return $mov->fecha_remision . ' ' . str_pad((string) ($mov->numero_remision ?? ''), 20, '0', STR_PAD_LEFT);
-                })
-                ->first();
-
-            $ot->kpi_fecha_envio = $primerMovimiento->fecha_remision ?? null;
-            $ot->kpi_fecha_recepcion = null;
-            $ot->kpi_dias = null;
-            $ot->kpi_estado = 'SIN ENVIO VALIDO';
-
-            if ($primerMovimiento) {
-                /*
-                 * Una misma salida puede tener varias líneas. Para no tomar una recepción
-                 * ajena, buscamos la recepción del mismo documento de remisión.
-                 */
-                $mismoDocumento = $movsComerciales->filter(function ($mov) use ($primerMovimiento) {
-                    return (string) ($mov->serie ?? '') === (string) ($primerMovimiento->serie ?? '')
-                        && (string) ($mov->numero_remision ?? '') === (string) ($primerMovimiento->numero_remision ?? '')
-                        && (string) ($mov->fecha_remision ?? '') === (string) ($primerMovimiento->fecha_remision ?? '');
+                    return $mov->fecha_recepcion . ' ' . ($mov->fecha_remision ?? '');
                 });
 
-                $recepcionValida = $mismoDocumento
-                    ->pluck('fecha_recepcion')
-                    ->filter()
-                    ->filter(function ($fecha) use ($fechaPedido, $primerMovimiento) {
-                        $recepcion = Carbon::parse($fecha)->startOfDay();
-                        $envio = Carbon::parse($primerMovimiento->fecha_remision)->startOfDay();
+            $primeraRecepcion = $recepcionesValidasOt->first();
 
-                        return $recepcion->gte($envio)
-                            && (!$fechaPedido || $recepcion->gte($fechaPedido));
-                    })
-                    ->min();
+            $ot->kpi_fecha_logistica = $fechaLogisticaValida ? $fechaLogisticaValida->format('Y-m-d') : null;
+            $ot->kpi_fecha_envio = $primeraRecepcion->fecha_remision ?? null;
+            $ot->kpi_fecha_recepcion = $primeraRecepcion->fecha_recepcion ?? null;
+            $ot->kpi_dias = null;
+            $ot->kpi_dias_logistica = null;
 
-                $ot->kpi_fecha_recepcion = $recepcionValida;
+            if (!$fechaLogisticaValida) {
+                $ot->kpi_estado = $fechaLogistica
+                    ? 'LOGISTICA ANTERIOR AL PEDIDO'
+                    : 'SIN SALIDA LOGISTICA';
+            } elseif (!$primeraRecepcion) {
+                $ot->kpi_estado = 'SIN CONFIRMACION LOCAL';
+            } else {
+                $ot->kpi_estado = 'CONFIRMADO';
 
-                if ($recepcionValida && $fechaPedido) {
-                    $ot->kpi_dias = $fechaPedido->diffInDays(Carbon::parse($recepcionValida)->startOfDay(), false);
-                    $ot->kpi_estado = 'CONFIRMADO';
-                } elseif ($recepcionValida) {
-                    $ot->kpi_estado = 'CONFIRMADO SIN FECHA PEDIDO';
-                } else {
-                    $ot->kpi_estado = 'ENVIADO SIN CONFIRMAR';
+                if ($fechaPedido) {
+                    $ot->kpi_dias = $fechaPedido->diffInDays(
+                        Carbon::parse($ot->kpi_fecha_recepcion)->startOfDay(),
+                        false
+                    );
                 }
+
+                $ot->kpi_dias_logistica = $fechaLogisticaValida->diffInDays(
+                    Carbon::parse($ot->kpi_fecha_recepcion)->startOfDay(),
+                    false
+                );
             }
 
             $kpisOt->push((object) [
                 'id_ot' => $ot->id_ot,
                 'nro_ot' => $ot->nro_ot,
+                'fecha_logistica' => $ot->kpi_fecha_logistica,
                 'fecha_envio' => $ot->kpi_fecha_envio,
                 'fecha_recepcion' => $ot->kpi_fecha_recepcion,
                 'dias' => $ot->kpi_dias,
+                'dias_logistica' => $ot->kpi_dias_logistica,
                 'estado' => $ot->kpi_estado,
             ]);
         }
 
-        $enviosValidos = $kpisOt->pluck('fecha_envio')->filter();
+        $salidasLogisticaValidas = $kpisOt->pluck('fecha_logistica')->filter();
         $recepcionesValidas = $kpisOt->pluck('fecha_recepcion')->filter();
         $diasValidos = $kpisOt->pluck('dias')->filter(function ($dias) {
             return $dias !== null && $dias >= 0;
         });
 
-        $primerEnvioLogistica = $enviosValidos->min();
-        $ultimoEnvioLogistica = $enviosValidos->max();
+        $primerEnvioLogistica = $salidasLogisticaValidas->min();
+        $ultimoEnvioLogistica = $salidasLogisticaValidas->max();
         $primeraConfirmacion = $recepcionesValidas->min();
         $ultimaConfirmacion = $recepcionesValidas->max();
 
@@ -421,7 +453,7 @@ class SeguimientoPedidoController extends Controller
             'dias_promedio_confirmacion' => $diasValidos->isNotEmpty()
                 ? round($diasValidos->avg(), 1)
                 : null,
-            'ots_con_envio_valido' => $enviosValidos->count(),
+            'ots_con_envio_valido' => $salidasLogisticaValidas->count(),
             'ots_confirmadas_kpi' => $recepcionesValidas->count(),
             'movimientos_anteriores_omitidos' => $movimientosAnteriores,
             'dias_transcurridos' => ($fechaPedido && $recepcionesValidas->isEmpty())
