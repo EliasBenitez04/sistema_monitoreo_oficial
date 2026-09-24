@@ -27,7 +27,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
 
                 Log::info('IMPORT REDISTRIBUCION - FILA', [
                     'fila' => $index,
-                    'row' => $row->toArray(),
+                    'row' => is_array($row) ? $row : $row->toArray(),
                 ]);
 
                 // =====================================================
@@ -692,7 +692,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                         'error' => $e->getMessage(),
                         'archivo' => $e->getFile(),
                         'linea' => $e->getLine(),
-                        'row' => $row->toArray(),
+                        'row' => is_array($row) ? $row : $row->toArray(),
                     ]
                 );
             }
@@ -705,13 +705,20 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
 
     private function get($row, array $keys)
     {
-        foreach ($keys as $key) {
+        // Compatible tanto con las Row/Collection de Laravel Excel como con
+        // los arrays generados por el lector XLSX streaming del importador central.
+        if ($row instanceof \Illuminate\Support\Collection) {
+            $row = $row->all();
+        } elseif (is_object($row) && method_exists($row, 'toArray')) {
+            $row = $row->toArray();
+        }
 
+        foreach ($keys as $key) {
             if (
-                isset($row[$key]) &&
+                is_array($row) &&
+                array_key_exists($key, $row) &&
                 trim((string) $row[$key]) !== ''
             ) {
-
                 return $row[$key];
             }
         }
