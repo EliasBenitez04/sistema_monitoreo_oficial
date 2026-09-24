@@ -430,6 +430,7 @@ class SeguimientoPedidoController extends Controller
             $kpisOt->push((object) [
                 'id_ot' => $ot->id_ot,
                 'nro_ot' => $ot->nro_ot,
+                'fecha_terminacion' => $ot->fecha_ingreso,
                 'fecha_logistica' => $ot->kpi_fecha_logistica,
                 'ot_disponible_previamente' => $ot->kpi_ot_disponible_previamente,
                 'fecha_envio' => $ot->kpi_fecha_envio,
