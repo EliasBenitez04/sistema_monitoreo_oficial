@@ -36,10 +36,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
      * de filas puede superar fácilmente 512 MB. Para ENVIOS leemos directamente
      * el XML del XLSX y entregamos bloques pequeños al mismo motor de negocio.
      */
-    public function importarXlsxStreaming(
-        string $ruta,
-        ?RedistribucionRemisionImport $redistribucionImport = null
-    ): void
+    public function importarXlsxStreaming(string $ruta): void
     {
         @set_time_limit(0);
         DB::disableQueryLog();
@@ -97,7 +94,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             $encabezados = [];
             $lote = [];
-            $tamanoLote = 1500;
+            $tamanoLote = 2000;
 
             while ($reader->read()) {
                 if ($reader->nodeType !== \XMLReader::ELEMENT || $reader->localName !== 'row') {
@@ -138,13 +135,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 if (count($lote) >= $tamanoLote) {
                     $filasLote = collect($lote);
 
-                    // Un único recorrido físico del XLSX. Cada motor conserva
-                    // su propia regla de negocio y recibe exactamente las
-                    // mismas filas con los encabezados originales normalizados.
-                    if ($redistribucionImport) {
-                        $redistribucionImport->collection($filasLote);
-                    }
-
                     $this->collection($filasLote);
 
                     $lote = [];
@@ -157,10 +147,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             if (!empty($lote)) {
                 $filasLote = collect($lote);
-
-                if ($redistribucionImport) {
-                    $redistribucionImport->collection($filasLote);
-                }
 
                 $this->collection($filasLote);
 
