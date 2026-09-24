@@ -164,8 +164,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                 // '100617481VD02
                 // 100617481VD02
 
-                $codigo = trim((string) $codigo);
-                $codigo = ltrim($codigo, "'");
+                $codigo = $this->normalizarCodigo($codigo);
 
                 // Serie
 
@@ -221,12 +220,12 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                         'sucursal_destino',
                         $sucursalDestino
                     )
-                    ->where(
-                        'codigo',
-                        $codigo
-                    )
                     ->orderBy('id')
-                    ->get();
+                    ->get()
+                    ->filter(function ($detalleItem) use ($codigo) {
+                        return $this->normalizarCodigo($detalleItem->codigo) === $codigo;
+                    })
+                    ->values();
 
                 if ($detalles->isEmpty()) {
 
@@ -697,6 +696,20 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                 );
             }
         }
+    }
+
+    /**
+     * Normaliza el SKU completo sin perder variante/talle.
+     * Excel puede traer apóstrofe inicial y algunos archivos contienen
+     * espacios normales/no-separables invisibles.
+     */
+    private function normalizarCodigo($value): string
+    {
+        $codigo = strtoupper(trim((string) $value));
+        $codigo = ltrim($codigo, "'’\`");
+        $codigo = preg_replace('/[\\s\\x{00A0}\\x{2007}\\x{202F}]+/u', '', $codigo);
+
+        return $codigo ?: '';
     }
 
     // =========================================================
