@@ -295,35 +295,30 @@ class SeguimientoPedidoController extends Controller
         }
 
         /*
-         * KPI operativo por OT.
+         * KPI de atención por OT:
+         * FECHA PEDIDO -> PRIMER DESPACHO CENTRAL POSTERIOR AL PEDIDO -> RECEPCION.
          *
-         * Fuente principal de salida: ot_trazabilidad /
-         * LOGISTICA - LOGISTICA Y DISTRIBUCION.
-         *
-         * Las remisiones NO definen cuándo salió la OT de Logística. Se usan solamente
-         * para encontrar la primera recepción local coherente posterior a esa salida.
-         * Además se ignoran redistribuciones: para confirmar el pedido sólo consideramos
-         * movimientos cuyo origen sea CASA CENTRAL/MATRIZ (despacho central).
+         * La fecha LOGISTICA - LOGISTICA Y DISTRIBUCION se conserva como antecedente
+         * operativo de la OT. Si es anterior al pedido significa que la OT ya estaba
+         * disponible; no es un error y no debe impedir medir la atención del pedido.
          */
         $fechaPedido = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
         $kpisOt = collect();
         $movimientosAnteriores = 0;
 
         foreach ($ots as $ot) {
-            $fechaLogistica = !empty($ot->fecha_logistica_primera)
+            $fechaLogisticaHistorica = !empty($ot->fecha_logistica_primera)
                 ? Carbon::parse($ot->fecha_logistica_primera)->startOfDay()
                 : null;
 
-            // Una fecha logística anterior al pedido no puede medir este pedido.
-            $fechaLogisticaValida = $fechaLogistica
-                && (!$fechaPedido || $fechaLogistica->gte($fechaPedido))
-                ? $fechaLogistica
-                : null;
+            $otDisponiblePreviamente = $fechaPedido
+                && $fechaLogisticaHistorica
+                && $fechaLogisticaHistorica->lt($fechaPedido);
 
             $movsOt = collect($movimientosRemision->get($ot->id_ot, collect()));
 
-            // Sólo despachos originales desde Central/Matriz hacia locales comerciales.
-            // Así una redistribución Local A -> Local B no se confunde con atención inicial.
+            // Para atender el pedido sólo cuenta el despacho original desde Central/Matriz.
+            // Las redistribuciones entre locales quedan fuera del KPI.
             $despachosCentral = $movsOt->filter(function ($mov) {
                 $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
                 $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
@@ -337,82 +332,87 @@ class SeguimientoPedidoController extends Controller
                     return !empty($mov->fecha_remision)
                         && Carbon::parse($mov->fecha_remision)->startOfDay()->lt($fechaPedido);
                 })->count();
+
+                // El despacho que atiende ESTE pedido nunca puede ser anterior al pedido.
+                $despachosCentral = $despachosCentral->filter(function ($mov) use ($fechaPedido) {
+                    return !empty($mov->fecha_remision)
+                        && Carbon::parse($mov->fecha_remision)->startOfDay()->gte($fechaPedido);
+                });
+            } else {
+                $despachosCentral = $despachosCentral->filter(function ($mov) {
+                    return !empty($mov->fecha_remision);
+                });
             }
 
-            /*
-             * La confirmación debe ser posterior a la salida REAL de logística.
-             * No exigimos que fecha_remision sea exactamente igual a fecha_logistica,
-             * porque el documento puede emitirse después; sí exigimos coherencia temporal.
-             */
-            $recepcionesValidasOt = $despachosCentral
-                ->filter(function ($mov) use ($fechaPedido, $fechaLogisticaValida) {
-                    if (empty($mov->fecha_recepcion)) {
-                        return false;
-                    }
-
-                    $recepcion = Carbon::parse($mov->fecha_recepcion)->startOfDay();
-
-                    if ($fechaPedido && $recepcion->lt($fechaPedido)) {
-                        return false;
-                    }
-
-                    if ($fechaLogisticaValida && $recepcion->lt($fechaLogisticaValida)) {
-                        return false;
-                    }
-
-                    if (!empty($mov->fecha_remision)) {
-                        $remision = Carbon::parse($mov->fecha_remision)->startOfDay();
-                        if ($fechaPedido && $remision->lt($fechaPedido)) {
-                            return false;
-                        }
-                        if ($fechaLogisticaValida && $remision->lt($fechaLogisticaValida)) {
-                            return false;
-                        }
-                        if ($recepcion->lt($remision)) {
-                            return false;
-                        }
-                    }
-
-                    return true;
-                })
+            // Primera remisión válida desde Central posterior/igual a la fecha del pedido.
+            $primerDespacho = $despachosCentral
                 ->sortBy(function ($mov) {
-                    return $mov->fecha_recepcion . ' ' . ($mov->fecha_remision ?? '');
-                });
+                    return $mov->fecha_remision . ' '
+                        . str_pad((string) ($mov->numero_remision ?? ''), 20, '0', STR_PAD_LEFT);
+                })
+                ->first();
 
-            $primeraRecepcion = $recepcionesValidasOt->first();
-
-            $ot->kpi_fecha_logistica = $fechaLogisticaValida ? $fechaLogisticaValida->format('Y-m-d') : null;
-            $ot->kpi_fecha_envio = $primeraRecepcion->fecha_remision ?? null;
-            $ot->kpi_fecha_recepcion = $primeraRecepcion->fecha_recepcion ?? null;
+            $ot->kpi_fecha_logistica = $fechaLogisticaHistorica
+                ? $fechaLogisticaHistorica->format('Y-m-d')
+                : null;
+            $ot->kpi_ot_disponible_previamente = $otDisponiblePreviamente;
+            $ot->kpi_fecha_envio = $primerDespacho->fecha_remision ?? null;
+            $ot->kpi_fecha_recepcion = null;
             $ot->kpi_dias = null;
             $ot->kpi_dias_logistica = null;
 
-            if (!$fechaLogisticaValida) {
-                $ot->kpi_estado = $fechaLogistica
-                    ? 'LOGISTICA ANTERIOR AL PEDIDO'
-                    : 'SIN SALIDA LOGISTICA';
-            } elseif (!$primeraRecepcion) {
-                $ot->kpi_estado = 'SIN CONFIRMACION LOCAL';
+            if (!$primerDespacho) {
+                $ot->kpi_estado = 'SIN DESPACHO DEL PEDIDO';
             } else {
-                $ot->kpi_estado = 'CONFIRMADO';
+                /*
+                 * Tomamos exclusivamente la recepción del MISMO documento que fue
+                 * seleccionado como primer despacho del pedido.
+                 */
+                $mismoDocumento = $despachosCentral->filter(function ($mov) use ($primerDespacho) {
+                    return (string) ($mov->serie ?? '') === (string) ($primerDespacho->serie ?? '')
+                        && (string) ($mov->numero_remision ?? '') === (string) ($primerDespacho->numero_remision ?? '')
+                        && (string) ($mov->fecha_remision ?? '') === (string) ($primerDespacho->fecha_remision ?? '');
+                });
 
-                if ($fechaPedido) {
-                    $ot->kpi_dias = $fechaPedido->diffInDays(
-                        Carbon::parse($ot->kpi_fecha_recepcion)->startOfDay(),
-                        false
-                    );
+                $recepcionValida = $mismoDocumento
+                    ->pluck('fecha_recepcion')
+                    ->filter()
+                    ->filter(function ($fecha) use ($fechaPedido, $primerDespacho) {
+                        $recepcion = Carbon::parse($fecha)->startOfDay();
+                        $remision = Carbon::parse($primerDespacho->fecha_remision)->startOfDay();
+
+                        return $recepcion->gte($remision)
+                            && (!$fechaPedido || $recepcion->gte($fechaPedido));
+                    })
+                    ->min();
+
+                $ot->kpi_fecha_recepcion = $recepcionValida;
+
+                if (!$recepcionValida) {
+                    $ot->kpi_estado = 'DESPACHADO SIN CONFIRMAR';
+                } else {
+                    $ot->kpi_estado = $otDisponiblePreviamente
+                        ? 'CONFIRMADO - OT DISPONIBLE'
+                        : 'CONFIRMADO';
+
+                    if ($fechaPedido) {
+                        $ot->kpi_dias = $fechaPedido->diffInDays(
+                            Carbon::parse($recepcionValida)->startOfDay(),
+                            false
+                        );
+                    }
+
+                    $ot->kpi_dias_logistica = Carbon::parse($primerDespacho->fecha_remision)
+                        ->startOfDay()
+                        ->diffInDays(Carbon::parse($recepcionValida)->startOfDay(), false);
                 }
-
-                $ot->kpi_dias_logistica = $fechaLogisticaValida->diffInDays(
-                    Carbon::parse($ot->kpi_fecha_recepcion)->startOfDay(),
-                    false
-                );
             }
 
             $kpisOt->push((object) [
                 'id_ot' => $ot->id_ot,
                 'nro_ot' => $ot->nro_ot,
                 'fecha_logistica' => $ot->kpi_fecha_logistica,
+                'ot_disponible_previamente' => $ot->kpi_ot_disponible_previamente,
                 'fecha_envio' => $ot->kpi_fecha_envio,
                 'fecha_recepcion' => $ot->kpi_fecha_recepcion,
                 'dias' => $ot->kpi_dias,
@@ -421,7 +421,7 @@ class SeguimientoPedidoController extends Controller
             ]);
         }
 
-        $salidasLogisticaValidas = $kpisOt->pluck('fecha_logistica')->filter();
+        $salidasLogisticaValidas = $kpisOt->pluck('fecha_envio')->filter();
         $recepcionesValidas = $kpisOt->pluck('fecha_recepcion')->filter();
         $diasValidos = $kpisOt->pluck('dias')->filter(function ($dias) {
             return $dias !== null && $dias >= 0;
