@@ -159,6 +159,37 @@
                 · promedio {{ number_format($promedioCantidadOT, 1, ',', '.') }} unidades por OT.
             </div>
 
+            <div class="border-top mt-3 pt-3">
+                <div class="row align-items-center">
+                    <div class="col-lg-7 mb-2 mb-lg-0">
+                        <strong><i class="fas fa-file-excel text-success mr-1"></i>Actualizar ENVIOS / Remisiones</strong>
+                        <div class="lg-subtitle">
+                            Importador exclusivo de OT / Logística. No modifica Redistribución.
+                        </div>
+                    </div>
+                    <div class="col-lg-5">
+                        <form method="POST"
+                            action="{{ route('control.terminacion.importar-remisiones') }}"
+                            enctype="multipart/form-data"
+                            class="d-flex align-items-center">
+                            @csrf
+                            <input type="hidden" name="origen" value="dashboard-logistica">
+                            <input type="hidden" name="fecha_desde" value="{{ $fechaDesde }}">
+                            <input type="hidden" name="fecha_hasta" value="{{ $fechaHasta }}">
+                            <input type="file" name="archivo_envios"
+                                class="form-control-file mr-2"
+                                accept=".xlsx,.xls,.csv"
+                                required
+                                {{ !$tablaRemisionesDisponible ? 'disabled' : '' }}>
+                            <button class="btn btn-success btn-sm lg-nowrap"
+                                {{ !$tablaRemisionesDisponible ? 'disabled' : '' }}>
+                                <i class="fas fa-upload mr-1"></i>Importar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
 
             </div>
         </div>
