@@ -71,11 +71,11 @@ class RemisionesController extends Controller
              * cada módulo procesa el mismo archivo con la lógica que ya funcionaba
              * cuando estaban separados.
              */
-            $redisAntes = (int) DB::table('redistribucion_remision')->count();
             $redisImport = new RedistribucionRemisionImport();
-            Excel::import($redisImport, $archivo);
-            $redisDespues = (int) DB::table('redistribucion_remision')->count();
-            $redisNuevas = max(0, $redisDespues - $redisAntes);
+
+            // Usar la ruta física evita depender del estado interno del UploadedFile
+            // cuando el mismo archivo se procesa por dos motores distintos.
+            Excel::import($redisImport, $rutaArchivo);
 
             $import = new ControlTerminacionRemisionImport();
 
@@ -98,15 +98,27 @@ class RemisionesController extends Controller
                 . ' | Actualizadas OT/logística: ' . $import->getActualizadas()
                 . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
-                . ' | Redistribución: importador original ejecutado'
-                . ' | Nuevas remisiones redistribución: ' . $redisNuevas
+                . ' | Redistribución procesadas: ' . $redisImport->getProcesadas()
+                . ' | Redistribución coincidentes: ' . $redisImport->getCoincidentes()
+                . ' | Redistribución nuevas: ' . $redisImport->getInsertadas()
+                . ' | Redistribución actualizadas: ' . $redisImport->getActualizadas()
+                . ' | Redistribución sin coincidencia: ' . $redisImport->getSinCoincidencia()
+                . ' | Redistribución sin saldo: ' . $redisImport->getSinSaldo()
+                . ' | Redistribución omitidas: ' . $redisImport->getOmitidas()
+                . ' | Redistribución errores: ' . $redisImport->getErrores()
                 . ' | Omitidas: ' . $import->getOmitidas()
                 . ' | Tiempo total: ' . $tiempo . '.';
 
             Log::info('FIN IMPORTACION CENTRAL REMISIONES', [
                 'lineas' => $import->getProcesadas(),
-                'redistribucion_importador_original' => true,
-                'redistribucion_nuevas_remisiones' => $redisNuevas,
+                'redistribucion_procesadas' => $redisImport->getProcesadas(),
+                'redistribucion_coincidentes' => $redisImport->getCoincidentes(),
+                'redistribucion_nuevas' => $redisImport->getInsertadas(),
+                'redistribucion_actualizadas' => $redisImport->getActualizadas(),
+                'redistribucion_sin_coincidencia' => $redisImport->getSinCoincidencia(),
+                'redistribucion_sin_saldo' => $redisImport->getSinSaldo(),
+                'redistribucion_omitidas' => $redisImport->getOmitidas(),
+                'redistribucion_errores' => $redisImport->getErrores(),
                 'segundos' => round($segundos, 3),
             ]);
 
