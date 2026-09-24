@@ -65,7 +65,7 @@ class SeguimientoPedidoController extends Controller
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
                     ->whereNotNull('r.fecha_recepcion')
                     ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
-                    ->selectRaw('MAX(r.fecha_recepcion)');
+                    ->selectRaw('MIN(r.fecha_recepcion)');
             }, 'ultima_confirmacion')
             ->orderByDesc('id');
 
@@ -302,13 +302,26 @@ class SeguimientoPedidoController extends Controller
                 ->map(function ($local) {
                     return [
                         'primera' => $local->primera_recepcion,
-                        'ultima' => $local->ultima_recepcion,
+                        'ultima' => $local->primera_recepcion,
                     ];
                 });
         });
 
         $primeraConfirmacion = $recepcionesLocales->pluck('primera')->filter()->min();
-        $ultimaConfirmacion = $recepcionesLocales->pluck('ultima')->filter()->max();
+
+        // Para medir la atención del pedido usamos la PRIMERA recepción real del local.
+        // Las remisiones posteriores pueden ser reposiciones, correcciones o redistribuciones
+        // y no deben inflar artificialmente el tiempo del pedido original.
+        $ultimaConfirmacion = $recepcionesLocales->pluck('ultima')->filter()->min();
+
+        $primerEnvioLogistica = $movimientosRemision
+            ->filter(function ($mov) {
+                $destino = strtoupper(trim((string) ($mov->sucursal_logistica ?: $mov->sucursal_destino)));
+                return $mov->fecha_remision && !in_array($destino, ['CASA CENTRAL', 'MATRIZ'], true);
+            })
+            ->pluck('fecha_remision')
+            ->filter()
+            ->min();
         $fechaPedido = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
 
         $pedidoCompleto = $ots->count() > 0
@@ -332,18 +345,19 @@ class SeguimientoPedidoController extends Controller
             'recibido' => (int) $ots->sum('recibido'),
             'completas' => $ots->where('estado_seguimiento', 'COMPLETO')->count(),
             'fecha_pedido' => $pedido->fecha_pedido,
+            'primer_envio_logistica' => $primerEnvioLogistica,
             'primera_confirmacion' => $primeraConfirmacion,
             'ultima_confirmacion' => $ultimaConfirmacion,
             'dias_primera_confirmacion' => ($fechaPedido && $primeraConfirmacion)
                 ? $fechaPedido->diffInDays(Carbon::parse($primeraConfirmacion)->startOfDay(), false)
                 : null,
-            'dias_confirmacion_total' => ($fechaPedido && $ultimaConfirmacion && $pedidoCompleto)
+            'dias_confirmacion_total' => ($fechaPedido && $ultimaConfirmacion)
                 ? $fechaPedido->diffInDays(Carbon::parse($ultimaConfirmacion)->startOfDay(), false)
                 : null,
             'dias_promedio_confirmacion' => $diasPorLocal->isNotEmpty()
                 ? round($diasPorLocal->avg(), 1)
                 : null,
-            'dias_transcurridos' => ($fechaPedido && !$pedidoCompleto)
+            'dias_transcurridos' => ($fechaPedido && !$ultimaConfirmacion)
                 ? $fechaPedido->diffInDays(Carbon::today(), false)
                 : null,
         ];
