@@ -23,7 +23,7 @@
             <div class="card-body">
                 <div class="alert alert-info mb-3">
                     El Excel debe contener <strong>NRO OT</strong>, <strong>NRO PEDIDO</strong> y <strong>FECHA PEDIDO</strong> (también se aceptan OT, PEDIDO y FECHA).
-                    Ejemplo: <strong>30703 / T1 / 01/09/2026</strong>. La fecha se guarda una sola vez por pedido y las confirmaciones se obtienen automáticamente desde la recepción real de los locales.
+                    Ejemplo: <strong>30703 / T1 / 01/09/2026</strong>. La fecha se guarda una sola vez por pedido y la confirmación se toma de la primera recepción real del local; remisiones posteriores no aumentan el tiempo del pedido original.
                 </div>
                 <div class="custom-file">
                     <input type="file" name="archivo" class="custom-file-input" id="archivo-pedidos" accept=".xlsx,.xls,.csv" required>
@@ -56,7 +56,7 @@
                         <th>Confirmado</th>
                         <th>Situación</th>
                         <th>Fecha pedido</th>
-                        <th>Últ. confirmación</th>
+                        <th>1ª confirmación local</th>
                         <th>Tiempo</th>
                         <th>Detalle</th>
                     </tr>
