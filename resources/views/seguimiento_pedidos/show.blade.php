@@ -103,8 +103,8 @@
                     <tr>
                         <th>OT</th>
                         <th>Fecha pedido</th>
-                        <th>Salida Logística</th>
-                        <th>Remisión</th>
+                        <th>Logística OT</th>
+                        <th>Despacho del pedido</th>
                         <th>Recepción local</th>
                         <th>Tiempo</th>
                         <th>Estado KPI</th>
@@ -115,7 +115,12 @@
                     <tr>
                         <td><strong>{{ $otKpi->nro_ot }}</strong></td>
                         <td>{{ $resumen->fecha_pedido ? $resumen->fecha_pedido->format('d/m/Y') : '-' }}</td>
-                        <td>{{ $otKpi->kpi_fecha_logistica ? date('d/m/Y', strtotime($otKpi->kpi_fecha_logistica)) : '-' }}</td>
+                        <td>
+                            {{ $otKpi->kpi_fecha_logistica ? date('d/m/Y', strtotime($otKpi->kpi_fecha_logistica)) : '-' }}
+                            @if($otKpi->kpi_ot_disponible_previamente)
+                                <small class="d-block text-info">OT disponible previamente</small>
+                            @endif
+                        </td>
                         <td>{{ $otKpi->kpi_fecha_envio ? date('d/m/Y', strtotime($otKpi->kpi_fecha_envio)) : '-' }}</td>
                         <td>{{ $otKpi->kpi_fecha_recepcion ? date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) : '-' }}</td>
                         <td>
@@ -128,8 +133,10 @@
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
                                 <span class="badge badge-success">CONFIRMADO</span>
-                            @elseif($otKpi->kpi_estado === 'SIN CONFIRMACION LOCAL')
-                                <span class="badge badge-warning">SIN CONFIRMACIÓN LOCAL</span>
+                            @elseif($otKpi->kpi_estado === 'CONFIRMADO - OT DISPONIBLE')
+                                <span class="badge badge-info">CONFIRMADO - OT DISPONIBLE</span>
+                            @elseif($otKpi->kpi_estado === 'DESPACHADO SIN CONFIRMAR')
+                                <span class="badge badge-warning">DESPACHADO SIN CONFIRMAR</span>
                             @else
                                 <span class="badge badge-secondary">{{ $otKpi->kpi_estado }}</span>
                             @endif
