@@ -27,6 +27,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     private $omitidas = 0;
     private $redistribucionActualizadas = 0;
     private $redistribucionSinCoincidencia = 0;
+    private $redistribucionSinDetalle = 0;
+    private $redistribucionSinSaldo = 0;
+    private $redistribucionReimportadas = 0;
 
     private $documentosEstado = [];
 
@@ -563,11 +566,13 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         $detalles = RedistribucionProcesoDetalle::query()
             ->select(
                 'id',
+                'proceso_id',
                 'codigo',
                 'sucursal_origen',
                 'sucursal_destino',
                 'cantidad',
                 'estado',
+                'fecha',
                 'fecha_remision',
                 'fecha_recepcion'
             )
@@ -628,6 +633,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             if ($candidatos->isEmpty()) {
                 $this->redistribucionSinCoincidencia++;
+                $this->redistribucionSinDetalle++;
                 continue;
             }
 
@@ -643,7 +649,37 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 }
             }
 
+            if ($remision) {
+                $this->redistribucionReimportadas++;
+            }
+
+            // Para una remisión nueva pueden existir varios detalles con el mismo
+            // código/origen/destino. Priorizamos el detalle cronológicamente más
+            // cercano que NO sea posterior a la remisión. Luego aplicamos saldo.
             if (!$detalle) {
+                $fechaDocumento = !empty($fila['fecha_remision'])
+                    ? Carbon::parse($fila['fecha_remision'])->startOfDay()
+                    : (!empty($fila['fecha_creacion']) ? Carbon::parse($fila['fecha_creacion'])->startOfDay() : null);
+
+                $candidatos = $candidatos->sort(function ($a, $b) use ($fechaDocumento) {
+                    if (!$fechaDocumento) {
+                        return ((int) $b->id) <=> ((int) $a->id);
+                    }
+
+                    $fechaA = !empty($a->fecha) ? Carbon::parse($a->fecha)->startOfDay() : null;
+                    $fechaB = !empty($b->fecha) ? Carbon::parse($b->fecha)->startOfDay() : null;
+
+                    $posteriorA = $fechaA && $fechaA->gt($fechaDocumento) ? 1 : 0;
+                    $posteriorB = $fechaB && $fechaB->gt($fechaDocumento) ? 1 : 0;
+                    if ($posteriorA !== $posteriorB) return $posteriorA <=> $posteriorB;
+
+                    $distA = $fechaA ? abs($fechaA->diffInDays($fechaDocumento, false)) : 999999;
+                    $distB = $fechaB ? abs($fechaB->diffInDays($fechaDocumento, false)) : 999999;
+                    if ($distA !== $distB) return $distA <=> $distB;
+
+                    return ((int) $b->id) <=> ((int) $a->id);
+                })->values();
+
                 foreach ($candidatos as $candidato) {
                     $pendiente = (int) $candidato->cantidad
                         - (int) ($transferidoPorDetalle[(int) $candidato->id] ?? 0);
@@ -669,6 +705,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             if (!$detalle) {
                 $this->redistribucionSinCoincidencia++;
+                $this->redistribucionSinSaldo++;
                 continue;
             }
 
@@ -1639,6 +1676,21 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     public function getRedistribucionSinCoincidencia()
     {
         return $this->redistribucionSinCoincidencia;
+    }
+
+    public function getRedistribucionSinDetalle()
+    {
+        return $this->redistribucionSinDetalle;
+    }
+
+    public function getRedistribucionSinSaldo()
+    {
+        return $this->redistribucionSinSaldo;
+    }
+
+    public function getRedistribucionReimportadas()
+    {
+        return $this->redistribucionReimportadas;
     }
 
     public function getDocumentosArchivo()
