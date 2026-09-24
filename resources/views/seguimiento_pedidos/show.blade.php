@@ -113,7 +113,7 @@
                 @foreach($ots as $otKpi)
                     <tr>
                         <td><strong>{{ $otKpi->nro_ot }}</strong></td>
-                        <td>{{ $otKpi->fecha_terminacion ? date('d/m/Y', strtotime($otKpi->fecha_terminacion)) : '-' }}</td>
+                        <td>{{ $otKpi->fecha_ingreso ? date('d/m/Y', strtotime($otKpi->fecha_ingreso)) : '-' }}</td>
                         <td>
                             {{ $otKpi->kpi_fecha_logistica ? date('d/m/Y', strtotime($otKpi->kpi_fecha_logistica)) : '-' }}
                             @if($otKpi->kpi_ot_disponible_previamente)
