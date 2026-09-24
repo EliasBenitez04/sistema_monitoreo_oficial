@@ -36,7 +36,10 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
      * de filas puede superar fácilmente 512 MB. Para ENVIOS leemos directamente
      * el XML del XLSX y entregamos bloques pequeños al mismo motor de negocio.
      */
-    public function importarXlsxStreaming(string $ruta): void
+    public function importarXlsxStreaming(
+        string $ruta,
+        ?RedistribucionRemisionImport $redistribucionImport = null
+    ): void
     {
         @set_time_limit(0);
         DB::disableQueryLog();
@@ -94,7 +97,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             $encabezados = [];
             $lote = [];
-            $tamanoLote = 750;
+            $tamanoLote = 1500;
 
             while ($reader->read()) {
                 if ($reader->nodeType !== \XMLReader::ELEMENT || $reader->localName !== 'row') {
@@ -133,8 +136,19 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 $lote[] = $fila;
 
                 if (count($lote) >= $tamanoLote) {
-                    $this->collection(collect($lote));
+                    $filasLote = collect($lote);
+
+                    // Un único recorrido físico del XLSX. Cada motor conserva
+                    // su propia regla de negocio y recibe exactamente las
+                    // mismas filas con los encabezados originales normalizados.
+                    if ($redistribucionImport) {
+                        $redistribucionImport->collection($filasLote);
+                    }
+
+                    $this->collection($filasLote);
+
                     $lote = [];
+                    unset($filasLote);
                     gc_collect_cycles();
                 }
             }
@@ -142,8 +156,16 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $reader->close();
 
             if (!empty($lote)) {
-                $this->collection(collect($lote));
+                $filasLote = collect($lote);
+
+                if ($redistribucionImport) {
+                    $redistribucionImport->collection($filasLote);
+                }
+
+                $this->collection($filasLote);
+
                 $lote = [];
+                unset($filasLote);
                 gc_collect_cycles();
             }
         } finally {
