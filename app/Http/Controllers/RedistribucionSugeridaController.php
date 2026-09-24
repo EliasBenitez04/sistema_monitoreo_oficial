@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\LoteRedistribucionExport;
+use App\Imports\RedistribucionRemisionImport;
 use Maatwebsite\Excel\Facades\Excel;
 
 class RedistribucionSugeridaController extends Controller
@@ -3497,6 +3498,56 @@ class RedistribucionSugeridaController extends Controller
             'success',
             'Sugerencia eliminada correctamente.'
         );
+    }
+
+
+    public function importarRemisiones(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+        @ini_set('memory_limit', '1536M');
+        DB::disableQueryLog();
+
+        $request->validate([
+            'archivo' => 'required|file|mimes:xlsx,xls|max:102400',
+        ]);
+
+        try {
+            $inicio = microtime(true);
+            $import = new RedistribucionRemisionImport();
+
+            Excel::import(
+                $import,
+                $request->file('archivo')
+            );
+
+            $segundos = round(microtime(true) - $inicio, 2);
+
+            return back()->with(
+                'success',
+                'Redistribución actualizada. '
+                . 'Procesadas: ' . $import->getProcesadas()
+                . ' | Coincidentes: ' . $import->getCoincidentes()
+                . ' | Nuevas remisiones: ' . $import->getInsertadas()
+                . ' | Actualizadas: ' . $import->getActualizadas()
+                . ' | Sin coincidencia: ' . $import->getSinCoincidencia()
+                . ' | Sin saldo: ' . $import->getSinSaldo()
+                . ' | Omitidas: ' . $import->getOmitidas()
+                . ' | Errores: ' . $import->getErrores()
+                . ' | Tiempo: ' . $segundos . ' s.'
+            );
+        } catch (\Throwable $e) {
+            Log::error('ERROR IMPORTANDO REMISIONES REDISTRIBUCION', [
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+            ]);
+
+            return back()->with(
+                'error',
+                'Error al importar remisiones de redistribución: ' . $e->getMessage()
+            );
+        }
     }
 
 }
