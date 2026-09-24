@@ -54,7 +54,7 @@
             </div>
             <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">1ª confirmación local</small>
+                    <small class="text-muted d-block text-uppercase">Última OT confirmada</small>
                     <strong>{{ $resumen->ultima_confirmacion ? date('d/m/Y', strtotime($resumen->ultima_confirmacion)) : '-' }}</strong>
                     @if($resumen->dias_confirmacion_total !== null)
                         <div class="small text-success">{{ $resumen->dias_confirmacion_total }} días desde pedido</div>
@@ -63,7 +63,7 @@
             </div>
             <div class="col-lg col-md-6 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">Tiempo hasta confirmar</small>
+                    <small class="text-muted d-block text-uppercase">Rango de atención</small>
                     @if($resumen->dias_confirmacion_total !== null)
                         <strong class="h4 mb-0">{{ $resumen->dias_confirmacion_total }} días</strong>
                     @elseif($resumen->dias_transcurridos !== null)
@@ -78,9 +78,64 @@
                 <div class="kpi-tiempo">
                     <small class="text-muted d-block text-uppercase">Promedio por local</small>
                     <strong class="h4 mb-0">{{ $resumen->dias_promedio_confirmacion !== null ? number_format($resumen->dias_promedio_confirmacion, 1, ',', '.') . ' días' : '-' }}</strong>
-                    <div class="small text-muted">hasta su primera recepción</div>
+                    <div class="small text-muted">promedio por OT confirmada</div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+@if(($resumen->movimientos_anteriores_omitidos ?? 0) > 0)
+<div class="alert alert-secondary py-2">
+    <i class="fas fa-filter mr-1"></i>
+    Se omitieron <strong>{{ $resumen->movimientos_anteriores_omitidos }}</strong> movimientos anteriores a la fecha del pedido para no distorsionar los KPI.
+</div>
+@endif
+
+<div class="card card-outline card-secondary mb-4">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-list-ol mr-2"></i>Tiempo de atención por OT</h3>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 text-center">
+                <thead>
+                    <tr>
+                        <th>OT</th>
+                        <th>Fecha pedido</th>
+                        <th>1er envío válido</th>
+                        <th>Recepción de ese envío</th>
+                        <th>Tiempo</th>
+                        <th>Estado KPI</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach($ots as $otKpi)
+                    <tr>
+                        <td><strong>{{ $otKpi->nro_ot }}</strong></td>
+                        <td>{{ $resumen->fecha_pedido ? $resumen->fecha_pedido->format('d/m/Y') : '-' }}</td>
+                        <td>{{ $otKpi->kpi_fecha_envio ? date('d/m/Y', strtotime($otKpi->kpi_fecha_envio)) : '-' }}</td>
+                        <td>{{ $otKpi->kpi_fecha_recepcion ? date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) : '-' }}</td>
+                        <td>
+                            @if($otKpi->kpi_dias !== null)
+                                <strong>{{ $otKpi->kpi_dias }} días</strong>
+                            @else
+                                -
+                            @endif
+                        </td>
+                        <td>
+                            @if($otKpi->kpi_estado === 'CONFIRMADO')
+                                <span class="badge badge-success">CONFIRMADO</span>
+                            @elseif($otKpi->kpi_estado === 'ENVIADO SIN CONFIRMAR')
+                                <span class="badge badge-warning">ENVIADO SIN CONFIRMAR</span>
+                            @else
+                                <span class="badge badge-secondary">{{ $otKpi->kpi_estado }}</span>
+                            @endif
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
