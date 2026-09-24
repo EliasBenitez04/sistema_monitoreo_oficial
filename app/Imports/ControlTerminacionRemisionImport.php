@@ -94,7 +94,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             $encabezados = [];
             $lote = [];
-            $tamanoLote = 1500;
+            $tamanoLote = 750;
 
             while ($reader->read()) {
                 if ($reader->nodeType !== \XMLReader::ELEMENT || $reader->localName !== 'row') {
@@ -525,9 +525,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 ]
             );
         }
-
-        // Redistribución ya fue procesada arriba por su importador histórico.
-        // No ejecutar la implementación unificada para evitar doble asociación.
     }
 
     private function normalizarFilas(Collection $rows)
@@ -1382,11 +1379,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     {
         return $this->omitidas;
     }
-
-
-
-
-
 
     public function getDocumentosArchivo()
     {
