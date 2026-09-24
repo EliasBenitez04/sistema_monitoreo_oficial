@@ -3515,11 +3515,14 @@ class RedistribucionSugeridaController extends Controller
         try {
             $inicio = microtime(true);
             $import = new RedistribucionRemisionImport();
+            $archivo = $request->file('archivo');
+            $extension = strtolower($archivo->getClientOriginalExtension());
 
-            Excel::import(
-                $import,
-                $request->file('archivo')
-            );
+            if ($extension === 'xlsx') {
+                $import->importarXlsxStreaming($archivo->getRealPath());
+            } else {
+                Excel::import($import, $archivo);
+            }
 
             $segundos = round(microtime(true) - $inicio, 2);
 
