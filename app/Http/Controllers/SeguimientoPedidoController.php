@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Facades\Excel;
+use Carbon\Carbon;
 
 class SeguimientoPedidoController extends Controller
 {
@@ -50,6 +51,22 @@ class SeguimientoPedidoController extends Controller
                     ->whereNotNull('r.fecha_recepcion')
                     ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
             }, 'confirmado')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
+                    ->selectRaw('MIN(r.fecha_recepcion)');
+            }, 'primera_confirmacion')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
+                    ->selectRaw('MAX(r.fecha_recepcion)');
+            }, 'ultima_confirmacion')
             ->orderByDesc('id');
 
         if ($buscar !== '') {
@@ -57,6 +74,16 @@ class SeguimientoPedidoController extends Controller
         }
 
         $pedidos = $query->paginate(30)->appends($request->query());
+
+        $pedidos->getCollection()->transform(function ($pedido) {
+            $inicio = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
+            $fin = $pedido->ultima_confirmacion ? Carbon::parse($pedido->ultima_confirmacion)->startOfDay() : null;
+
+            $pedido->dias_confirmacion = ($inicio && $fin) ? $inicio->diffInDays($fin, false) : null;
+            $pedido->dias_transcurridos = ($inicio && !$fin) ? $inicio->diffInDays(Carbon::today(), false) : null;
+
+            return $pedido;
+        });
 
         return view('seguimiento_pedidos.index', compact('pedidos', 'buscar'));
     }
@@ -150,6 +177,7 @@ class SeguimientoPedidoController extends Controller
                         DB::raw('SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as recibido'),
                         DB::raw('MIN(fecha_remision) as primera_remision'),
                         DB::raw('MAX(fecha_remision) as ultima_remision'),
+                        DB::raw('MIN(fecha_recepcion) as primera_recepcion'),
                         DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
                     )
                     ->groupBy('id_ot', 'sucursal_logistica', 'sucursal_destino', 'cod_sucursal_destino')
@@ -259,6 +287,33 @@ class SeguimientoPedidoController extends Controller
                 : 0;
         }
 
+        $recepcionesLocales = $ots->flatMap(function ($ot) {
+            return $ot->locales_comerciales
+                ->filter(function ($local) {
+                    return !empty($local->ultima_recepcion);
+                })
+                ->map(function ($local) {
+                    return [
+                        'primera' => $local->primera_recepcion,
+                        'ultima' => $local->ultima_recepcion,
+                    ];
+                });
+        });
+
+        $primeraConfirmacion = $recepcionesLocales->pluck('primera')->filter()->min();
+        $ultimaConfirmacion = $recepcionesLocales->pluck('ultima')->filter()->max();
+        $fechaPedido = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
+
+        $diasPorLocal = $recepcionesLocales
+            ->pluck('ultima')
+            ->filter()
+            ->map(function ($fecha) use ($fechaPedido) {
+                return $fechaPedido ? $fechaPedido->diffInDays(Carbon::parse($fecha)->startOfDay(), false) : null;
+            })
+            ->filter(function ($dias) {
+                return $dias !== null;
+            });
+
         $resumen = (object) [
             'ots' => $ots->count(),
             'cantidad' => (int) $ots->sum('cantidad_orden'),
@@ -266,6 +321,21 @@ class SeguimientoPedidoController extends Controller
             'enviado' => (int) $ots->sum('enviado'),
             'recibido' => (int) $ots->sum('recibido'),
             'completas' => $ots->where('estado_seguimiento', 'COMPLETO')->count(),
+            'fecha_pedido' => $pedido->fecha_pedido,
+            'primera_confirmacion' => $primeraConfirmacion,
+            'ultima_confirmacion' => $ultimaConfirmacion,
+            'dias_primera_confirmacion' => ($fechaPedido && $primeraConfirmacion)
+                ? $fechaPedido->diffInDays(Carbon::parse($primeraConfirmacion)->startOfDay(), false)
+                : null,
+            'dias_confirmacion_total' => ($fechaPedido && $ultimaConfirmacion)
+                ? $fechaPedido->diffInDays(Carbon::parse($ultimaConfirmacion)->startOfDay(), false)
+                : null,
+            'dias_promedio_confirmacion' => $diasPorLocal->isNotEmpty()
+                ? round($diasPorLocal->avg(), 1)
+                : null,
+            'dias_transcurridos' => ($fechaPedido && !$ultimaConfirmacion)
+                ? $fechaPedido->diffInDays(Carbon::today(), false)
+                : null,
         ];
 
         return view('seguimiento_pedidos.show', compact('pedido', 'ots', 'resumen'));
