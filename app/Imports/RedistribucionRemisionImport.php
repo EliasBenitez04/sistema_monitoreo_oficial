@@ -10,22 +10,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
 
-class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, WithChunkReading
+class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
 {
-    private $procesadas = 0;
-    private $coincidentes = 0;
-    private $insertadas = 0;
-    private $actualizadas = 0;
-    private $sinCoincidencia = 0;
-    private $sinSaldo = 0;
-    private $errores = 0;
     public function collection(Collection $rows)
     {
         foreach ($rows as $index => $row) {
 
-            $this->procesadas++;
             DB::beginTransaction();
 
             try {
@@ -36,7 +27,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
 
                 Log::info('IMPORT REDISTRIBUCION - FILA', [
                     'fila' => $index,
-                    'row' => is_array($row) ? $row : $row->toArray(),
+                    'row' => $row->toArray(),
                 ]);
 
                 // =====================================================
@@ -173,7 +164,8 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                 // '100617481VD02
                 // 100617481VD02
 
-                $codigo = $this->normalizarCodigo($codigo);
+                $codigo = trim((string) $codigo);
+                $codigo = ltrim($codigo, "'");
 
                 // Serie
 
@@ -229,12 +221,12 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                         'sucursal_destino',
                         $sucursalDestino
                     )
+                    ->where(
+                        'codigo',
+                        $codigo
+                    )
                     ->orderBy('id')
-                    ->get()
-                    ->filter(function ($detalleItem) use ($codigo) {
-                        return $this->normalizarCodigo($detalleItem->codigo) === $codigo;
-                    })
-                    ->values();
+                    ->get();
 
                 if ($detalles->isEmpty()) {
 
@@ -247,13 +239,10 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                         'numeroRemision' => $numeroRemision,
                     ]);
 
-                    $this->sinCoincidencia++;
                     DB::rollBack();
 
                     continue;
                 }
-
-                $this->coincidentes++;
 
                 // =====================================================
                 // PRIMERO:
@@ -428,7 +417,6 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                     }
 
                     DB::commit();
-                    $this->actualizadas++;
 
                     Log::info(
                         'REMISIÓN YA EXISTENTE - FECHAS ACTUALIZADAS',
@@ -536,7 +524,6 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                         ]
                     );
 
-                    $this->sinSaldo++;
                     DB::rollBack();
 
                     continue;
@@ -654,7 +641,6 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                 // =====================================================
 
                 DB::commit();
-                $this->insertadas++;
 
                 // =====================================================
                 // LOG FINAL
@@ -693,7 +679,6 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                 );
             } catch (\Throwable $e) {
 
-                $this->errores++;
                 DB::rollBack();
 
                 // =====================================================
@@ -707,25 +692,11 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
                         'error' => $e->getMessage(),
                         'archivo' => $e->getFile(),
                         'linea' => $e->getLine(),
-                        'row' => is_array($row) ? $row : $row->toArray(),
+                        'row' => $row->toArray(),
                     ]
                 );
             }
         }
-    }
-
-    /**
-     * Normaliza el SKU completo sin perder variante/talle.
-     * Excel puede traer apóstrofe inicial y algunos archivos contienen
-     * espacios normales/no-separables invisibles.
-     */
-    private function normalizarCodigo($value): string
-    {
-        $codigo = strtoupper(trim((string) $value));
-        $codigo = ltrim($codigo, "'’\`");
-        $codigo = preg_replace('/[\\s\\x{00A0}\\x{2007}\\x{202F}]+/u', '', $codigo);
-
-        return $codigo ?: '';
     }
 
     // =========================================================
@@ -734,20 +705,13 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
 
     private function get($row, array $keys)
     {
-        // Compatible tanto con las Row/Collection de Laravel Excel como con
-        // los arrays generados por el lector XLSX streaming del importador central.
-        if ($row instanceof \Illuminate\Support\Collection) {
-            $row = $row->all();
-        } elseif (is_object($row) && method_exists($row, 'toArray')) {
-            $row = $row->toArray();
-        }
-
         foreach ($keys as $key) {
+
             if (
-                is_array($row) &&
-                array_key_exists($key, $row) &&
+                isset($row[$key]) &&
                 trim((string) $row[$key]) !== ''
             ) {
+
                 return $row[$key];
             }
         }
@@ -945,44 +909,4 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, With
 
         return null;
     }
-    public function getProcesadas(): int
-    {
-        return $this->procesadas;
-    }
-
-    public function getCoincidentes(): int
-    {
-        return $this->coincidentes;
-    }
-
-    public function getInsertadas(): int
-    {
-        return $this->insertadas;
-    }
-
-    public function getActualizadas(): int
-    {
-        return $this->actualizadas;
-    }
-
-    public function getSinCoincidencia(): int
-    {
-        return $this->sinCoincidencia;
-    }
-
-    public function getSinSaldo(): int
-    {
-        return $this->sinSaldo;
-    }
-
-    public function getErrores(): int
-    {
-        return $this->errores;
-    }
-
-    public function chunkSize(): int
-    {
-        return 1000;
-    }
-
 }
