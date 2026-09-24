@@ -362,7 +362,26 @@ class SeguimientoPedidoController extends Controller
             $ot->kpi_dias_logistica = null;
 
             if (!$primerDespacho) {
-                $ot->kpi_estado = 'SIN DESPACHO DEL PEDIDO';
+                /*
+                 * Si la OT ya había salido de Logística antes de crearse el pedido y
+                 * además existen despachos desde Central anteriores al pedido, no está
+                 * pendiente: fue distribuida previamente. No calculamos días porque no
+                 * existe una relación documental que permita atribuir ese despacho al
+                 * pedido posterior.
+                 */
+                $tuvoDespachoAnterior = $fechaPedido && $movsOt->contains(function ($mov) use ($fechaPedido) {
+                    $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
+                    $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
+
+                    return in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true)
+                        && !in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true)
+                        && !empty($mov->fecha_remision)
+                        && Carbon::parse($mov->fecha_remision)->startOfDay()->lt($fechaPedido);
+                });
+
+                $ot->kpi_estado = ($otDisponiblePreviamente && $tuvoDespachoAnterior)
+                    ? 'DISTRIBUIDA ANTES DEL PEDIDO'
+                    : 'SIN DESPACHO DEL PEDIDO';
             } else {
                 /*
                  * Tomamos exclusivamente la recepción del MISMO documento que fue
@@ -455,6 +474,7 @@ class SeguimientoPedidoController extends Controller
                 : null,
             'ots_con_envio_valido' => $salidasLogisticaValidas->count(),
             'ots_confirmadas_kpi' => $recepcionesValidas->count(),
+            'ots_distribuidas_antes_pedido' => $kpisOt->where('estado', 'DISTRIBUIDA ANTES DEL PEDIDO')->count(),
             'movimientos_anteriores_omitidos' => $movimientosAnteriores,
             'dias_transcurridos' => ($fechaPedido && $recepcionesValidas->isEmpty())
                 ? $fechaPedido->diffInDays(Carbon::today(), false)
