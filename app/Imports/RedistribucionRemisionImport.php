@@ -8,710 +8,355 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\ToCollection;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
-class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
+class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, WithChunkReading, SkipsEmptyRows
 {
+    private $inicializado = false;
+    private $detallesPorClave;
+    private $remisionesPorDocumento = [];
+    private $transferidoPorDetalle = [];
+
+    private $procesadas = 0;
+    private $coincidentes = 0;
+    private $insertadas = 0;
+    private $actualizadas = 0;
+    private $sinCoincidencia = 0;
+    private $sinSaldo = 0;
+    private $omitidas = 0;
+    private $errores = 0;
+
     public function collection(Collection $rows)
     {
-        foreach ($rows as $index => $row) {
+        @set_time_limit(0);
+        DB::disableQueryLog();
 
-            DB::beginTransaction();
+        $this->inicializarIndices();
+
+        foreach ($rows as $index => $row) {
+            $this->procesadas++;
 
             try {
+                $fechaRemision = $this->parseDate($this->get($row, ['fecha_remision', 'fecha remision']));
+                $fechaCreacion = $this->parseDate($this->get($row, ['fecha_creacion', 'fecha creacion']));
+                $fechaRecepcion = $this->parseDate($this->get($row, ['fecha_recepcion', 'fecha recepcion']));
 
-                // =====================================================
-                // LOG DE FILA COMPLETA
-                // =====================================================
+                $origen = (int) $this->get($row, ['cod_sucursal_salida', 'cod sucursal salida']);
+                $destino = (int) $this->get($row, ['cod_sucursal', 'cod sucursal']);
+                $codigo = $this->normalizarCodigo($this->get($row, ['cod_articulo', 'cod articulo']));
+                $serie = trim((string) $this->get($row, ['serie']));
+                $numero = (int) $this->get($row, ['numero_remision', 'numero remision']);
+                $cantidad = $this->parseQuantity($this->get($row, ['cantidad']));
 
-                Log::info('IMPORT REDISTRIBUCION - FILA', [
-                    'fila' => $index,
-                    'row' => $row->toArray(),
-                ]);
-
-                // =====================================================
-                // EXTRAER DATOS DEL EXCEL
-                // =====================================================
-
-                $fechaRemision = $this->get($row, [
-                    'fecha_remision',
-                    'fecha remision',
-                ]);
-
-                $fechaCreacion = $this->get($row, [
-                    'fecha_creacion',
-                    'fecha creacion',
-                ]);
-
-                $fechaRecepcion = $this->get($row, [
-                    'fecha_recepcion',
-                    'fecha recepcion',
-                ]);
-
-                $sucursalOrigen = $this->get($row, [
-                    'cod_sucursal_salida',
-                    'cod sucursal salida',
-                ]);
-
-                $sucursalDestino = $this->get($row, [
-                    'cod_sucursal',
-                    'cod sucursal',
-                ]);
-
-                $codigo = $this->get($row, [
-                    'cod_articulo',
-                    'cod articulo',
-                ]);
-
-                $serie = $this->get($row, [
-                    'serie',
-                ]);
-
-                $numeroRemision = $this->get($row, [
-                    'numero_remision',
-                    'numero remision',
-                ]);
-
-                $cantidadTransferida = $this->get($row, [
-                    'cantidad',
-                ]);
-
-                // =====================================================
-                // LOG DE CAMPOS
-                // =====================================================
-
-                Log::info('IMPORT REDISTRIBUCION - CAMPOS', [
-                    'fila' => $index,
-                    'fechaRemision' => $fechaRemision,
-                    'fechaCreacion' => $fechaCreacion,
-                    'fechaRecepcion' => $fechaRecepcion,
-                    'sucursalOrigen' => $sucursalOrigen,
-                    'sucursalDestino' => $sucursalDestino,
-                    'codigo' => $codigo,
-                    'serie' => $serie,
-                    'numeroRemision' => $numeroRemision,
-                    'cantidadTransferida' => $cantidadTransferida,
-                ]);
-
-                // =====================================================
-                // VALIDACIONES BÁSICAS
-                // =====================================================
-
-                if (
-                    empty($sucursalOrigen) ||
-                    empty($sucursalDestino) ||
-                    empty($codigo)
-                ) {
-
-                    Log::warning('FILA OMITIDA - DATOS INCOMPLETOS', [
-                        'fila' => $index,
-                        'sucursalOrigen' => $sucursalOrigen,
-                        'sucursalDestino' => $sucursalDestino,
-                        'codigo' => $codigo,
-                    ]);
-
-                    DB::rollBack();
-
+                if (!$origen || !$destino || $codigo === '' || $serie === '' || !$numero || $cantidad <= 0) {
+                    $this->omitidas++;
                     continue;
                 }
 
-                if (empty($serie) || empty($numeroRemision)) {
+                $clave = $this->claveDetalle($origen, $destino, $codigo);
+                $candidatos = $this->detallesPorClave->get($clave, collect());
 
-                    Log::warning('FILA OMITIDA - REMISIÓN SIN IDENTIFICADOR', [
-                        'fila' => $index,
-                        'serie' => $serie,
-                        'numeroRemision' => $numeroRemision,
-                        'codigo' => $codigo,
-                    ]);
-
-                    DB::rollBack();
-
+                if ($candidatos->isEmpty()) {
+                    $this->sinCoincidencia++;
                     continue;
                 }
 
-                if (
-                    $cantidadTransferida === null ||
-                    $cantidadTransferida === '' ||
-                    !is_numeric(
-                        str_replace(
-                            [',', '.'],
-                            '',
-                            str_replace(' ', '', (string) $cantidadTransferida)
-                        )
-                    )
-                ) {
+                $this->coincidentes++;
 
-                    Log::warning('FILA OMITIDA - CANTIDAD INVÁLIDA', [
-                        'fila' => $index,
-                        'cantidad' => $cantidadTransferida,
-                        'codigo' => $codigo,
-                    ]);
-
-                    DB::rollBack();
-
-                    continue;
-                }
-
-                // =====================================================
-                // NORMALIZAR DATOS
-                // =====================================================
-
-                $sucursalOrigen = (int) $sucursalOrigen;
-                $sucursalDestino = (int) $sucursalDestino;
-
-                // Código:
-                // '100617481VD02
-                // 100617481VD02
-
-                $codigo = trim((string) $codigo);
-                $codigo = ltrim($codigo, "'");
-
-                // Serie
-
-                $serie = trim((string) $serie);
-
-                // Número de remisión
-
-                $numeroRemision = (int) $numeroRemision;
-
-                // Cantidad
-
-                $cantidadTransferida = $this->parseQuantity(
-                    $cantidadTransferida
-                );
-
-                if ($cantidadTransferida <= 0) {
-
-                    Log::warning('FILA OMITIDA - CANTIDAD MENOR O IGUAL A CERO', [
-                        'fila' => $index,
-                        'cantidad' => $cantidadTransferida,
-                        'codigo' => $codigo,
-                    ]);
-
-                    DB::rollBack();
-
-                    continue;
-                }
-
-                // =====================================================
-                // CONVERTIR FECHAS
-                // =====================================================
-
-                $fechaRemision = $this->parseDate($fechaRemision);
-                $fechaCreacion = $this->parseDate($fechaCreacion);
-                $fechaRecepcion = $this->parseDate($fechaRecepcion);
-
-                Log::info('IMPORT REDISTRIBUCION - FECHAS CONVERTIDAS', [
-                    'fila' => $index,
-                    'fechaRemision' => $fechaRemision,
-                    'fechaCreacion' => $fechaCreacion,
-                    'fechaRecepcion' => $fechaRecepcion,
-                ]);
-
-                // =====================================================
-                // BUSCAR DETALLES
-                // =====================================================
-
-                $detalles = RedistribucionProcesoDetalle::where(
-                    'sucursal_origen',
-                    $sucursalOrigen
-                )
-                    ->where(
-                        'sucursal_destino',
-                        $sucursalDestino
-                    )
-                    ->where(
-                        'codigo',
-                        $codigo
-                    )
-                    ->orderBy('id')
-                    ->get();
-
-                if ($detalles->isEmpty()) {
-
-                    Log::warning('REDISTRIBUCIÓN NO ENCONTRADA', [
-                        'fila' => $index,
-                        'sucursalOrigen' => $sucursalOrigen,
-                        'sucursalDestino' => $sucursalDestino,
-                        'codigo' => $codigo,
-                        'serie' => $serie,
-                        'numeroRemision' => $numeroRemision,
-                    ]);
-
-                    DB::rollBack();
-
-                    continue;
-                }
-
-                // =====================================================
-                // PRIMERO:
-                // BUSCAR SI ESTA REMISIÓN YA EXISTE
-                //
-                // IMPORTANTE:
-                //
-                // Esto se hace ANTES de buscar cantidad pendiente.
-                //
-                // De esta manera, si el detalle ya está COMPLETO pero
-                // posteriormente importamos la fecha de recepción,
-                // podemos actualizar la remisión existente.
-                // =====================================================
-
+                /*
+                 * MISMA REGLA DEL IMPORTADOR ORIGINAL:
+                 * 1) primero localizar la misma remisión existente;
+                 * 2) si no existe, primer detalle con saldo suficiente;
+                 * 3) si no, primer detalle con cualquier saldo pendiente.
+                 */
+                $detalle = null;
                 $remisionExistente = null;
-                $detalleDeRemisionExistente = null;
 
-                foreach ($detalles as $detalleItem) {
-
-                    $remision = RedistribucionRemision::where(
-                        'detalle_id',
-                        $detalleItem->id
-                    )
-                        ->where(
-                            'serie',
-                            $serie
-                        )
-                        ->where(
-                            'numero_remision',
-                            $numeroRemision
-                        )
-                        ->first();
-
-                    if ($remision) {
-
-                        $remisionExistente = $remision;
-                        $detalleDeRemisionExistente = $detalleItem;
-
-                        break;
-                    }
-                }
-
-                // =====================================================
-                // SI LA REMISIÓN YA EXISTE
-                //
-                // NO LA DUPLICAMOS.
-                //
-                // ACTUALIZAMOS LAS FECHAS QUE VIENEN DEL EXCEL.
-                // =====================================================
-
-                if ($remisionExistente) {
-
-                    $detalle = $detalleDeRemisionExistente;
-
-                    $actualizado = false;
-
-                    // -------------------------------------------------
-                    // FECHA REMISIÓN
-                    // -------------------------------------------------
-
-                    if ($fechaRemision) {
-
-                        $remisionExistente->fecha_remision = $fechaRemision;
-
-                        if (!$detalle->fecha_remision) {
-                            $detalle->fecha_remision = $fechaRemision;
-                        }
-
-                        $actualizado = true;
-                    }
-
-                    // -------------------------------------------------
-                    // FECHA CREACIÓN
-                    // -------------------------------------------------
-
-                    if ($fechaCreacion) {
-
-                        $remisionExistente->fecha_creacion = $fechaCreacion;
-
-                        $actualizado = true;
-                    }
-
-                    // -------------------------------------------------
-                    // FECHA RECEPCIÓN
-                    // -------------------------------------------------
-
-                    if ($fechaRecepcion) {
-
-                        $remisionExistente->fecha_recepcion = $fechaRecepcion;
-
-                        $detalle->fecha_recepcion = $fechaRecepcion;
-
-                        $actualizado = true;
-                    }
-
-                    // -------------------------------------------------
-                    // CANTIDAD
-                    //
-                    // No modificamos la cantidad de una remisión
-                    // existente automáticamente.
-                    //
-                    // Esto evita alterar cantidades ya importadas.
-                    // -------------------------------------------------
-
-                    if ($actualizado) {
-
-                        $remisionExistente->save();
-
-                        // =============================================
-                        // RECALCULAR ESTADO DEL DETALLE
-                        // =============================================
-
-                        $totalTransferido = RedistribucionRemision::where(
-                            'detalle_id',
-                            $detalle->id
-                        )->sum('cantidad_transferida');
-
-                        $cantidadPedida = (int) $detalle->cantidad;
-
-                        $diferencia = $cantidadPedida - $totalTransferido;
-
-                        if ($totalTransferido > $cantidadPedida) {
-
-                            $estadoCantidad = 'EXCEDENTE';
-                        } elseif ($totalTransferido == $cantidadPedida) {
-
-                            $estadoCantidad = 'COMPLETO';
-                        } else {
-
-                            $estadoCantidad = 'PARCIAL';
-                        }
-
-                        // =============================================
-                        // ACTUALIZAR ESTADO
-                        // =============================================
-
-                        if ($estadoCantidad === 'COMPLETO') {
-
-                            if ($fechaRecepcion || $detalle->fecha_recepcion) {
-                                $detalle->estado = 'FINALIZADO';
-                            } else {
-                                $detalle->estado = 'REALIZADO';
-                            }
-                        } elseif ($estadoCantidad === 'EXCEDENTE') {
-
-                            if ($fechaRecepcion || $detalle->fecha_recepcion) {
-                                $detalle->estado = 'FINALIZADO';
-                            } else {
-                                $detalle->estado = 'REALIZADO';
-                            }
-                        } else {
-
-                            // PARCIAL
-                            if ($fechaRecepcion || $detalle->fecha_recepcion) {
-                                $detalle->estado = 'FINALIZADO';
-                            } elseif ($fechaRemision || $detalle->fecha_remision) {
-                                $detalle->estado = 'REALIZADO';
-                            }
-                        }
-
-                        // =============================================
-                        // OBSERVACIÓN
-                        // =============================================
-
-                        $detalle->observacion =
-                            'Pedido: ' . $cantidadPedida .
-                            ' | Transferido: ' . $totalTransferido .
-                            ' | Diferencia: ' . $diferencia .
-                            ' | Resultado: ' . $estadoCantidad;
-
-                        $detalle->save();
-                    }
-
-                    DB::commit();
-
-                    Log::info(
-                        'REMISIÓN YA EXISTENTE - FECHAS ACTUALIZADAS',
-                        [
-                            'fila' => $index,
-
-                            'detalle_id' => $detalle->id,
-
-                            'remision_id' => $remisionExistente->id,
-
-                            'codigo' => $codigo,
-
-                            'origen' => $sucursalOrigen,
-                            'destino' => $sucursalDestino,
-
-                            'serie' => $serie,
-                            'numero_remision' => $numeroRemision,
-
-                            'fecha_remision' => $fechaRemision,
-                            'fecha_creacion' => $fechaCreacion,
-                            'fecha_recepcion' => $fechaRecepcion,
-
-                            'estado_final' => $detalle->estado,
-                        ]
+                foreach ($candidatos as $candidato) {
+                    $docKey = $this->claveDocumento(
+                        (int) $candidato->id,
+                        $serie,
+                        $numero
                     );
 
-                    continue;
-                }
-
-                // =====================================================
-                // BUSCAR EL DETALLE CORRECTO
-                //
-                // SOLAMENTE llegamos acá si la remisión NO existe.
-                //
-                // Preferimos un detalle que todavía tenga saldo.
-                // =====================================================
-
-                $detalleSeleccionado = null;
-
-                foreach ($detalles as $detalleItem) {
-
-                    $totalTransferido = RedistribucionRemision::where(
-                        'detalle_id',
-                        $detalleItem->id
-                    )->sum('cantidad_transferida');
-
-                    $pendiente = (int) $detalleItem->cantidad
-                        - (int) $totalTransferido;
-
-                    if ($pendiente >= $cantidadTransferida) {
-
-                        $detalleSeleccionado = $detalleItem;
-
+                    if (isset($this->remisionesPorDocumento[$docKey])) {
+                        $detalle = $candidato;
+                        $remisionExistente = $this->remisionesPorDocumento[$docKey];
                         break;
                     }
                 }
 
-                // =====================================================
-                // SEGUNDO INTENTO
-                //
-                // Si no encontramos uno con saldo suficiente,
-                // buscamos cualquiera que tenga saldo pendiente.
-                //
-                // Esto mantiene compatibilidad con el comportamiento
-                // anterior y permite importaciones parciales.
-                // =====================================================
+                if (!$detalle) {
+                    foreach ($candidatos as $candidato) {
+                        $pendiente = (int) $candidato->cantidad
+                            - (int) ($this->transferidoPorDetalle[(int) $candidato->id] ?? 0);
 
-                if (!$detalleSeleccionado) {
-
-                    foreach ($detalles as $detalleItem) {
-
-                        $totalTransferido = RedistribucionRemision::where(
-                            'detalle_id',
-                            $detalleItem->id
-                        )->sum('cantidad_transferida');
-
-                        $pendiente = (int) $detalleItem->cantidad
-                            - (int) $totalTransferido;
-
-                        if ($pendiente > 0) {
-
-                            $detalleSeleccionado = $detalleItem;
-
+                        if ($pendiente >= $cantidad) {
+                            $detalle = $candidato;
                             break;
                         }
                     }
                 }
 
-                // =====================================================
-                // SI NO HAY DETALLE CON SALDO PENDIENTE
-                // =====================================================
+                if (!$detalle) {
+                    foreach ($candidatos as $candidato) {
+                        $pendiente = (int) $candidato->cantidad
+                            - (int) ($this->transferidoPorDetalle[(int) $candidato->id] ?? 0);
 
-                if (!$detalleSeleccionado) {
+                        if ($pendiente > 0) {
+                            $detalle = $candidato;
+                            break;
+                        }
+                    }
+                }
 
-                    Log::warning(
-                        'NO SE ENCONTRÓ DETALLE CON CANTIDAD PENDIENTE',
-                        [
-                            'fila' => $index,
-                            'codigo' => $codigo,
-                            'origen' => $sucursalOrigen,
-                            'destino' => $sucursalDestino,
-                            'serie' => $serie,
-                            'numeroRemision' => $numeroRemision,
-                            'cantidad_excel' => $cantidadTransferida,
-                        ]
-                    );
-
-                    DB::rollBack();
-
+                if (!$detalle) {
+                    $this->sinSaldo++;
                     continue;
                 }
 
-                $detalle = $detalleSeleccionado;
+                DB::transaction(function () use (
+                    $detalle,
+                    $remisionExistente,
+                    $serie,
+                    $numero,
+                    $cantidad,
+                    $fechaRemision,
+                    $fechaCreacion,
+                    $fechaRecepcion
+                ) {
+                    $idDetalle = (int) $detalle->id;
+                    $docKey = $this->claveDocumento($idDetalle, $serie, $numero);
 
-                // =====================================================
-                // GUARDAR LA REMISIÓN
-                // =====================================================
+                    if ($remisionExistente) {
+                        $cambios = [];
 
-                $remision = new RedistribucionRemision();
+                        if ($fechaRemision) {
+                            $cambios['fecha_remision'] = $fechaRemision;
+                        }
 
-                $remision->detalle_id = $detalle->id;
-                $remision->serie = $serie;
-                $remision->numero_remision = $numeroRemision;
-                $remision->fecha_remision = $fechaRemision;
-                $remision->fecha_creacion = $fechaCreacion;
-                $remision->fecha_recepcion = $fechaRecepcion;
-                $remision->cantidad_transferida = $cantidadTransferida;
+                        if ($fechaCreacion) {
+                            $cambios['fecha_creacion'] = $fechaCreacion;
+                        }
 
-                $remision->save();
+                        if ($fechaRecepcion) {
+                            $cambios['fecha_recepcion'] = $fechaRecepcion;
+                        }
 
-                // =====================================================
-                // CALCULAR TOTAL TRANSFERIDO
-                //
-                // Sumamos TODAS las remisiones del detalle.
-                // =====================================================
+                        if (!empty($cambios)) {
+                            $cambios['updated_at'] = now();
 
-                $totalTransferido = RedistribucionRemision::where(
-                    'detalle_id',
-                    $detalle->id
-                )->sum('cantidad_transferida');
+                            DB::table('redistribucion_remision')
+                                ->where('id', $remisionExistente->id)
+                                ->update($cambios);
 
-                $cantidadPedida = (int) $detalle->cantidad;
+                            foreach ($cambios as $campo => $valor) {
+                                if ($campo !== 'updated_at') {
+                                    $remisionExistente->{$campo} = $valor;
+                                }
+                            }
+                        }
 
-                $diferencia = $cantidadPedida - $totalTransferido;
-
-                // =====================================================
-                // DETERMINAR ESTADO
-                // =====================================================
-
-                if ($totalTransferido > $cantidadPedida) {
-
-                    $estadoCantidad = 'EXCEDENTE';
-                } elseif ($totalTransferido == $cantidadPedida) {
-
-                    $estadoCantidad = 'COMPLETO';
-                } else {
-
-                    $estadoCantidad = 'PARCIAL';
-                }
-
-                // =====================================================
-                // ACTUALIZAR FECHAS DEL DETALLE
-                //
-                // Se mantienen por compatibilidad con tu sistema.
-                // =====================================================
-
-                if ($fechaRemision) {
-
-                    $detalle->fecha_remision = $fechaRemision;
-                }
-
-                if ($fechaRecepcion) {
-
-                    $detalle->fecha_recepcion = $fechaRecepcion;
-                }
-
-                // =====================================================
-                // ACTUALIZAR ESTADO DEL DETALLE
-
-                // =====================================================
-                if ($estadoCantidad === 'COMPLETO') {
-
-                    if ($fechaRecepcion) {
-                        $detalle->estado = 'FINALIZADO';
+                        $this->actualizadas++;
                     } else {
-                        $detalle->estado = 'REALIZADO';
-                    }
-                } elseif ($estadoCantidad === 'EXCEDENTE') {
+                        $idRemision = DB::table('redistribucion_remision')->insertGetId([
+                            'detalle_id' => $idDetalle,
+                            'serie' => $serie,
+                            'numero_remision' => $numero,
+                            'fecha_remision' => $fechaRemision,
+                            'fecha_creacion' => $fechaCreacion,
+                            'fecha_recepcion' => $fechaRecepcion,
+                            'cantidad_transferida' => $cantidad,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
 
-                    if ($fechaRecepcion) {
-                        $detalle->estado = 'FINALIZADO';
+                        $nueva = (object) [
+                            'id' => $idRemision,
+                            'detalle_id' => $idDetalle,
+                            'serie' => $serie,
+                            'numero_remision' => $numero,
+                            'cantidad_transferida' => $cantidad,
+                            'fecha_remision' => $fechaRemision,
+                            'fecha_creacion' => $fechaCreacion,
+                            'fecha_recepcion' => $fechaRecepcion,
+                        ];
+
+                        $this->remisionesPorDocumento[$docKey] = $nueva;
+                        $this->transferidoPorDetalle[$idDetalle] =
+                            (int) ($this->transferidoPorDetalle[$idDetalle] ?? 0) + $cantidad;
+
+                        $this->insertadas++;
+                    }
+
+                    $totalTransferido = (int) ($this->transferidoPorDetalle[$idDetalle] ?? 0);
+                    $cantidadPedida = (int) $detalle->cantidad;
+                    $diferencia = $cantidadPedida - $totalTransferido;
+
+                    if ($totalTransferido > $cantidadPedida) {
+                        $resultado = 'EXCEDENTE';
+                    } elseif ($totalTransferido === $cantidadPedida) {
+                        $resultado = 'COMPLETO';
+                    } elseif ($totalTransferido > 0) {
+                        $resultado = 'PARCIAL';
                     } else {
-                        $detalle->estado = 'REALIZADO';
+                        $resultado = 'PENDIENTE';
                     }
-                } else {
 
-                    // PARCIAL
-                    // Si ya tenemos fecha de recepción,
-                    // significa que la transferencia terminó aunque
-                    // la cantidad haya sido incompleta.
-                    if ($fechaRecepcion) {
-                        $detalle->estado = 'FINALIZADO';
-                    } elseif ($fechaRemision) {
-                        $detalle->estado = 'REALIZADO';
+                    $fechaRemisionFinal = $fechaRemision ?: $detalle->fecha_remision;
+                    $fechaRecepcionFinal = $fechaRecepcion ?: $detalle->fecha_recepcion;
+
+                    $datosDetalle = [
+                        'observacion' => 'Pedido: ' . $cantidadPedida
+                            . ' | Transferido: ' . $totalTransferido
+                            . ' | Diferencia: ' . $diferencia
+                            . ' | Resultado: ' . $resultado,
+                    ];
+
+                    if ($fechaRemisionFinal) {
+                        $datosDetalle['fecha_remision'] = $fechaRemisionFinal;
                     }
-                }
 
-                // =====================================================
-                // OBSERVACIÓN
-                // =====================================================
+                    if ($fechaRecepcionFinal) {
+                        $datosDetalle['fecha_recepcion'] = $fechaRecepcionFinal;
+                    }
 
-                $detalle->observacion =
-                    'Pedido: ' . $cantidadPedida .
-                    ' | Transferido: ' . $totalTransferido .
-                    ' | Diferencia: ' . $diferencia .
-                    ' | Resultado: ' . $estadoCantidad;
+                    if ($totalTransferido > 0) {
+                        $datosDetalle['estado'] = $fechaRecepcionFinal
+                            ? 'FINALIZADO'
+                            : 'REALIZADO';
+                    }
 
-                $detalle->save();
+                    DB::table('redistribucion_proceso_detalle')
+                        ->where('id', $idDetalle)
+                        ->update($datosDetalle);
 
-                // =====================================================
-                // COMMIT
-                // =====================================================
-
-                DB::commit();
-
-                // =====================================================
-                // LOG FINAL
-                // =====================================================
-
-                Log::info(
-                    'REDISTRIBUCIÓN ACTUALIZADA CORRECTAMENTE',
-                    [
-                        'fila' => $index,
-
-                        'detalle_id' => $detalle->id,
-
-                        'remision_id' => $remision->id,
-
-                        'codigo' => $codigo,
-
-                        'origen' => $sucursalOrigen,
-                        'destino' => $sucursalDestino,
-
-                        'serie' => $serie,
-                        'numero_remision' => $numeroRemision,
-
-                        'cantidad_pedida' => $cantidadPedida,
-                        'cantidad_remision' => $cantidadTransferida,
-                        'cantidad_transferida_total' => $totalTransferido,
-
-                        'diferencia' => $diferencia,
-                        'resultado_cantidad' => $estadoCantidad,
-
-                        'fecha_remision' => $fechaRemision,
-                        'fecha_creacion' => $fechaCreacion,
-                        'fecha_recepcion' => $fechaRecepcion,
-
-                        'estado_final' => $detalle->estado,
-                    ]
-                );
+                    foreach ($datosDetalle as $campo => $valor) {
+                        $detalle->{$campo} = $valor;
+                    }
+                });
             } catch (\Throwable $e) {
+                $this->errores++;
 
-                DB::rollBack();
-
-                // =====================================================
-                // ERROR POR FILA
-                // =====================================================
-
-                Log::error(
-                    'ERROR IMPORT REDISTRIBUCION',
-                    [
-                        'fila' => $index,
-                        'error' => $e->getMessage(),
-                        'archivo' => $e->getFile(),
-                        'linea' => $e->getLine(),
-                        'row' => $row->toArray(),
-                    ]
-                );
+                Log::error('ERROR IMPORT REDISTRIBUCION', [
+                    'fila_chunk' => $index,
+                    'error' => $e->getMessage(),
+                    'archivo' => $e->getFile(),
+                    'linea' => $e->getLine(),
+                ]);
             }
         }
     }
 
-    // =========================================================
-    // BUSCADOR FLEXIBLE
-    // =========================================================
+    private function inicializarIndices(): void
+    {
+        if ($this->inicializado) {
+            return;
+        }
+
+        /*
+         * El importador anterior consultaba la BD por cada línea del Excel.
+         * Con ENVIOS de 80.000+ líneas eso hace decenas de miles de SELECT.
+         *
+         * Precargamos los mismos datos una sola vez, conservando exactamente
+         * el orden por id usado por el flujo original.
+         */
+        $detalles = RedistribucionProcesoDetalle::query()
+            ->select(
+                'id',
+                'codigo',
+                'sucursal_origen',
+                'sucursal_destino',
+                'cantidad',
+                'estado',
+                'fecha_remision',
+                'fecha_recepcion'
+            )
+            ->orderBy('id')
+            ->get();
+
+        $this->detallesPorClave = $detalles->groupBy(function ($detalle) {
+            return $this->claveDetalle(
+                (int) $detalle->sucursal_origen,
+                (int) $detalle->sucursal_destino,
+                $this->normalizarCodigo($detalle->codigo)
+            );
+        });
+
+        $ids = $detalles->pluck('id')->values();
+        $remisiones = collect();
+
+        foreach ($ids->chunk(1000) as $bloque) {
+            $remisiones = $remisiones->concat(
+                RedistribucionRemision::whereIn('detalle_id', $bloque->all())
+                    ->orderBy('id')
+                    ->get()
+            );
+        }
+
+        foreach ($remisiones as $remision) {
+            $idDetalle = (int) $remision->detalle_id;
+
+            $this->transferidoPorDetalle[$idDetalle] =
+                (int) ($this->transferidoPorDetalle[$idDetalle] ?? 0)
+                + (int) $remision->cantidad_transferida;
+
+            $this->remisionesPorDocumento[
+                $this->claveDocumento(
+                    $idDetalle,
+                    (string) $remision->serie,
+                    (int) $remision->numero_remision
+                )
+            ] = $remision;
+        }
+
+        $this->inicializado = true;
+    }
+
+    private function claveDetalle(int $origen, int $destino, string $codigo): string
+    {
+        return $origen . '|' . $destino . '|' . $codigo;
+    }
+
+    private function claveDocumento(int $detalleId, string $serie, int $numero): string
+    {
+        return $detalleId . '|' . trim($serie) . '|' . $numero;
+    }
+
+    private function normalizarCodigo($valor): string
+    {
+        $codigo = strtoupper(trim((string) $valor));
+        $codigo = ltrim($codigo, "'’\`");
+        $codigo = preg_replace('/[\\s\\x{00A0}\\x{2007}\\x{202F}]+/u', '', $codigo);
+
+        return $codigo ?: '';
+    }
 
     private function get($row, array $keys)
     {
+        if ($row instanceof Collection) {
+            foreach ($keys as $key) {
+                if ($row->has($key) && trim((string) $row->get($key)) !== '') {
+                    return $row->get($key);
+                }
+            }
+
+            return null;
+        }
+
+        if (is_object($row) && method_exists($row, 'toArray')) {
+            $row = $row->toArray();
+        }
+
         foreach ($keys as $key) {
-
             if (
-                isset($row[$key]) &&
-                trim((string) $row[$key]) !== ''
+                is_array($row)
+                && array_key_exists($key, $row)
+                && trim((string) $row[$key]) !== ''
             ) {
-
                 return $row[$key];
             }
         }
@@ -719,194 +364,136 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
         return null;
     }
 
-    // =========================================================
-    // CONVERSIÓN DE CANTIDAD
-    // =========================================================
-
-    private function parseQuantity($value): int
+    private function parseQuantity($valor): int
     {
-        if ($value === null || $value === '') {
-
+        if ($valor === null || $valor === '') {
             return 0;
         }
 
-        // Eliminar espacios
-
-        $value = trim((string) $value);
-
-        $value = str_replace(' ', '', $value);
-
-        // Si tiene coma y punto:
-        //
-        // 1.234,00 -> 1234
-
-        if (
-            str_contains($value, ',') &&
-            str_contains($value, '.')
-        ) {
-
-            $value = str_replace('.', '', $value);
-
-            $value = str_replace(',', '.', $value);
-        } elseif (str_contains($value, ',')) {
-
-            // 10,00
-
-            $value = str_replace(',', '.', $value);
+        if (is_numeric($valor)) {
+            return (int) round((float) $valor);
         }
 
-        return (int) round((float) $value);
+        $texto = str_replace(' ', '', trim((string) $valor));
+
+        if (strpos($texto, ',') !== false && strpos($texto, '.') !== false) {
+            $texto = str_replace('.', '', $texto);
+            $texto = str_replace(',', '.', $texto);
+        } elseif (strpos($texto, ',') !== false) {
+            $texto = str_replace(',', '.', $texto);
+        }
+
+        return is_numeric($texto)
+            ? (int) round((float) $texto)
+            : 0;
     }
 
-    // =========================================================
-    // CONVERSIÓN DE FECHAS
-    // =========================================================
-
-    private function parseDate($value)
+    private function parseDate($valor)
     {
-        if ($value === null || $value === '') {
-
+        if ($valor === null || $valor === '') {
             return null;
         }
 
-        // =====================================================
-        // FECHA SERIAL DE EXCEL
-        // =====================================================
+        if ($valor instanceof \DateTimeInterface) {
+            return Carbon::instance($valor)->format('Y-m-d');
+        }
 
-        if (is_numeric($value)) {
-
+        if (is_numeric($valor)) {
             try {
-
-                return \PhpOffice\PhpSpreadsheet\Shared\Date
-                    ::excelToDateTimeObject($value)
+                return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($valor)
                     ->format('Y-m-d');
             } catch (\Throwable $e) {
-
-                Log::warning(
-                    'ERROR CONVIRTIENDO FECHA SERIAL EXCEL',
-                    [
-                        'valor' => $value,
-                        'error' => $e->getMessage(),
-                    ]
-                );
-
                 return null;
             }
         }
 
-        $value = trim((string) $value);
-
-        // =====================================================
-        // NORMALIZAR MESES EN ESPAÑOL
-        // =====================================================
+        $texto = trim((string) $valor);
 
         $meses = [
-            'ene' => 'Jan',
-            'enero' => 'January',
-
-            'feb' => 'Feb',
-            'febrero' => 'February',
-
-            'mar' => 'Mar',
-            'marzo' => 'March',
-
-            'abr' => 'Apr',
-            'abril' => 'April',
-
-            'may' => 'May',
-            'mayo' => 'May',
-
-            'jun' => 'Jun',
-            'junio' => 'June',
-
-            'jul' => 'Jul',
-            'julio' => 'July',
-
-            'ago' => 'Aug',
-            'agosto' => 'August',
-
-            'sep' => 'Sep',
-            'sept' => 'Sep',
-            'septiembre' => 'September',
-
-            'oct' => 'Oct',
-            'octubre' => 'October',
-
-            'nov' => 'Nov',
-            'noviembre' => 'November',
-
-            'dic' => 'Dec',
-            'diciembre' => 'December',
+            'ene' => 'Jan', 'enero' => 'January',
+            'feb' => 'Feb', 'febrero' => 'February',
+            'mar' => 'Mar', 'marzo' => 'March',
+            'abr' => 'Apr', 'abril' => 'April',
+            'may' => 'May', 'mayo' => 'May',
+            'jun' => 'Jun', 'junio' => 'June',
+            'jul' => 'Jul', 'julio' => 'July',
+            'ago' => 'Aug', 'agosto' => 'August',
+            'sep' => 'Sep', 'sept' => 'Sep', 'septiembre' => 'September',
+            'oct' => 'Oct', 'octubre' => 'October',
+            'nov' => 'Nov', 'noviembre' => 'November',
+            'dic' => 'Dec', 'diciembre' => 'December',
         ];
 
-        $valor = strtolower($value);
+        $normalizado = strtolower($texto);
 
         foreach ($meses as $es => $en) {
-
-            $valor = preg_replace(
-                '/\b' . preg_quote($es, '/') . '\b/u',
+            $normalizado = preg_replace(
+                '/\\b' . preg_quote($es, '/') . '\\b/u',
                 $en,
-                $valor
+                $normalizado
             );
         }
 
-        // =====================================================
-        // FORMATO:
-        // 24-ago-26
-        // =====================================================
+        foreach (['d-M-y', 'd/m/Y', 'd-m-Y', 'Y-m-d', 'm/d/Y'] as $formato) {
+            try {
+                $fecha = Carbon::createFromFormat($formato, $normalizado);
 
-        try {
-
-            return Carbon::createFromFormat(
-                'd-M-y',
-                $valor
-            )->format('Y-m-d');
-        } catch (\Throwable $e) {
+                if ($fecha !== false) {
+                    return $fecha->format('Y-m-d');
+                }
+            } catch (\Throwable $e) {
+            }
         }
 
-        // =====================================================
-        // FORMATO:
-        // 24/08/2026
-        // =====================================================
-
         try {
-
-            return Carbon::createFromFormat(
-                'd/m/Y',
-                $valor
-            )->format('Y-m-d');
+            return Carbon::parse($normalizado)->format('Y-m-d');
         } catch (\Throwable $e) {
+            return null;
         }
+    }
 
-        // =====================================================
-        // FORMATO:
-        // 24-08-2026
-        // =====================================================
+    public function getProcesadas(): int
+    {
+        return $this->procesadas;
+    }
 
-        try {
+    public function getCoincidentes(): int
+    {
+        return $this->coincidentes;
+    }
 
-            return Carbon::createFromFormat(
-                'd-m-Y',
-                $valor
-            )->format('Y-m-d');
-        } catch (\Throwable $e) {
-        }
+    public function getInsertadas(): int
+    {
+        return $this->insertadas;
+    }
 
-        // =====================================================
-        // INTENTO GENERAL
-        // =====================================================
+    public function getActualizadas(): int
+    {
+        return $this->actualizadas;
+    }
 
-        try {
+    public function getSinCoincidencia(): int
+    {
+        return $this->sinCoincidencia;
+    }
 
-            return Carbon::parse($valor)
-                ->format('Y-m-d');
-        } catch (\Throwable $e) {
-        }
+    public function getSinSaldo(): int
+    {
+        return $this->sinSaldo;
+    }
 
-        Log::warning('FECHA NO PUDO SER CONVERTIDA', [
-            'valor_original' => $value,
-        ]);
+    public function getOmitidas(): int
+    {
+        return $this->omitidas;
+    }
 
-        return null;
+    public function getErrores(): int
+    {
+        return $this->errores;
+    }
+
+    public function chunkSize(): int
+    {
+        return 1500;
     }
 }
