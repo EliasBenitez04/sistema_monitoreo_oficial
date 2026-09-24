@@ -29,6 +29,62 @@
 @endforeach
 </div>
 
+<div class="card card-outline card-info mb-4">
+    <div class="card-header text-center">
+        <h3 class="card-title float-none mb-0"><i class="fas fa-stopwatch mr-2"></i>Tiempo de atención del pedido</h3>
+    </div>
+    <div class="card-body">
+        @if(!$resumen->fecha_pedido)
+            <div class="alert alert-warning text-center mb-3">
+                Este pedido todavía no tiene <strong>FECHA PEDIDO</strong>. Reimportá el Excel con la columna FECHA PEDIDO para calcular los tiempos.
+            </div>
+        @endif
+        <div class="row text-center">
+            <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
+                <div class="kpi-tiempo">
+                    <small class="text-muted d-block text-uppercase">Fecha pedido</small>
+                    <strong>{{ $resumen->fecha_pedido ? $resumen->fecha_pedido->format('d/m/Y') : '-' }}</strong>
+                </div>
+            </div>
+            <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
+                <div class="kpi-tiempo">
+                    <small class="text-muted d-block text-uppercase">1ª confirmación</small>
+                    <strong>{{ $resumen->primera_confirmacion ? date('d/m/Y', strtotime($resumen->primera_confirmacion)) : '-' }}</strong>
+                    @if($resumen->dias_primera_confirmacion !== null)
+                        <div class="small text-info">{{ $resumen->dias_primera_confirmacion }} días desde pedido</div>
+                    @endif
+                </div>
+            </div>
+            <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
+                <div class="kpi-tiempo">
+                    <small class="text-muted d-block text-uppercase">Últ. confirmación</small>
+                    <strong>{{ $resumen->ultima_confirmacion ? date('d/m/Y', strtotime($resumen->ultima_confirmacion)) : '-' }}</strong>
+                </div>
+            </div>
+            <div class="col-lg col-md-6 col-6 mb-3 mb-lg-0">
+                <div class="kpi-tiempo">
+                    <small class="text-muted d-block text-uppercase">Tiempo total</small>
+                    @if($resumen->dias_confirmacion_total !== null)
+                        <strong class="h4 mb-0">{{ $resumen->dias_confirmacion_total }} días</strong>
+                    @elseif($resumen->dias_transcurridos !== null)
+                        <strong class="h4 mb-0">{{ $resumen->dias_transcurridos }} días</strong>
+                        <div class="small text-warning">pedido en curso</div>
+                    @else
+                        <strong>-</strong>
+                    @endif
+                </div>
+            </div>
+            <div class="col-lg col-md-6 col-12">
+                <div class="kpi-tiempo">
+                    <small class="text-muted d-block text-uppercase">Promedio por local</small>
+                    <strong class="h4 mb-0">{{ $resumen->dias_promedio_confirmacion !== null ? number_format($resumen->dias_promedio_confirmacion, 1, ',', '.') . ' días' : '-' }}</strong>
+                    <div class="small text-muted">hasta su última recepción</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @foreach($ots as $ot)
 <div class="card card-outline {{ $ot->estado_seguimiento === 'COMPLETO' ? 'card-success' : 'card-primary' }}">
     <div class="card-header seguimiento-card-header" data-toggle="collapse" data-target="#detalle-ot-{{ $ot->id_ot }}" aria-expanded="false" aria-controls="detalle-ot-{{ $ot->id_ot }}">
@@ -214,6 +270,8 @@
 
 @push('page_css')
 <style>
+.kpi-tiempo{height:100%;padding:14px 10px;border:1px solid #e3e8ef;border-radius:10px;background:#f8fafc}
+.kpi-tiempo strong{display:block;margin-top:4px;color:#212529}
 .seguimiento-panel{background:#f8fafc;border:1px solid #e3e8ef;border-radius:12px;padding:18px 20px}
 .seguimiento-etapa-actual{font-size:1.05rem;font-weight:700;color:#212529}
 .seguimiento-linea{display:flex;position:relative;justify-content:space-between;margin-top:8px}
