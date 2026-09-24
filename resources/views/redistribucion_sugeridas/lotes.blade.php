@@ -1563,6 +1563,14 @@
 
                 {{-- ACCIONES + BREADCRUMB --}}
                 <div class="col-md-5">
+                    @can('redistribucionsugerencia update')
+                        <div class="text-md-right mb-3">
+                            <button type="button" class="btn btn-primary btn-sm"
+                                data-toggle="modal" data-target="#modalImportarRemisiones">
+                                <i class="fas fa-file-import mr-1"></i>Importar remisiones
+                            </button>
+                        </div>
+                    @endcan
 
                     <style>
                         .btn-import-remisiones {
@@ -2373,4 +2381,6 @@
             });
         @endif
     </script>
+    @include('redistribucion_sugeridas.importar-remisiones')
+
 @endsection
