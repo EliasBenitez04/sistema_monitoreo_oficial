@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Imports\ControlTerminacionRemisionImport;
+use App\Imports\RedistribucionRemisionImport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -50,7 +51,7 @@ class RemisionesController extends Controller
         try {
             $inicio = microtime(true);
             $archivo = $request->file('archivo_envios');
-            $import = new ControlTerminacionRemisionImport();
+            $rutaArchivo = $archivo->getRealPath();
             $extension = strtolower($archivo->getClientOriginalExtension());
 
             Log::info('INICIO IMPORTACION CENTRAL REMISIONES', [
@@ -58,8 +59,25 @@ class RemisionesController extends Controller
                 'tamano_bytes' => $archivo->getSize(),
             ]);
 
+            /*
+             * IMPORTANTE:
+             * La unificación se hace en el CONTROLADOR, no mezclando las reglas
+             * de negocio de ambos importadores.
+             *
+             * 1) Redistribución ejecuta exactamente su importador histórico.
+             * 2) OT/Logística ejecuta su importador propio.
+             *
+             * El usuario selecciona el archivo UNA sola vez, pero internamente
+             * cada módulo procesa el mismo archivo con la lógica que ya funcionaba
+             * cuando estaban separados.
+             */
+            $redisImport = new RedistribucionRemisionImport();
+            Excel::import($redisImport, $archivo);
+
+            $import = new ControlTerminacionRemisionImport();
+
             if ($extension === 'xlsx') {
-                $import->importarXlsxStreaming($archivo->getRealPath());
+                $import->importarXlsxStreaming($rutaArchivo);
             } else {
                 Excel::import($import, $archivo);
             }
@@ -77,17 +95,23 @@ class RemisionesController extends Controller
                 . ' | Actualizadas OT/logística: ' . $import->getActualizadas()
                 . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
-                . ' | Redistribuciones actualizadas: ' . $import->getRedistribucionActualizadas()
-                . ' | Reimportadas redistribución: ' . $import->getRedistribucionReimportadas()
-                . ' | Redistribución sin detalle código/origen/destino: ' . $import->getRedistribucionSinDetalle()
-                . ' | Redistribución sin saldo: ' . $import->getRedistribucionSinSaldo()
-                . ' | Redistribuciones sin coincidencia: ' . $import->getRedistribucionSinCoincidencia()
+                . ' | Redistribución procesadas: ' . $redisImport->getProcesadas()
+                . ' | Redistribución coincidentes: ' . $redisImport->getCoincidentes()
+                . ' | Redistribución nuevas: ' . $redisImport->getInsertadas()
+                . ' | Redistribución actualizadas: ' . $redisImport->getActualizadas()
+                . ' | Redistribución sin coincidencia: ' . $redisImport->getSinCoincidencia()
+                . ' | Redistribución sin saldo: ' . $redisImport->getSinSaldo()
+                . ' | Redistribución errores: ' . $redisImport->getErrores()
                 . ' | Omitidas: ' . $import->getOmitidas()
                 . ' | Tiempo total: ' . $tiempo . '.';
 
             Log::info('FIN IMPORTACION CENTRAL REMISIONES', [
                 'lineas' => $import->getProcesadas(),
-                'redistribuciones_actualizadas' => $import->getRedistribucionActualizadas(),
+                'redistribucion_procesadas' => $redisImport->getProcesadas(),
+                'redistribucion_coincidentes' => $redisImport->getCoincidentes(),
+                'redistribucion_nuevas' => $redisImport->getInsertadas(),
+                'redistribucion_actualizadas' => $redisImport->getActualizadas(),
+                'redistribucion_errores' => $redisImport->getErrores(),
                 'segundos' => round($segundos, 3),
             ]);
 
