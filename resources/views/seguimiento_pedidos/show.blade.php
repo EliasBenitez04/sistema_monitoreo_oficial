@@ -48,22 +48,22 @@
             </div>
             <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">1ª confirmación</small>
-                    <strong>{{ $resumen->primera_confirmacion ? date('d/m/Y', strtotime($resumen->primera_confirmacion)) : '-' }}</strong>
-                    @if($resumen->dias_primera_confirmacion !== null)
-                        <div class="small text-info">{{ $resumen->dias_primera_confirmacion }} días desde pedido</div>
-                    @endif
+                    <small class="text-muted d-block text-uppercase">1er envío logística</small>
+                    <strong>{{ $resumen->primer_envio_logistica ? date('d/m/Y', strtotime($resumen->primer_envio_logistica)) : '-' }}</strong>
                 </div>
             </div>
             <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">Últ. confirmación</small>
+                    <small class="text-muted d-block text-uppercase">1ª confirmación local</small>
                     <strong>{{ $resumen->ultima_confirmacion ? date('d/m/Y', strtotime($resumen->ultima_confirmacion)) : '-' }}</strong>
+                    @if($resumen->dias_confirmacion_total !== null)
+                        <div class="small text-success">{{ $resumen->dias_confirmacion_total }} días desde pedido</div>
+                    @endif
                 </div>
             </div>
             <div class="col-lg col-md-6 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">Tiempo total</small>
+                    <small class="text-muted d-block text-uppercase">Tiempo hasta confirmar</small>
                     @if($resumen->dias_confirmacion_total !== null)
                         <strong class="h4 mb-0">{{ $resumen->dias_confirmacion_total }} días</strong>
                     @elseif($resumen->dias_transcurridos !== null)
@@ -78,7 +78,7 @@
                 <div class="kpi-tiempo">
                     <small class="text-muted d-block text-uppercase">Promedio por local</small>
                     <strong class="h4 mb-0">{{ $resumen->dias_promedio_confirmacion !== null ? number_format($resumen->dias_promedio_confirmacion, 1, ',', '.') . ' días' : '-' }}</strong>
-                    <div class="small text-muted">hasta su última recepción</div>
+                    <div class="small text-muted">hasta su primera recepción</div>
                 </div>
             </div>
         </div>
