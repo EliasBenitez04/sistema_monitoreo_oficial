@@ -78,6 +78,9 @@ class RemisionesController extends Controller
                 . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
                 . ' | Redistribuciones actualizadas: ' . $import->getRedistribucionActualizadas()
+                . ' | Reimportadas redistribución: ' . $import->getRedistribucionReimportadas()
+                . ' | Redistribución sin detalle código/origen/destino: ' . $import->getRedistribucionSinDetalle()
+                . ' | Redistribución sin saldo: ' . $import->getRedistribucionSinSaldo()
                 . ' | Redistribuciones sin coincidencia: ' . $import->getRedistribucionSinCoincidencia()
                 . ' | Omitidas: ' . $import->getOmitidas()
                 . ' | Tiempo total: ' . $tiempo . '.';
