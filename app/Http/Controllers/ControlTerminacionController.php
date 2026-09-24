@@ -103,6 +103,41 @@ class ControlTerminacionController extends Controller
                 ->keyBy('id_ot');
         }
 
+        // Seguimiento general posterior al PT. El rango de fechas selecciona las OTs por
+        // fecha de PRODUCTO TERMINADO; sus movimientos posteriores se siguen completos,
+        // aunque hayan ocurrido fuera del rango seleccionado.
+        $logisticaPorOt = collect();
+        $remisionesPorOt = collect();
+
+        if ($idsOt->isNotEmpty()) {
+            $logisticaPorOt = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt->all())
+                ->where('proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
+                ->groupBy('id_ot')
+                ->select(
+                    'id_ot',
+                    DB::raw('SUM(resultado) as cantidad_logistica'),
+                    DB::raw('MIN(fecha_proceso) as primera_fecha_logistica'),
+                    DB::raw('MAX(fecha_proceso) as ultima_fecha_logistica')
+                )
+                ->get()->keyBy('id_ot');
+
+            if (Schema::hasTable('ot_logistica_remisiones')) {
+                $remisionesPorOt = DB::table('ot_logistica_remisiones')
+                    ->whereIn('id_ot', $idsOt->all())
+                    ->groupBy('id_ot')
+                    ->select(
+                        'id_ot',
+                        DB::raw('SUM(cantidad) as movimiento_fisico'),
+                        DB::raw('SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as movimiento_recibido'),
+                        DB::raw('MIN(fecha_remision) as primera_remision'),
+                        DB::raw('MAX(fecha_remision) as ultima_remision'),
+                        DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
+                    )
+                    ->get()->keyBy('id_ot');
+            }
+        }
+
         foreach ($produccionTerminada as $item) {
             $entrada = $entradaPorOt->get($item->id_ot);
 
@@ -113,6 +148,40 @@ class ControlTerminacionController extends Controller
 
             // Producto Terminado ya es la entrega/entrada a Logística.
             $item->cantidad_entregada_logistica = $item->cantidad_terminada;
+
+            $log = $logisticaPorOt->get($item->id_ot);
+            $rem = $remisionesPorOt->get($item->id_ot);
+            $tope = max(0, (int) $item->cantidad_orden);
+
+            $item->cantidad_logistica = (int) ($log->cantidad_logistica ?? 0);
+            $item->primera_fecha_logistica = $log->primera_fecha_logistica ?? null;
+            $item->ultima_fecha_logistica = $log->ultima_fecha_logistica ?? null;
+            $item->movimiento_fisico = (int) ($rem->movimiento_fisico ?? 0);
+            $item->movimiento_recibido = (int) ($rem->movimiento_recibido ?? 0);
+            $item->remitido_efectivo = min($tope, $item->movimiento_fisico);
+            $item->recibido_efectivo = min($tope, $item->movimiento_recibido);
+            $item->movimientos_adicionales = max(0, $item->movimiento_fisico - $tope);
+            $item->primera_remision = $rem->primera_remision ?? null;
+            $item->ultima_remision = $rem->ultima_remision ?? null;
+            $item->ultima_recepcion = $rem->ultima_recepcion ?? null;
+
+            if ($item->cantidad_terminada < max(1, $item->cantidad_ingreso_terminacion)) {
+                $item->etapa_actual = 'TERMINACION';
+                $item->etapa_numero = 1;
+            } elseif ($item->cantidad_logistica <= 0) {
+                $item->etapa_actual = 'PRODUCTO TERMINADO';
+                $item->etapa_numero = 2;
+            } elseif ($item->movimiento_fisico <= 0) {
+                $item->etapa_actual = 'LOGISTICA';
+                $item->etapa_numero = 3;
+            } elseif ($item->recibido_efectivo < $item->remitido_efectivo) {
+                $item->etapa_actual = 'REMISION';
+                $item->etapa_numero = 4;
+            } else {
+                $item->etapa_actual = 'RECEPCION LOCAL';
+                $item->etapa_numero = 5;
+            }
+            $item->porcentaje_flujo = (int) round(($item->etapa_numero / 5) * 100);
 
             $item->pendiente_terminar = max(
                 0,
