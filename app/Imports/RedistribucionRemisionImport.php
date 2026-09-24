@@ -10,13 +10,22 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
 
-class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
+class RedistribucionRemisionImport implements ToCollection, WithHeadingRow, WithChunkReading
 {
+    private $procesadas = 0;
+    private $coincidentes = 0;
+    private $insertadas = 0;
+    private $actualizadas = 0;
+    private $sinCoincidencia = 0;
+    private $sinSaldo = 0;
+    private $errores = 0;
     public function collection(Collection $rows)
     {
         foreach ($rows as $index => $row) {
 
+            $this->procesadas++;
             DB::beginTransaction();
 
             try {
@@ -238,10 +247,13 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                         'numeroRemision' => $numeroRemision,
                     ]);
 
+                    $this->sinCoincidencia++;
                     DB::rollBack();
 
                     continue;
                 }
+
+                $this->coincidentes++;
 
                 // =====================================================
                 // PRIMERO:
@@ -416,6 +428,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                     }
 
                     DB::commit();
+                    $this->actualizadas++;
 
                     Log::info(
                         'REMISIÓN YA EXISTENTE - FECHAS ACTUALIZADAS',
@@ -523,6 +536,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                         ]
                     );
 
+                    $this->sinSaldo++;
                     DB::rollBack();
 
                     continue;
@@ -640,6 +654,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                 // =====================================================
 
                 DB::commit();
+                $this->insertadas++;
 
                 // =====================================================
                 // LOG FINAL
@@ -678,6 +693,7 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
                 );
             } catch (\Throwable $e) {
 
+                $this->errores++;
                 DB::rollBack();
 
                 // =====================================================
@@ -929,4 +945,44 @@ class RedistribucionRemisionImport implements ToCollection, WithHeadingRow
 
         return null;
     }
+    public function getProcesadas(): int
+    {
+        return $this->procesadas;
+    }
+
+    public function getCoincidentes(): int
+    {
+        return $this->coincidentes;
+    }
+
+    public function getInsertadas(): int
+    {
+        return $this->insertadas;
+    }
+
+    public function getActualizadas(): int
+    {
+        return $this->actualizadas;
+    }
+
+    public function getSinCoincidencia(): int
+    {
+        return $this->sinCoincidencia;
+    }
+
+    public function getSinSaldo(): int
+    {
+        return $this->sinSaldo;
+    }
+
+    public function getErrores(): int
+    {
+        return $this->errores;
+    }
+
+    public function chunkSize(): int
+    {
+        return 1000;
+    }
+
 }
