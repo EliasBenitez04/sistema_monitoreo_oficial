@@ -72,17 +72,25 @@ class RemisionesController extends Controller
              * cuando estaban separados.
              */
             $redisImport = new RedistribucionRemisionImport();
-
-            // Usar la ruta física evita depender del estado interno del UploadedFile
-            // cuando el mismo archivo se procesa por dos motores distintos.
-            Excel::import($redisImport, $rutaArchivo);
-
             $import = new ControlTerminacionRemisionImport();
 
             if ($extension === 'xlsx') {
-                $import->importarXlsxStreaming($rutaArchivo);
+                /*
+                 * XLSX grande: se lee UNA SOLA VEZ con XMLReader.
+                 * El mismo bloque de filas se entrega a Redistribución y a
+                 * OT/Logística, manteniendo separados los dos motores.
+                 */
+                $import->importarXlsxStreaming(
+                    $rutaArchivo,
+                    $redisImport
+                );
             } else {
-                Excel::import($import, $archivo);
+                /*
+                 * XLS/CSV: compatibilidad con Laravel Excel. Estos formatos
+                 * suelen ser mucho menores; cada motor conserva su importador.
+                 */
+                Excel::import($redisImport, $rutaArchivo);
+                Excel::import($import, $rutaArchivo);
             }
 
             $segundos = microtime(true) - $inicio;
