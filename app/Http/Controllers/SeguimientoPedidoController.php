@@ -344,7 +344,14 @@ class SeguimientoPedidoController extends Controller
                 });
             }
 
-            // Primera remisión válida desde Central posterior/igual a la fecha del pedido.
+            /*
+             * KPI por OT:
+             * - El despacho mostrado es la primera remisión Central -> Local posterior al pedido.
+             * - La confirmación es la PRIMERA recepción válida de cualquiera de esos despachos,
+             *   no la recepción del mismo documento del primer despacho. Así evitamos que una
+             *   sucursal con confirmación tardía (p. ej. SL) distorsione el tiempo de atención
+             *   cuando otro local ya confirmó antes.
+             */
             $primerDespacho = $despachosCentral
                 ->sortBy(function ($mov) {
                     return $mov->fecha_remision . ' '
@@ -362,13 +369,6 @@ class SeguimientoPedidoController extends Controller
             $ot->kpi_dias_logistica = null;
 
             if (!$primerDespacho) {
-                /*
-                 * Si la OT ya había salido de Logística antes de crearse el pedido y
-                 * además existen despachos desde Central anteriores al pedido, no está
-                 * pendiente: fue distribuida previamente. No calculamos días porque no
-                 * existe una relación documental que permita atribuir ese despacho al
-                 * pedido posterior.
-                 */
                 $tuvoDespachoAnterior = $fechaPedido && $movsOt->contains(function ($mov) use ($fechaPedido) {
                     $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
                     $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
@@ -383,25 +383,16 @@ class SeguimientoPedidoController extends Controller
                     ? 'DISTRIBUIDA ANTES DEL PEDIDO'
                     : 'SIN DESPACHO DEL PEDIDO';
             } else {
-                /*
-                 * Tomamos exclusivamente la recepción del MISMO documento que fue
-                 * seleccionado como primer despacho del pedido.
-                 */
-                $mismoDocumento = $despachosCentral->filter(function ($mov) use ($primerDespacho) {
-                    return (string) ($mov->serie ?? '') === (string) ($primerDespacho->serie ?? '')
-                        && (string) ($mov->numero_remision ?? '') === (string) ($primerDespacho->numero_remision ?? '')
-                        && (string) ($mov->fecha_remision ?? '') === (string) ($primerDespacho->fecha_remision ?? '');
-                });
-
-                $recepcionValida = $mismoDocumento
+                $recepcionValida = $despachosCentral
                     ->pluck('fecha_recepcion')
                     ->filter()
-                    ->filter(function ($fecha) use ($fechaPedido, $primerDespacho) {
+                    ->filter(function ($fecha) use ($fechaPedido) {
                         $recepcion = Carbon::parse($fecha)->startOfDay();
-                        $remision = Carbon::parse($primerDespacho->fecha_remision)->startOfDay();
 
-                        return $recepcion->gte($remision)
-                            && (!$fechaPedido || $recepcion->gte($fechaPedido));
+                        return !$fechaPedido || $recepcion->gte($fechaPedido);
+                    })
+                    ->map(function ($fecha) {
+                        return Carbon::parse($fecha)->startOfDay()->format('Y-m-d');
                     })
                     ->min();
 
