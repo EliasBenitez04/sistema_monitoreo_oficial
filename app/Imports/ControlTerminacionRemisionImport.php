@@ -4,6 +4,7 @@ namespace App\Imports;
 
 use App\Models\RedistribucionProcesoDetalle;
 use App\Models\RedistribucionRemision;
+use App\Imports\RedistribucionRemisionImport;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -329,6 +330,20 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         | del objeto importador entre bloques.
         |
         */
+        /*
+         * Ejecutar Redistribución con SU importador histórico probado.
+         * Así el botón central hace las dos importaciones, pero no mezcla
+         * ni reimplementa las reglas de negocio de Redistribución.
+         */
+        $redisAntes = (int) DB::table('redistribucion_remision')->count();
+        $redisImport = new RedistribucionRemisionImport();
+        $redisImport->collection($rows);
+        $redisDespues = (int) DB::table('redistribucion_remision')->count();
+
+        if ($redisDespues > $redisAntes) {
+            $this->redistribucionActualizadas += ($redisDespues - $redisAntes);
+        }
+
         $filas = $this->normalizarFilas($rows);
 
         if ($filas->isEmpty()) {
@@ -533,8 +548,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             );
         }
 
-        // El mismo archivo ENVIOS actualiza también la redistribución.
-        $this->sincronizarRedistribucion($filas);
+        // Redistribución ya fue procesada arriba por su importador histórico.
+        // No ejecutar la implementación unificada para evitar doble asociación.
     }
 
     private function sincronizarRedistribucion(Collection $filas): void
