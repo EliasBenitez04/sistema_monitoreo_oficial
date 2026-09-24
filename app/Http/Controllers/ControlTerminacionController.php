@@ -545,4 +545,78 @@ class ControlTerminacionController extends Controller
         return $texto;
     }
 
+
+    public function importarRemisiones(Request $request)
+    {
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+        @ini_set('max_input_time', '-1');
+        @ini_set('memory_limit', '1536M');
+        @ignore_user_abort(true);
+
+        DB::disableQueryLog();
+
+        $rutaRetorno = $request->input('origen') === 'dashboard-logistica'
+            ? 'dashboard.ot-logistica'
+            : 'control.terminacion';
+
+        $parametrosRetorno = array_filter([
+            'fecha_desde' => $request->input('fecha_desde'),
+            'fecha_hasta' => $request->input('fecha_hasta'),
+        ]);
+
+        $request->validate([
+            'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:102400',
+        ]);
+
+        if (!Schema::hasTable('ot_logistica_remisiones')) {
+            return redirect()
+                ->route($rutaRetorno, $parametrosRetorno)
+                ->with('error', 'Primero creá la tabla ot_logistica_remisiones antes de importar ENVIOS.');
+        }
+
+        try {
+            $archivo = $request->file('archivo_envios');
+            $inicio = microtime(true);
+            $import = new ControlTerminacionRemisionImport();
+            $extension = strtolower($archivo->getClientOriginalExtension());
+
+            if ($extension === 'xlsx') {
+                $import->importarXlsxStreaming($archivo->getRealPath());
+            } else {
+                Excel::import($import, $archivo);
+            }
+
+            $segundos = round(microtime(true) - $inicio, 2);
+
+            $mensaje = 'Logística actualizada. '
+                . 'Documentos: ' . $import->getDocumentosArchivo()
+                . ' | Recibidos: ' . $import->getDocumentosRecibidos()
+                . ' | En tránsito: ' . $import->getDocumentosEnTransito()
+                . ' | Líneas: ' . $import->getProcesadas()
+                . ' | Nuevas: ' . $import->getInsertadas()
+                . ' | Actualizadas: ' . $import->getActualizadas()
+                . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
+                . ' | Vinculadas a logística: ' . $import->getVinculadas()
+                . ' | Sin detalle logístico: ' . $import->getSinVincular()
+                . ' | Sin OT: ' . $import->getSinOt()
+                . ' | Omitidas: ' . $import->getOmitidas()
+                . ' | Tiempo: ' . $segundos . ' s.';
+
+            return redirect()
+                ->route($rutaRetorno, $parametrosRetorno)
+                ->with('success', $mensaje);
+        } catch (\Throwable $e) {
+            Log::error('ERROR IMPORTACION ENVIOS LOGISTICA', [
+                'error' => $e->getMessage(),
+                'archivo' => $e->getFile(),
+                'linea' => $e->getLine(),
+            ]);
+
+            return redirect()
+                ->route($rutaRetorno, $parametrosRetorno)
+                ->with('error', 'No se pudo importar ENVIOS para logística: ' . $e->getMessage());
+        }
+    }
+
 }
