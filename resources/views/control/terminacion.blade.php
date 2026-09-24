@@ -27,7 +27,7 @@
                 Control de Producto Terminado
             </h2>
             <div class="ct-subtitle">
-                Control de Terminación: ingreso al área → Producto Terminado → entrega/entrada a Logística.
+                Seguimiento general por fecha de Producto Terminado: Terminación → Producto Terminado → Logística → Remisión → Recepción Local.
             </div>
         </div>
 
@@ -212,7 +212,7 @@
             <div>
                 <strong><i class="fas fa-clipboard-check mr-1"></i>Seguimiento de Terminación</strong>
                 <div class="ct-subtitle">
-                    Producto Terminado ya se considera entregado a Logística.
+                    El rango selecciona las OTs por fecha de Producto Terminado y sigue su recorrido completo hasta los locales.
                 </div>
             </div>
             <span class="badge badge-primary">{{ $produccionPaginada->total() }} OTs</span>
@@ -225,13 +225,13 @@
                         <th>OT</th>
                         <th>Código / descripción</th>
                         <th>Ingreso Terminación</th>
-                        <th class="text-right">Cant. ingreso</th>
                         <th>Producto Terminado</th>
-                        <th class="text-right">Cant. PT</th>
-                        <th class="text-right">Entregado Logística</th>
-                        <th class="text-right">Pend. terminar</th>
-                        <th class="text-right">Días</th>
-                        <th>Estado</th>
+                        <th>Etapa actual</th>
+                        <th class="text-right">Logística</th>
+                        <th class="text-right">Remitido</th>
+                        <th class="text-right">Recibido</th>
+                        <th>Último movimiento</th>
+                        <th>Flujo</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -246,75 +246,49 @@
                                 <br><small class="text-muted">{{ \Illuminate\Support\Str::limit($item->descripcion, 46) }}</small>
                             </td>
 
-                            <td class="ct-nowrap">
-                                {{ $item->primera_fecha_ingreso ? \Carbon\Carbon::parse($item->primera_fecha_ingreso)->format('d/m/Y') : '—' }}
-                                @if($item->ultima_fecha_ingreso && $item->ultima_fecha_ingreso !== $item->primera_fecha_ingreso)
-                                    <br><small class="text-muted">
-                                        hasta {{ \Carbon\Carbon::parse($item->ultima_fecha_ingreso)->format('d/m/Y') }}
-                                    </small>
-                                @endif
+                            <td class="ct-nowrap text-center">
+                                <strong>{{ number_format($item->cantidad_ingreso_terminacion,0,',','.') }}</strong>
+                                <br><small class="text-muted">{{ $item->primera_fecha_ingreso ? \Carbon\Carbon::parse($item->primera_fecha_ingreso)->format('d/m/Y') : '—' }}</small>
                             </td>
-
-                            <td class="text-right">{{ number_format($item->cantidad_ingreso_terminacion, 0, ',', '.') }}</td>
-
-                            <td class="ct-nowrap">
-                                {{ $item->fecha_producto_terminado ? \Carbon\Carbon::parse($item->fecha_producto_terminado)->format('d/m/Y') : '—' }}
-                                @if($item->ultima_fecha_producto_terminado && $item->ultima_fecha_producto_terminado !== $item->fecha_producto_terminado)
-                                    <br><small class="text-muted">
-                                        hasta {{ \Carbon\Carbon::parse($item->ultima_fecha_producto_terminado)->format('d/m/Y') }}
-                                    </small>
-                                @endif
+                            <td class="ct-nowrap text-center">
+                                <strong>{{ number_format($item->cantidad_terminada,0,',','.') }}</strong>
+                                <br><small class="text-muted">{{ $item->fecha_producto_terminado ? \Carbon\Carbon::parse($item->fecha_producto_terminado)->format('d/m/Y') : '—' }}</small>
                             </td>
-
-                            <td class="text-right"><strong>{{ number_format($item->cantidad_terminada, 0, ',', '.') }}</strong></td>
-
+                            <td class="text-center">
+                                @php
+                                    $etapaClase = $item->etapa_numero >= 5 ? 'success' : ($item->etapa_numero >= 4 ? 'warning' : 'primary');
+                                @endphp
+                                <span class="badge badge-{{ $etapaClase }} px-2 py-2">{{ $item->etapa_actual }}</span>
+                            </td>
                             <td class="text-right">
-                                <span class="badge badge-success">
-                                    {{ number_format($item->cantidad_entregada_logistica, 0, ',', '.') }}
-                                </span>
+                                <strong>{{ number_format($item->cantidad_logistica,0,',','.') }}</strong>
+                                <br><small class="text-muted">{{ $item->primera_fecha_logistica ? \Carbon\Carbon::parse($item->primera_fecha_logistica)->format('d/m/Y') : '—' }}</small>
                             </td>
-
                             <td class="text-right">
-                                @if($item->pendiente_terminar > 0)
-                                    <span class="badge badge-warning">
-                                        {{ number_format($item->pendiente_terminar, 0, ',', '.') }}
-                                    </span>
-                                @elseif($item->exceso_producto_terminado > 0)
-                                    <span class="badge badge-danger">
-                                        +{{ number_format($item->exceso_producto_terminado, 0, ',', '.') }}
-                                    </span>
+                                <strong>{{ number_format($item->remitido_efectivo,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
+                                @if($item->movimientos_adicionales > 0)<br><small class="text-warning">+{{ number_format($item->movimientos_adicionales,0,',','.') }} mov.</small>@endif
+                            </td>
+                            <td class="text-right">
+                                <strong>{{ number_format($item->recibido_efectivo,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
+                                <br><small class="text-muted">{{ $item->ultima_recepcion ? \Carbon\Carbon::parse($item->ultima_recepcion)->format('d/m/Y') : '—' }}</small>
+                            </td>
+                            <td class="ct-nowrap text-center">
+                                @if($item->ultima_remision)
+                                    <strong>{{ \Carbon\Carbon::parse($item->ultima_remision)->format('d/m/Y') }}</strong>
+                                    <br><small class="text-muted">últ. remisión</small>
                                 @else
-                                    0
+                                    <span class="text-muted">Sin remisión</span>
                                 @endif
                             </td>
-
-                            <td class="text-right ct-nowrap">
-                                @if($item->dias_en_terminacion !== null)
-                                    <span class="{{ $item->pendiente_terminar > 0 && $item->dias_en_terminacion >= 7 ? 'ct-wait-high' : ($item->pendiente_terminar > 0 && $item->dias_en_terminacion >= 3 ? 'ct-wait-mid' : '') }}">
-                                        {{ number_format($item->dias_en_terminacion, 0, ',', '.') }} días
-                                    </span>
-                                @else
-                                    —
-                                @endif
+                            <td style="min-width:120px">
+                                <div class="progress" style="height:7px"><div class="progress-bar bg-{{ $etapaClase }}" style="width:{{ $item->porcentaje_flujo }}%"></div></div>
+                                <small class="d-block text-center text-muted mt-1">{{ $item->porcentaje_flujo }}%</small>
                             </td>
-
-                            <td>
-                                @if($item->estado_control === 'COMPLETO')
-                                    <span class="badge badge-success ct-badge">COMPLETO</span>
-                                @elseif($item->estado_control === 'PARCIAL')
-                                    <span class="badge badge-warning ct-badge">PARCIAL</span>
-                                @elseif($item->estado_control === 'EXCEDENTE')
-                                    <span class="badge badge-danger ct-badge">EXCEDENTE</span>
-                                @else
-                                    <span class="badge badge-secondary ct-badge">SIN INGRESO</span>
-                                @endif
-                            </td>
-
                             <td class="text-right">
                                 <button type="button"
                                     class="btn btn-outline-primary btn-sm btn-detalle-ot ct-nowrap"
-                                    data-url="{{ route('control.terminacion.detalle', ['idOt' => $item->id_ot]) }}?fecha_pt={{ $item->fecha_producto_terminado }}">
-                                    <i class="fas fa-route mr-1"></i>Trazabilidad
+                                    data-url="{{ route('control.terminacion.detalle', ['idOt' => $item->id_ot]) }}">
+                                    <i class="fas fa-route mr-1"></i>Detalle
                                 </button>
                             </td>
                         </tr>
