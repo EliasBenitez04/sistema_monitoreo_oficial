@@ -314,10 +314,14 @@ class SeguimientoPedidoController extends Controller
         // y no deben inflar artificialmente el tiempo del pedido original.
         $ultimaConfirmacion = $recepcionesLocales->pluck('ultima')->filter()->min();
 
+        // $movimientosRemision está agrupado por id_ot, por eso primero hay que
+        // aplanar sus colecciones antes de acceder a las propiedades de cada remisión.
         $primerEnvioLogistica = $movimientosRemision
+            ->flatten(1)
             ->filter(function ($mov) {
-                $destino = strtoupper(trim((string) ($mov->sucursal_logistica ?: $mov->sucursal_destino)));
-                return $mov->fecha_remision && !in_array($destino, ['CASA CENTRAL', 'MATRIZ'], true);
+                $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
+                return !empty($mov->fecha_remision)
+                    && !in_array($destino, ['CASA CENTRAL', 'MATRIZ'], true);
             })
             ->pluck('fecha_remision')
             ->filter()
