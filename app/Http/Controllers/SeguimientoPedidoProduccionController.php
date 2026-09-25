@@ -127,6 +127,152 @@ class SeguimientoPedidoProduccionController extends Controller
         ));
     }
 
+    public function informeGerencial(Request $request)
+    {
+        $hoy = Carbon::today();
+
+        $pedidos = SeguimientoPedido::query()
+            ->where('nro_pedido', 'ILIKE', 'P%')
+            ->select('id', 'nro_pedido', 'fecha_pedido')
+            ->orderBy('fecha_pedido')
+            ->get();
+
+        $idsPedido = $pedidos->pluck('id')->all();
+
+        $filas = collect();
+
+        if (!empty($idsPedido)) {
+            $filas = DB::table('seguimiento_pedido_detalle as spd')
+                ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
+                ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+                ->whereIn('spd.seguimiento_pedido_id', $idsPedido)
+                ->select(
+                    'spd.seguimiento_pedido_id',
+                    'sp.nro_pedido',
+                    'sp.fecha_pedido',
+                    'o.id_ot',
+                    'o.nro_ot',
+                    'o.codigo',
+                    'o.descripcion',
+                    'o.cantidad_orden'
+                )
+                ->get();
+        }
+
+        $idsOt = $filas->pluck('id_ot')->unique()->values()->all();
+
+        $trazas = collect();
+        if (!empty($idsOt)) {
+            $trazas = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt)
+                ->select(
+                    'id_trazabilidad',
+                    'id_ot',
+                    'proceso',
+                    'resultado',
+                    'fecha_proceso'
+                )
+                ->orderBy('fecha_proceso')
+                ->orderBy('id_trazabilidad')
+                ->get()
+                ->groupBy('id_ot');
+        }
+
+        $filas = $filas->map(function ($ot) use ($trazas, $hoy) {
+            $historial = collect($trazas->get($ot->id_ot, collect()));
+
+            $ingresoTerminacion = $historial
+                ->filter(function ($t) {
+                    return strtoupper(trim((string) $t->proceso)) === self::PROCESO_CIERRE;
+                })
+                ->sortBy('fecha_proceso')
+                ->first();
+
+            $ultimoProceso = $historial
+                ->sortBy(function ($t) {
+                    return sprintf(
+                        '%s-%010d',
+                        (string) $t->fecha_proceso,
+                        (int) $t->id_trazabilidad
+                    );
+                })
+                ->last();
+
+            $completo = $ingresoTerminacion !== null;
+            $fechaPedido = $ot->fecha_pedido
+                ? Carbon::parse($ot->fecha_pedido)->startOfDay()
+                : null;
+
+            $dias = (!$completo && $fechaPedido)
+                ? max(0, $fechaPedido->diffInDays($hoy, false))
+                : 0;
+
+            // Mismo criterio visual del informe gerencial actual:
+            // 2 días o más desde el pedido todavía sin llegar a Terminación.
+            $urgente = !$completo && $dias >= 2;
+
+            $ot->completo = $completo;
+            $ot->fecha_ingreso_terminacion = $ingresoTerminacion->fecha_proceso ?? null;
+            $ot->proceso_actual = $ultimoProceso->proceso ?? 'SIN PROCESO';
+            $ot->fecha_proceso_actual = $ultimoProceso->fecha_proceso ?? null;
+            $ot->cantidad_proceso_actual = (int) ($ultimoProceso->resultado ?? 0);
+            $ot->dias_pendiente = $dias;
+            $ot->urgente = $urgente;
+
+            return $ot;
+        });
+
+        $pendientes = $filas
+            ->where('completo', false)
+            ->sortByDesc(function ($fila) {
+                return ($fila->urgente ? 100000 : 0) + (int) $fila->dias_pendiente;
+            })
+            ->values();
+
+        $completas = $filas->where('completo', true)->values();
+
+        $totalOt = $filas->count();
+        $totalCompletas = $completas->count();
+        $totalPendientes = $pendientes->count();
+        $avance = $totalOt > 0
+            ? round(($totalCompletas / $totalOt) * 100, 1)
+            : 0;
+
+        $pedidosConPendiente = $pendientes
+            ->pluck('seguimiento_pedido_id')
+            ->unique()
+            ->count();
+
+        $pedidoCompletos = $pedidos->count() - $pedidosConPendiente;
+
+        $diasPendientes = $pendientes->pluck('dias_pendiente')->filter(function ($d) {
+            return $d !== null;
+        });
+
+        $resumen = (object) [
+            'pedidos' => $pedidos->count(),
+            'pedidos_completos' => max(0, $pedidoCompletos),
+            'pedidos_con_pendiente' => $pedidosConPendiente,
+            'ots' => $totalOt,
+            'ots_completas' => $totalCompletas,
+            'ots_pendientes' => $totalPendientes,
+            'prendas_pendientes' => (int) $pendientes->sum('cantidad_orden'),
+            'urgentes' => $pendientes->where('urgente', true)->count(),
+            'avance' => $avance,
+            'antiguedad_maxima' => $diasPendientes->isNotEmpty() ? (int) $diasPendientes->max() : 0,
+            'promedio_pendiente' => $diasPendientes->isNotEmpty() ? round($diasPendientes->avg(), 1) : 0,
+            'sin_proceso' => $pendientes->filter(function ($fila) {
+                return strtoupper(trim((string) $fila->proceso_actual)) === 'SIN PROCESO';
+            })->count(),
+        ];
+
+        return view('seguimiento_pedidos_produccion.informe_gerencial', compact(
+            'pendientes',
+            'resumen'
+        ));
+    }
+
+
     public function show($id)
     {
         $pedido = SeguimientoPedido::query()
