@@ -16,8 +16,92 @@
 <div class="container-fluid">
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
 
-    <div class="card card-outline card-primary">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar OT por pedido</h3></div>
+    <div class="row">
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-white border-left border-primary shadow-sm">
+                <div class="inner"><h3>{{ number_format($resumenGerencial->pedidos,0,',','.') }}</h3><p>Pedidos monitoreados</p></div>
+                <div class="icon"><i class="fas fa-clipboard-list text-primary"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-white border-left border-info shadow-sm">
+                <div class="inner"><h3>{{ number_format($resumenGerencial->prendas,0,',','.') }}</h3><p>Prendas solicitadas · {{ $resumenGerencial->ots }} OT</p></div>
+                <div class="icon"><i class="fas fa-tshirt text-info"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-white border-left border-success shadow-sm">
+                <div class="inner"><h3>{{ $resumenGerencial->cobertura_confirmada }}%</h3><p>Confirmado en locales</p></div>
+                <div class="icon"><i class="fas fa-check-circle text-success"></i></div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="small-box bg-white border-left border-warning shadow-sm">
+                <div class="inner"><h3>{{ number_format($resumenGerencial->pendiente_confirmar,0,',','.') }}</h3><p>Prendas pendientes de confirmar</p></div>
+                <div class="icon"><i class="fas fa-exclamation-triangle text-warning"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card card-outline card-dark mb-4">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-chart-line mr-2"></i>Resumen ejecutivo</h3>
+            <span class="float-right text-muted small">Situación general para toma de decisiones</span>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3 border-right mb-3 mb-md-0">
+                    <div class="text-muted text-uppercase small">Producto terminado</div>
+                    <div class="h4 mb-1">{{ number_format($resumenGerencial->pt,0,',','.') }} / {{ number_format($resumenGerencial->prendas,0,',','.') }}</div>
+                    <div class="progress progress-sm"><div class="progress-bar bg-info" style="width:{{ min(100,$resumenGerencial->cobertura_pt) }}%"></div></div>
+                    <small>{{ $resumenGerencial->cobertura_pt }}% · faltan {{ number_format($resumenGerencial->pendiente_pt,0,',','.') }}</small>
+                </div>
+                <div class="col-md-3 border-right mb-3 mb-md-0">
+                    <div class="text-muted text-uppercase small">Pedidos completos</div>
+                    <div class="h4 mb-1 text-success">{{ $resumenGerencial->completos }}</div>
+                    <small>{{ $resumenGerencial->en_curso }} todavía en curso</small>
+                </div>
+                <div class="col-md-3 border-right mb-3 mb-md-0">
+                    <div class="text-muted text-uppercase small">Tiempo de atención</div>
+                    <div class="h4 mb-1">{{ $resumenGerencial->promedio_dias !== null ? $resumenGerencial->promedio_dias.' días' : '-' }}</div>
+                    <small>Pedido → primera confirmación local</small>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-muted text-uppercase small">Requieren atención</div>
+                    <div class="h4 mb-1 text-warning">{{ $resumenGerencial->en_curso }}</div>
+                    <small>pedidos sin cierre completo</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if($resumenGerencial->en_curso > 0)
+    <div class="card card-outline card-warning mb-4">
+        <div class="card-header py-2"><h3 class="card-title"><i class="fas fa-bullseye mr-2"></i>Dónde mirar primero</h3></div>
+        <div class="card-body py-3">
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <strong class="d-block h5 mb-0">{{ $resumenGerencial->sin_movimiento }}</strong>
+                    <span class="text-muted">Sin movimiento/remisión</span>
+                </div>
+                <div class="col-md-4">
+                    <strong class="d-block h5 mb-0">{{ $resumenGerencial->sin_confirmar }}</strong>
+                    <span class="text-muted">Remitidos sin confirmación</span>
+                </div>
+                <div class="col-md-4">
+                    <strong class="d-block h5 mb-0">{{ $resumenGerencial->recepcion_parcial }}</strong>
+                    <span class="text-muted">Con recepción parcial</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <div class="card card-outline card-primary collapsed-card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar OT por pedido</h3>
+            <div class="card-tools"><button type="button" class="btn btn-tool" data-card-widget="collapse"><i class="fas fa-plus"></i></button></div>
+        </div>
         <form method="POST" action="{{ route('seguimiento-pedidos.importar') }}" enctype="multipart/form-data">
             @csrf
             <div class="card-body">
@@ -145,5 +229,9 @@ document.getElementById('archivo-pedidos').addEventListener('change', function (
 .pedido-numero{font-size:1.05rem;font-weight:700;color:#343a40}
 .progreso-celda{min-width:125px}
 .progress-xs{height:4px;margin:4px auto 0;max-width:110px;background:#e9ecef}
+.small-box.bg-white .icon{top:8px;font-size:48px;opacity:.16}
+.small-box.bg-white .inner h3{font-size:1.8rem}
+.border-left{border-left-width:4px!important}
+.progress-sm{height:7px;margin:8px 0 4px}
 </style>
 @endpush
