@@ -207,9 +207,9 @@ class SeguimientoPedidoProduccionController extends Controller
                 ? max(0, $fechaPedido->diffInDays($hoy, false))
                 : 0;
 
-            // Mismo criterio visual del informe gerencial actual:
-            // 2 días o más desde el pedido todavía sin llegar a Terminación.
-            $urgente = !$completo && $dias >= 2;
+            // Para Producción, una OT se considera atrasada/urgente
+            // recién a partir de 30 días desde la fecha del pedido.
+            $urgente = !$completo && $dias >= 30;
 
             $ot->completo = $completo;
             $ot->fecha_ingreso_terminacion = $ingresoTerminacion->fecha_proceso ?? null;
