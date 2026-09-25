@@ -2623,14 +2623,27 @@ class OtController extends Controller
         $remisionPorDetalle = null;
 
         if ($tablaRemisionesDisponible) {
+            /*
+             * El dashboard principal representa la DISTRIBUCION ORIGINAL de la OT.
+             * Solo se contabilizan remisiones que salen de CASA CENTRAL/MATRIZ.
+             * Los traspasos Local -> Local son redistribuciones de las mismas prendas
+             * y no deben volver a sumar Remitido/Recibido ni generar EXCEDENTE.
+             */
+            $esSalidaCentral = "(
+                cod_sucursal_salida = 1
+                OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'
+                OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'
+            )";
+
             $remisionPorDetalle = DB::table('ot_logistica_remisiones')
                 ->whereNotNull('id_logistica_detalle')
                 ->groupBy('id_logistica_detalle')
                 ->select(
                     'id_logistica_detalle',
-                    DB::raw('SUM(cantidad) as cantidad_remitida'),
-                    DB::raw("SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as cantidad_recibida"),
-                    DB::raw("SUM(CASE WHEN fecha_recepcion IS NULL THEN cantidad ELSE 0 END) as cantidad_en_transito")
+                    DB::raw("SUM(CASE WHEN {$esSalidaCentral} THEN cantidad ELSE 0 END) as cantidad_remitida"),
+                    DB::raw("SUM(CASE WHEN {$esSalidaCentral} AND fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as cantidad_recibida"),
+                    DB::raw("SUM(CASE WHEN {$esSalidaCentral} AND fecha_recepcion IS NULL THEN cantidad ELSE 0 END) as cantidad_en_transito"),
+                    DB::raw("SUM(CASE WHEN NOT {$esSalidaCentral} THEN cantidad ELSE 0 END) as cantidad_redistribuida")
                 );
         }
 
@@ -2703,10 +2716,12 @@ class OtController extends Controller
             $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as cantidad_remitida');
             $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_recibida), 0) as cantidad_recibida');
             $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_en_transito), 0) as cantidad_en_transito');
+            $selectOt[] = DB::raw('COALESCE(SUM(r.cantidad_redistribuida), 0) as cantidad_redistribuida');
         } else {
             $selectOt[] = DB::raw('0 as cantidad_remitida');
             $selectOt[] = DB::raw('0 as cantidad_recibida');
             $selectOt[] = DB::raw('0 as cantidad_en_transito');
+            $selectOt[] = DB::raw('0 as cantidad_redistribuida');
         }
 
         $detalles = $queryOt
@@ -2729,6 +2744,7 @@ class OtController extends Controller
             $item->cantidad_remitida = (int) $item->cantidad_remitida;
             $item->cantidad_recibida = (int) $item->cantidad_recibida;
             $item->cantidad_en_transito = (int) $item->cantidad_en_transito;
+            $item->cantidad_redistribuida = (int) $item->cantidad_redistribuida;
 
             $item->pendiente_remitir = max(
                 0,
