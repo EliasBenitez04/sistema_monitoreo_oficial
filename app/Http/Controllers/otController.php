@@ -2744,9 +2744,52 @@ class OtController extends Controller
          * fecha_recepcion es la confirmación efectiva del destino.
          */
         $confirmacionesPorOt = collect();
+        $enviosPorOt = collect();
 
         if ($tablaRemisionesDisponible && $detalles->count() > 0) {
             $idsOtPagina = $detalles->pluck('id_ot')->filter()->values()->all();
+
+            /*
+             * Envíos/remisiones reales de cada OT listada. Se agrupan por
+             * documento + origen + destino para no repetir las líneas de artículos.
+             * Incluye distribución original y movimientos posteriores, identificados.
+             */
+            $enviosPorOt = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $idsOtPagina)
+                ->select(
+                    'id_ot',
+                    'fecha_remision',
+                    'fecha_recepcion',
+                    'cod_sucursal_salida',
+                    'cod_sucursal_destino',
+                    'sucursal_salida',
+                    'sucursal_destino',
+                    'serie',
+                    'numero_remision',
+                    DB::raw('SUM(cantidad) as cantidad_envio'),
+                    DB::raw("CASE
+                        WHEN cod_sucursal_salida = 1
+                          OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'
+                          OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'
+                        THEN 'DISTRIBUCION'
+                        ELSE 'REDISTRIBUCION'
+                    END as tipo_envio")
+                )
+                ->groupBy(
+                    'id_ot',
+                    'fecha_remision',
+                    'fecha_recepcion',
+                    'cod_sucursal_salida',
+                    'cod_sucursal_destino',
+                    'sucursal_salida',
+                    'sucursal_destino',
+                    'serie',
+                    'numero_remision'
+                )
+                ->orderBy('fecha_remision')
+                ->orderBy('numero_remision')
+                ->get()
+                ->groupBy('id_ot');
 
             $confirmacionesPorOt = DB::table('ot_logistica_remisiones')
                 ->whereIn('id_ot', $idsOtPagina)
@@ -2778,6 +2821,17 @@ class OtController extends Controller
         }
 
         foreach ($detalles as $item) {
+            $item->envios = collect($enviosPorOt->get($item->id_ot, collect()))
+                ->map(function ($envio) {
+                    $envio->cantidad_envio = (int) $envio->cantidad_envio;
+                    $envio->estado_envio = !empty($envio->fecha_recepcion)
+                        ? 'RECIBIDO'
+                        : 'EN TRANSITO';
+
+                    return $envio;
+                })
+                ->values();
+
             $item->confirmaciones_sucursales = collect($confirmacionesPorOt->get($item->id_ot, collect()))
                 ->map(function ($confirmacion) {
                     $confirmacion->cantidad_enviada = (int) $confirmacion->cantidad_enviada;
