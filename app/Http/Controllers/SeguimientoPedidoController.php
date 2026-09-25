@@ -210,21 +210,20 @@ class SeguimientoPedidoController extends Controller
 
             if ($fechaRecepcion) {
                 $etapa = 'CONFIRMADO';
-                $desde = Carbon::parse($fechaRecepcion)->startOfDay();
-                $dias = 0;
             } elseif ($fechaLogistica) {
                 $etapa = 'LOGISTICA';
-                $desde = Carbon::parse($fechaLogistica)->startOfDay();
-                $dias = $desde->diffInDays($hoy, false);
             } elseif ($fechaTerminacion) {
                 $etapa = 'TERMINACION';
-                $desde = Carbon::parse($fechaTerminacion)->startOfDay();
-                $dias = $desde->diffInDays($hoy, false);
             } else {
                 $etapa = 'SIN INICIAR';
-                $desde = $ot->fecha_pedido ? Carbon::parse($ot->fecha_pedido)->startOfDay() : null;
-                $dias = $desde ? $desde->diffInDays($hoy, false) : null;
             }
+
+            // En el informe gerencial la antigüedad siempre se mide desde la FECHA DEL PEDIDO.
+            // Las fechas de proceso sirven solamente para identificar la etapa actual.
+            $desde = $ot->fecha_pedido ? Carbon::parse($ot->fecha_pedido)->startOfDay() : null;
+            $dias = ($etapa !== 'CONFIRMADO' && $desde)
+                ? $desde->diffInDays($hoy, false)
+                : 0;
 
             $urgente = $etapa !== 'CONFIRMADO' && $dias !== null && $dias >= 2;
 
