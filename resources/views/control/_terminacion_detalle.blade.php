@@ -38,6 +38,7 @@
                 <tr>
                     <th>Plan logística</th>
                     <th>Destino real</th>
+                    <th>Código variante</th>
                     <th class="text-right">Plan</th>
                     <th>Salida</th>
                     <th>Remisión</th>
@@ -51,6 +52,7 @@
                     @if($detalle->remisiones->isEmpty())
                         <tr>
                             <td><strong>{{ $detalle->sucursal }}</strong></td>
+                            <td class="text-muted">—</td>
                             <td class="text-muted">—</td>
                             <td class="text-right">{{ number_format($detalle->cantidad, 0, ',', '.') }}</td>
                             <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
@@ -68,6 +70,9 @@
                                             <i class="fas fa-random mr-1"></i>REDIRIGIDO
                                         </span>
                                     @endif
+                                </td>
+                                <td>
+                                    <code class="font-weight-bold">{{ $remision->codigo ?: '—' }}</code>
                                 </td>
                                 <td class="text-right">
                                     {{ number_format($detalle->cantidad, 0, ',', '.') }}
@@ -94,7 +99,7 @@
                     @endif
                 @empty
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             Esta OT todavía no tiene distribución logística.
                         </td>
                     </tr>
@@ -114,6 +119,7 @@
                     <thead>
                         <tr>
                             <th>Destino real</th>
+                            <th>Código variante</th>
                             <th>Remisión</th>
                             <th class="text-right">Cantidad</th>
                             <th>Fecha remisión</th>
@@ -127,6 +133,7 @@
                                     {{ $remision->sucursal_destino ?: $remision->sucursal_logistica }}
                                     <br><small class="text-muted">Cod. {{ $remision->cod_sucursal_destino }}</small>
                                 </td>
+                                <td><code class="font-weight-bold">{{ $remision->codigo ?: '—' }}</code></td>
                                 <td><strong>{{ $remision->serie }}-{{ $remision->numero_remision }}</strong></td>
                                 <td class="text-right">{{ number_format($remision->cantidad, 0, ',', '.') }}</td>
                                 <td>{{ $remision->fecha_remision ? \Carbon\Carbon::parse($remision->fecha_remision)->format('d/m/Y') : '—' }}</td>
