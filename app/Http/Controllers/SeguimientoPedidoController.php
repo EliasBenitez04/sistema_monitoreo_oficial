@@ -67,6 +67,30 @@ class SeguimientoPedidoController extends Controller
                     ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
             }, 'confirmado_locales')
             ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd_conf')
+                    ->whereColumn('spd_conf.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->whereExists(function ($r) {
+                        $r->select(DB::raw(1))
+                            ->from('ot_logistica_remisiones as rc')
+                            ->whereColumn('rc.id_ot', 'spd_conf.id_ot')
+                            ->whereNotNull('rc.fecha_recepcion')
+                            ->where(function ($origen) {
+                                $origen->whereIn(DB::raw("UPPER(TRIM(COALESCE(rc.sucursal_salida, '')))"), ['CASA CENTRAL', 'MATRIZ'])
+                                    ->orWhere('rc.cod_sucursal_salida', 1);
+                            })
+                            ->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_logistica, rc.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
+                            ->where(function ($fecha) {
+                                $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                                    ->orWhereColumn('rc.fecha_remision', '>=', 'seguimiento_pedido.fecha_pedido');
+                            })
+                            ->where(function ($fecha) {
+                                $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                                    ->orWhereColumn('rc.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                            });
+                    })
+                    ->selectRaw('COUNT(*)');
+            }, 'ots_confirmadas')
+            ->selectSub(function ($q) {
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
@@ -80,7 +104,7 @@ class SeguimientoPedidoController extends Controller
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
                     ->whereNotNull('r.fecha_recepcion')
                     ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
-                    ->selectRaw('MIN(r.fecha_recepcion)');
+                    ->selectRaw('MAX(r.fecha_recepcion)');
             }, 'ultima_confirmacion')
             ->orderByDesc('id');
 
@@ -95,17 +119,20 @@ class SeguimientoPedidoController extends Controller
             $fin = $pedido->ultima_confirmacion ? Carbon::parse($pedido->ultima_confirmacion)->startOfDay() : null;
 
             $cantidad = (int) $pedido->cantidad_total;
-            $pt = min($cantidad, (int) $pedido->producto_terminado);
             $movLocales = (int) $pedido->movimientos_locales;
             $confLocales = (int) $pedido->confirmado_locales;
+            $otsTotal = (int) $pedido->detalles_count;
+            $otsConfirmadas = (int) $pedido->ots_confirmadas;
 
-            $completo = $cantidad > 0
-                && $pt >= $cantidad
-                && $movLocales > 0
-                && $confLocales >= $movLocales;
+            // El pedido sólo está COMPLETO cuando TODAS sus OTs tienen
+            // una confirmación local válida posterior a la fecha del pedido.
+            // Las cantidades enviadas/confirmadas sirven como avance, pero
+            // no reemplazan el estado individual de cada OT.
+            $completo = $otsTotal > 0 && $otsConfirmadas >= $otsTotal;
 
             $pedido->movimientos_locales = $movLocales;
             $pedido->confirmado_locales = $confLocales;
+            $pedido->ots_confirmadas = $otsConfirmadas;
             $pedido->completo_locales = $completo;
 
             $pedido->dias_confirmacion = ($inicio && $fin && $completo)
@@ -129,26 +156,12 @@ class SeguimientoPedidoController extends Controller
             return min((int) $p->cantidad_total, (int) $p->confirmado);
         });
         $completos = $resumenBase->filter(function ($p) {
-            $cantidad = (int) $p->cantidad_total;
-            $pt = min($cantidad, (int) $p->producto_terminado);
-            $movLocales = (int) $p->movimientos_locales;
-            $confLocales = (int) $p->confirmado_locales;
-
-            return $cantidad > 0
-                && $pt >= $cantidad
-                && $movLocales > 0
-                && $confLocales >= $movLocales;
+            return (int) $p->detalles_count > 0
+                && (int) $p->ots_confirmadas >= (int) $p->detalles_count;
         });
         $enCurso = $resumenBase->reject(function ($p) {
-            $cantidad = (int) $p->cantidad_total;
-            $pt = min($cantidad, (int) $p->producto_terminado);
-            $movLocales = (int) $p->movimientos_locales;
-            $confLocales = (int) $p->confirmado_locales;
-
-            return $cantidad > 0
-                && $pt >= $cantidad
-                && $movLocales > 0
-                && $confLocales >= $movLocales;
+            return (int) $p->detalles_count > 0
+                && (int) $p->ots_confirmadas >= (int) $p->detalles_count;
         });
         $dias = $completos->map(function ($p) {
             if (!$p->fecha_pedido || !$p->primera_confirmacion) return null;
