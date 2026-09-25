@@ -435,13 +435,16 @@ class ControlTerminacionController extends Controller
             $ot->pendiente_envio = max(0, $ot->cantidad_pt - $ot->enviado);
             $ot->primer_envio = $mov->primer_envio ?? null;
             $ot->ultimo_envio = $mov->ultimo_envio ?? null;
-            $ot->dias_espera = $ot->pendiente_envio > 0
+            $ot->dias_desde_pt = $ot->pendiente_envio > 0
                 ? max(0, \Carbon\Carbon::parse($ot->fecha_pt)->startOfDay()->diffInDays(now()->startOfDay(), false))
                 : 0;
+            $ot->dias_desde_ultimo_envio = $ot->pendiente_envio > 0 && $ot->ultimo_envio
+                ? max(0, \Carbon\Carbon::parse($ot->ultimo_envio)->startOfDay()->diffInDays(now()->startOfDay(), false))
+                : null;
             return $ot;
         })->filter(function ($ot) {
             return $ot->pendiente_envio > 0;
-        })->sortByDesc('dias_espera')->values();
+        })->sortByDesc('dias_desde_ultimo_envio')->values();
 
         return view('control.reporte_pendientes_envio', compact(
             'fechaDesde', 'fechaHasta', 'buscar', 'reporte'
