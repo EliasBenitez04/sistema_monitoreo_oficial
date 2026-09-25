@@ -423,18 +423,25 @@ class ControlTerminacionController extends Controller
 
             $detalle->remisiones = collect(
                 $remisionesPorDetalle->get($detalle->id, collect())
-            )->map(function ($remision) use ($detalle, $planNormalizado) {
+            )->filter(function ($remision) use ($planNormalizado) {
+                $destinoReal = $remision->sucursal_destino
+                    ?: $remision->sucursal_logistica;
+
+                // El id_logistica_detalle puede quedar reutilizado por remisiones
+                // posteriores. Para este renglón sólo pertenece la remisión cuyo
+                // destino real coincide con el destino planificado.
+                return $this->normalizarDestinoMovimiento($destinoReal)
+                    === $planNormalizado;
+            })->map(function ($remision) use ($detalle) {
                 $destinoReal = $remision->sucursal_destino
                     ?: $remision->sucursal_logistica;
 
                 $remision->destino_planificado = $detalle->sucursal;
                 $remision->destino_real = $destinoReal;
-                $remision->es_redireccion =
-                    $this->normalizarDestinoMovimiento($destinoReal)
-                    !== $planNormalizado;
+                $remision->es_redireccion = false;
 
                 return $remision;
-            });
+            })->values();
 
             $detalle->cantidad_remitida = (int) $detalle->remisiones->sum('cantidad');
             $detalle->cantidad_recibida = (int) $detalle->remisiones
