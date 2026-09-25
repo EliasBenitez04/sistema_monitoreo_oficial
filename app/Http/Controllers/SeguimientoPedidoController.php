@@ -23,8 +23,12 @@ class SeguimientoPedidoController extends Controller
         $buscar = trim((string) $request->input('buscar', ''));
 
         $query = SeguimientoPedido::query()
-            ->withCount('detalles')
             ->select('seguimiento_pedido.*')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd_total')
+                    ->whereColumn('spd_total.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->selectRaw('COUNT(DISTINCT spd_total.id_ot)');
+            }, 'ots_total')
             ->selectSub(function ($q) {
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
@@ -121,7 +125,7 @@ class SeguimientoPedidoController extends Controller
             $cantidad = (int) $pedido->cantidad_total;
             $movLocales = (int) $pedido->movimientos_locales;
             $confLocales = (int) $pedido->confirmado_locales;
-            $otsTotal = (int) $pedido->detalles_count;
+            $otsTotal = (int) $pedido->ots_total;
             $otsConfirmadas = (int) $pedido->ots_confirmadas;
 
             // El pedido sólo está COMPLETO cuando TODAS sus OTs tienen
@@ -130,6 +134,7 @@ class SeguimientoPedidoController extends Controller
             // no reemplazan el estado individual de cada OT.
             $completo = $otsTotal > 0 && $otsConfirmadas >= $otsTotal;
 
+            $pedido->detalles_count = $otsTotal;
             $pedido->movimientos_locales = $movLocales;
             $pedido->confirmado_locales = $confLocales;
             $pedido->ots_confirmadas = $otsConfirmadas;
@@ -156,12 +161,12 @@ class SeguimientoPedidoController extends Controller
             return min((int) $p->cantidad_total, (int) $p->confirmado);
         });
         $completos = $resumenBase->filter(function ($p) {
-            return (int) $p->detalles_count > 0
-                && (int) $p->ots_confirmadas >= (int) $p->detalles_count;
+            return (int) $p->ots_total > 0
+                && (int) $p->ots_confirmadas >= (int) $p->ots_total;
         });
         $enCurso = $resumenBase->reject(function ($p) {
-            return (int) $p->detalles_count > 0
-                && (int) $p->ots_confirmadas >= (int) $p->detalles_count;
+            return (int) $p->ots_total > 0
+                && (int) $p->ots_confirmadas >= (int) $p->ots_total;
         });
         $dias = $completos->map(function ($p) {
             if (!$p->fecha_pedido || !$p->primera_confirmacion) return null;
@@ -173,7 +178,7 @@ class SeguimientoPedidoController extends Controller
 
         $resumenGerencial = (object) [
             'pedidos' => $totalPedidos,
-            'ots' => (int) $resumenBase->sum('detalles_count'),
+            'ots' => (int) $resumenBase->sum('ots_total'),
             'prendas' => $totalPrendas,
             'pt' => $totalPt,
             'confirmado' => $totalConfirmado,
