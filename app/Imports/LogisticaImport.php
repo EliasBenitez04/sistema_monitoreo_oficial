@@ -99,32 +99,38 @@ class LogisticaImport implements ToCollection, WithHeadingRow
                     $otPorNumero = Ot::where('nro_ot', $nroOtExcel)->first();
 
                     if ($otPorNumero) {
+                        /*
+                         * REGLA PRINCIPAL:
+                         * Si el NRO OT existe, ESA es la OT correcta.
+                         *
+                         * El código del Excel se usa como control de consistencia,
+                         * pero una diferencia de código no debe impedir guardar
+                         * la trazabilidad logística.
+                         */
+                        $ot = $otPorNumero;
                         $codigoOt = $this->normalizarCodigoBase($otPorNumero->codigo);
 
                         if (
-                            $codigoOt === $codigo
-                            || $codigoOt === ''
+                            $codigoOt === ''
                             || strtoupper((string) $otPorNumero->codigo) === 'SIN_CODIGO'
                         ) {
-                            $ot = $otPorNumero;
+                            $ot->codigo = $codigo;
+                            $ot->save();
 
-                            /*
-                             * Si la OT estaba creada sin código válido,
-                             * la reparamos con el código del Excel logístico.
-                             */
-                            if (
-                                $codigoOt === ''
-                                || strtoupper((string) $otPorNumero->codigo) === 'SIN_CODIGO'
-                            ) {
-                                $ot->codigo = $codigo;
-                                $ot->save();
-
-                                Log::warning('LOGISTICA - CODIGO OT REPARADO', [
-                                    'fila' => $index + 2,
-                                    'nro_ot' => $nroOtExcel,
-                                    'codigo_nuevo' => $codigo,
-                                ]);
-                            }
+                            Log::warning('LOGISTICA - CODIGO OT REPARADO', [
+                                'fila' => $index + 2,
+                                'nro_ot' => $nroOtExcel,
+                                'codigo_nuevo' => $codigo,
+                            ]);
+                        } elseif ($codigoOt !== $codigo) {
+                            Log::warning('LOGISTICA - CODIGO DISTINTO, SE USA NRO OT', [
+                                'fila' => $index + 2,
+                                'nro_ot' => $nroOtExcel,
+                                'id_ot' => $ot->id_ot,
+                                'codigo_excel' => $codigo,
+                                'codigo_guardado_ot' => $otPorNumero->codigo,
+                                'accion' => 'SE CONTINUA CON LA OT ENCONTRADA POR NRO_OT',
+                            ]);
                         }
                     }
                 }
