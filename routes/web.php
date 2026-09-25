@@ -839,3 +839,9 @@ Route::get('/seguimiento-pedidos', [SeguimientoPedidoController::class, 'index']
 Route::get('/seguimiento-pedidos-informe-gerencial', [SeguimientoPedidoController::class, 'informeGerencial'])->name('seguimiento-pedidos.informe-gerencial');
 Route::post('/seguimiento-pedidos/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-pedidos.importar');
 Route::get('/seguimiento-pedidos/{id}', [SeguimientoPedidoController::class, 'show'])->name('seguimiento-pedidos.show');
+
+
+Route::get(
+    '/control/terminacion/reporte-pendientes-envio',
+    [ControlTerminacionController::class, 'reportePendientesEnvio']
+)->name('control.terminacion.reporte-pendientes-envio');
