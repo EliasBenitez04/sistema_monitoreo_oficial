@@ -140,7 +140,7 @@
                         <th>Prendas</th>
                         <th>Prod. terminado</th>
                         <th>Movimientos</th>
-                        <th>Confirmado locales</th>
+                        <th>Confirmado</th>
                         <th>Situación</th>
                         <th>Fecha pedido</th>
                         <th>1ª confirmación local</th>
@@ -187,11 +187,8 @@
                             @if($mov > $cantidad)<small class="d-block text-warning">+{{ number_format($mov-$cantidad,0,',','.') }} mov. extra</small>@endif
                         </td>
                         <td class="align-middle progreso-celda">
-                            <strong>{{ number_format($confLocales,0,',','.') }} / {{ number_format($movLocales,0,',','.') }}</strong>
-                            <small class="d-block text-muted">{{ $pctConf }}% de lo enviado a locales</small>
-                            <small class="d-block {{ $otsConfirmadas >= $otsTotal && $otsTotal > 0 ? 'text-success' : 'text-warning' }}">
-                                {{ $otsConfirmadas }}/{{ $otsTotal }} OT confirmadas
-                            </small>
+                            <strong>{{ number_format($confLocales,0,',','.') }}</strong>
+                            <small class="d-block text-muted">{{ $pctConf }}% confirmado</small>
                             <div class="progress progress-xs"><div class="progress-bar bg-success" style="width:{{ $pctConf }}%"></div></div>
                         </td>
                         <td class="align-middle"><span class="badge badge-{{ $clase }} px-2 py-2"><i class="fas fa-{{ $icono }} mr-1"></i>{{ $situacion }}</span></td>
