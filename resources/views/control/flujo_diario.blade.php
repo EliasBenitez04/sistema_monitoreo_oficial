@@ -88,7 +88,7 @@
                         <tbody>
                         @forelse($entradasTerminacion as $item)
                             <tr>
-                                <td>{{ CarbonCarbon::parse($item->fecha)->format('d/m/Y') }}</td>
+                                <td>{{ \Carbon\Carbon::parse($item->fecha)->format('d/m/Y') }}</td>
                                 <td><strong>{{ $item->nro_ot }}</strong></td>
                                 <td class="fd-code">{{ $item->codigo }}</td>
                                 <td>{{ $item->descripcion }}</td>
@@ -107,7 +107,7 @@
                         <tbody>
                         @forelse($salidasProductoTerminado as $item)
                             <tr>
-                                <td>{{ CarbonCarbon::parse($item->fecha)->format('d/m/Y') }}</td>
+                                <td>{{ \Carbon\Carbon::parse($item->fecha)->format('d/m/Y') }}</td>
                                 <td><strong>{{ $item->nro_ot }}</strong></td>
                                 <td class="fd-code">{{ $item->codigo }}</td>
                                 <td>{{ $item->descripcion }}</td>
@@ -130,17 +130,17 @@
                         <tbody>
                         @forelse($envios as $item)
                             <tr>
-                                <td><strong>{{ $item->nro_ot }}</strong><br><small class="text-muted">{{ IlluminateSupportStr::limit($item->descripcion,32) }}</small></td>
+                                <td><strong>{{ $item->nro_ot }}</strong><br><small class="text-muted">{{ \Illuminate\Support\Str::limit($item->descripcion,32) }}</small></td>
                                 <td class="fd-code">{{ $item->codigo_base }}</td>
                                 <td class="fd-code">{{ $item->codigo_variante }}</td>
                                 <td><span class="fd-variant">{{ $item->color ?: '—' }}</span></td>
                                 <td><span class="fd-variant">{{ $item->talle ?: '—' }}</span></td>
                                 <td><strong>{{ $item->destino }}</strong></td>
                                 <td><strong>{{ $item->serie }}-{{ $item->numero_remision }}</strong></td>
-                                <td>{{ $item->fecha_remision ? CarbonCarbon::parse($item->fecha_remision)->format('d/m/Y') : '—' }}</td>
+                                <td>{{ $item->fecha_remision ? \Carbon\Carbon::parse($item->fecha_remision)->format('d/m/Y') : '—' }}</td>
                                 <td class="text-right"><strong>{{ number_format($item->cantidad,0,',','.') }}</strong></td>
                                 <td class="text-right">{{ number_format($item->cantidad_recepcionada,0,',','.') }}</td>
-                                <td>{{ $item->fecha_recepcion ? CarbonCarbon::parse($item->fecha_recepcion)->format('d/m/Y') : '—' }}</td>
+                                <td>{{ $item->fecha_recepcion ? \Carbon\Carbon::parse($item->fecha_recepcion)->format('d/m/Y') : '—' }}</td>
                                 <td>
                                     @if($item->fecha_recepcion)
                                         <span class="badge badge-success fd-badge">RECIBIDO</span>
