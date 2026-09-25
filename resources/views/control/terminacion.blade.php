@@ -17,6 +17,13 @@
     .ct-mini { border: 1px solid #edf0f4; border-radius: 9px; padding: 11px 13px; background: #fff; height: 100%; }
     .ct-wait-high { color: #dc3545; font-weight: 700; }
     .ct-wait-mid { color: #d39e00; font-weight: 700; }
+    .ct-summary { background:#f8fafc; border:1px solid #e7ebf0; border-radius:10px; padding:12px 14px; }
+    .ct-status-strip { display:flex; flex-wrap:wrap; gap:8px; }
+    .ct-status-pill { border:1px solid #e4e9ef; background:#fff; border-radius:20px; padding:6px 11px; font-size:12px; }
+    .ct-table tbody tr { transition:.15s ease; }
+    .ct-table tbody tr:hover { background:#f8fbff; }
+    .ct-main-number { font-size:15px; font-weight:800; color:#26364a; }
+    .ct-progress-label { font-size:11px; color:#7a8796; }
 </style>
 
 <div class="container-fluid pb-4">
@@ -27,7 +34,7 @@
                 Control de Producto Terminado
             </h2>
             <div class="ct-subtitle">
-                Seguimiento general por fecha de Producto Terminado: Terminación → Producto Terminado → Logística → Remisión → Recepción Local.
+                Vea rápidamente qué entró a Terminación, qué llegó a Producto Terminado y en qué punto del recorrido se encuentra cada OT.
             </div>
         </div>
 
@@ -105,106 +112,49 @@
     </div>
 
     <div class="row mb-2">
-        <div class="col-xl-2 col-md-4 col-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label">Ingreso Terminación</div>
-                <div class="value">{{ number_format($totalIngresoTerminacion, 0, ',', '.') }}</div>
-                <div class="meta">Base de las OTs con PT del período</div>
-            </div></div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label">Producto terminado</div>
-                <div class="value">{{ number_format($totalTerminado, 0, ',', '.') }}</div>
-                <div class="meta">{{ number_format($totalOTs, 0, ',', '.') }} OTs · {{ number_format($porcentajeTerminado, 1, ',', '.') }}% del ingreso</div>
-            </div></div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label">Entregado a Logística</div>
-                <div class="value">{{ number_format($totalEntregadoLogistica, 0, ',', '.') }}</div>
-                <div class="meta">{{ number_format($porcentajeEntregadoLogistica, 1, ',', '.') }}% del Producto Terminado</div>
-            </div></div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label">Pendiente terminar</div>
-                <div class="value">{{ number_format($totalPendienteTerminar, 0, ',', '.') }}</div>
-                <div class="meta">
-                    @if($totalExcesoProductoTerminado > 0)
-                        {{ number_format($totalExcesoProductoTerminado, 0, ',', '.') }} excedido vs ingreso
-                    @else
-                        Sin excedentes
-                    @endif
-                </div>
-            </div></div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label">Máxima espera parcial</div>
-                <div class="value">{{ number_format($antiguedadMaximaPendiente, 0, ',', '.') }}</div>
-                <div class="meta">días dentro de Terminación</div>
-            </div></div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label">Tiempo en Terminación</div>
-                <div class="value">{{ number_format($promedioDiasTerminacion, 1, ',', '.') }}</div>
-                <div class="meta">promedio de días ingreso → PT</div>
-            </div></div>
-        </div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100"><div class="card-body">
+            <div class="label">OT con Producto Terminado</div>
+            <div class="value">{{ number_format($totalOTs,0,',','.') }}</div>
+            <div class="meta">{{ number_format($totalTerminado,0,',','.') }} prendas terminadas</div>
+        </div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100"><div class="card-body">
+            <div class="label">Avance de Terminación</div>
+            <div class="value">{{ number_format($porcentajeTerminado,1,',','.') }}%</div>
+            <div class="meta">{{ number_format($totalTerminado,0,',','.') }} de {{ number_format($totalIngresoTerminacion,0,',','.') }} prendas</div>
+        </div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100 {{ $totalPendienteTerminar>0?'border-warning':'' }}"><div class="card-body">
+            <div class="label">Pendiente en Terminación</div>
+            <div class="value">{{ number_format($totalPendienteTerminar,0,',','.') }}</div>
+            <div class="meta">{{ number_format($otsParciales,0,',','.') }} OTs parciales</div>
+        </div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100"><div class="card-body">
+            <div class="label">Tiempo en Terminación</div>
+            <div class="value">{{ number_format($promedioDiasTerminacion,1,',','.') }} <small>días</small></div>
+            <div class="meta">Máxima espera parcial: {{ number_format($antiguedadMaximaPendiente,0,',','.') }} días</div>
+        </div></div></div>
     </div>
 
-    <div class="card ct-card mb-3">
-        <div class="card-body py-3">
-            <div class="row">
-                <div class="col-lg-3 col-6 mb-2 mb-lg-0">
-                    <div class="ct-mini">
-                        <small class="text-muted d-block">Completas</small>
-                        <strong class="h5 mb-0 text-success">{{ number_format($otsCompletas, 0, ',', '.') }} OTs</strong>
-                    </div>
-                </div>
-
-                <div class="col-lg-3 col-6 mb-2 mb-lg-0">
-                    <div class="ct-mini">
-                        <small class="text-muted d-block">Parciales</small>
-                        <strong class="h5 mb-0 text-warning">{{ number_format($otsParciales, 0, ',', '.') }} OTs</strong>
-                    </div>
-                </div>
-
-                <div class="col-lg-3 col-6">
-                    <div class="ct-mini">
-                        <small class="text-muted d-block">Sin ingreso Terminación</small>
-                        <strong class="h5 mb-0 text-danger">{{ number_format($otsSinIngreso, 0, ',', '.') }} OTs</strong>
-                    </div>
-                </div>
-
-                <div class="col-lg-3 col-6">
-                    <div class="ct-mini">
-                        <small class="text-muted d-block">PT excedido vs ingreso</small>
-                        <strong class="h5 mb-0 {{ $otsExcedidas > 0 ? 'text-danger' : 'text-success' }}">
-                            {{ number_format($otsExcedidas, 0, ',', '.') }} OTs
-                        </strong>
-                    </div>
-                </div>
+    <div class="ct-summary mb-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <strong>Estado de las OTs del período</strong>
+                <div class="ct-subtitle">Producto Terminado ya representa la salida de Terminación y entrada a Logística.</div>
             </div>
-
-            @if($otMasAntiguaPendiente)
-                <div class="alert alert-light border mt-3 mb-0 py-2">
-                    <i class="fas fa-hourglass-half text-warning mr-1"></i>
-                    <strong>Mayor antigüedad parcial:</strong>
-                    OT {{ $otMasAntiguaPendiente->nro_ot }} ·
-                    {{ $otMasAntiguaPendiente->codigo }} ·
-                    {{ number_format($otMasAntiguaPendiente->pendiente_terminar, 0, ',', '.') }} prendas todavía en Terminación ·
-                    {{ number_format($otMasAntiguaPendiente->dias_en_terminacion, 0, ',', '.') }} días.
-                </div>
-            @endif
+            <div class="ct-status-strip mt-2 mt-md-0">
+                <span class="ct-status-pill"><i class="fas fa-check-circle text-success mr-1"></i><strong>{{ $otsCompletas }}</strong> completas</span>
+                <span class="ct-status-pill"><i class="fas fa-hourglass-half text-warning mr-1"></i><strong>{{ $otsParciales }}</strong> parciales</span>
+                @if($otsSinIngreso>0)<span class="ct-status-pill"><i class="fas fa-exclamation-circle text-danger mr-1"></i><strong>{{ $otsSinIngreso }}</strong> sin ingreso</span>@endif
+                @if($otsExcedidas>0)<span class="ct-status-pill"><i class="fas fa-exclamation-triangle text-danger mr-1"></i><strong>{{ $otsExcedidas }}</strong> excedidas</span>@endif
+            </div>
         </div>
+        @if($otMasAntiguaPendiente)
+            <div class="mt-2 pt-2 border-top small">
+                <i class="fas fa-exclamation-circle text-warning mr-1"></i>
+                Mayor atención: <strong>OT {{ $otMasAntiguaPendiente->nro_ot }}</strong> ·
+                {{ number_format($otMasAntiguaPendiente->pendiente_terminar,0,',','.') }} prendas pendientes ·
+                {{ number_format($otMasAntiguaPendiente->dias_en_terminacion,0,',','.') }} días en Terminación.
+            </div>
+        @endif
     </div>
 
     <div class="card ct-card">
@@ -224,14 +174,14 @@
                     <tr>
                         <th>OT</th>
                         <th>Código / descripción</th>
-                        <th>Ingreso Terminación</th>
+                        <th>Terminación</th>
                         <th>Producto Terminado</th>
-                        <th>Etapa actual</th>
-                        <th class="text-right">Logística</th>
+                        <th>Situación actual</th>
+                        <th class="text-right">Distribución</th>
                         <th class="text-right">Remitido</th>
                         <th class="text-right">Recibido</th>
-                        <th>Último movimiento</th>
-                        <th>Flujo</th>
+                        <th>Última remisión</th>
+                        <th>Avance</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -247,12 +197,13 @@
                             </td>
 
                             <td class="ct-nowrap text-center">
-                                <strong>{{ number_format($item->cantidad_ingreso_terminacion,0,',','.') }}</strong>
-                                <br><small class="text-muted">{{ $item->primera_fecha_ingreso ? \Carbon\Carbon::parse($item->primera_fecha_ingreso)->format('d/m/Y') : '—' }}</small>
+                                <span class="ct-main-number">{{ number_format($item->cantidad_ingreso_terminacion,0,',','.') }}</span>
+                                <br><small class="text-muted">Ingresó {{ $item->primera_fecha_ingreso ? \Carbon\Carbon::parse($item->primera_fecha_ingreso)->format('d/m/Y') : '—' }}</small>
+                                @if($item->pendiente_terminar>0)<br><small class="text-warning"><strong>{{ number_format($item->pendiente_terminar,0,',','.') }}</strong> aún pendientes</small>@endif
                             </td>
                             <td class="ct-nowrap text-center">
-                                <strong>{{ number_format($item->cantidad_terminada,0,',','.') }}</strong>
-                                <br><small class="text-muted">{{ $item->fecha_producto_terminado ? \Carbon\Carbon::parse($item->fecha_producto_terminado)->format('d/m/Y') : '—' }}</small>
+                                <span class="ct-main-number">{{ number_format($item->cantidad_terminada,0,',','.') }}</span>
+                                <br><small class="text-muted">PT {{ $item->fecha_producto_terminado ? \Carbon\Carbon::parse($item->fecha_producto_terminado)->format('d/m/Y') : '—' }}</small>
                             </td>
                             <td class="text-center">
                                 @php
@@ -262,7 +213,7 @@
                             </td>
                             <td class="text-right">
                                 <strong>{{ number_format($item->cantidad_logistica,0,',','.') }}</strong>
-                                <br><small class="text-muted">{{ $item->primera_fecha_logistica ? \Carbon\Carbon::parse($item->primera_fecha_logistica)->format('d/m/Y') : '—' }}</small>
+                                <br><small class="text-muted">{{ $item->primera_fecha_logistica ? 'Desde '.\Carbon\Carbon::parse($item->primera_fecha_logistica)->format('d/m/Y') : 'Aún sin distribución' }}</small>
                             </td>
                             <td class="text-right">
                                 <strong>{{ number_format($item->remitido_efectivo,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
@@ -282,7 +233,7 @@
                             </td>
                             <td style="min-width:120px">
                                 <div class="progress" style="height:7px"><div class="progress-bar bg-{{ $etapaClase }}" style="width:{{ $item->porcentaje_flujo }}%"></div></div>
-                                <small class="d-block text-center text-muted mt-1">{{ $item->porcentaje_flujo }}%</small>
+                                <small class="d-block text-center ct-progress-label mt-1">{{ $item->porcentaje_flujo }}% · {{ $item->etapa_numero }}/5</small>
                             </td>
                             <td class="text-right">
                                 <button type="button"
