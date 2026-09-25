@@ -135,9 +135,9 @@
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card ct-card ct-kpi h-100 {{ $totalPendienteTerminar>0?'border-warning':'' }}"><div class="card-body">
-                <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Pendiente Terminación</div>
-                <div class="value">{{ number_format($totalPendienteTerminar,0,',','.') }}</div>
-                <div class="meta">{{ number_format($otsParciales,0,',','.') }} OTs parciales · máx. {{ number_format($antiguedadMaximaPendiente,0,',','.') }} días</div>
+                <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Pendiente a Envío</div>
+                <div class="value">{{ number_format($totalPendienteEnvio,0,',','.') }}</div>
+                <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con prendas pendientes de remitir</div>
             </div></div>
         </div>
     </div>
