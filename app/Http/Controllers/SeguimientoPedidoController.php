@@ -366,18 +366,41 @@ class SeguimientoPedidoController extends Controller
             'archivo' => 'required|file|mimes:xlsx,xls,csv|max:20480',
         ]);
 
-        $import = new SeguimientoPedidoImport();
-        Excel::import($import, $request->file('archivo'));
+        try {
+            $import = new SeguimientoPedidoImport();
+            Excel::import($import, $request->file('archivo'));
 
-        $mensaje = 'Importación finalizada. Filas: ' . $import->procesadas
-            . ' | OT vinculadas: ' . $import->vinculadas
-            . ' | OT no encontradas: ' . count($import->noEncontradas) . '.';
+            if ($import->procesadas <= 0) {
+                return back()->with(
+                    'error',
+                    'El archivo se abrió, pero no se procesó ninguna fila. Verificá que los encabezados sean NRO OT, PEDIDO y FECHA PEDIDO.'
+                );
+            }
 
-        if (!empty($import->noEncontradas)) {
-            $mensaje .= ' No encontradas: ' . implode(', ', array_slice(array_unique($import->noEncontradas), 0, 20));
+            $mensaje = 'Importación finalizada. Filas: ' . $import->procesadas
+                . ' | OT vinculadas: ' . $import->vinculadas
+                . ' | OT no encontradas: ' . count($import->noEncontradas) . '.';
+
+            if (!empty($import->noEncontradas)) {
+                $mensaje .= ' No encontradas: '
+                    . implode(', ', array_slice(array_unique($import->noEncontradas), 0, 20));
+            }
+
+            return back()->with('success', $mensaje);
+        } catch (\Throwable $e) {
+            \Log::error('ERROR IMPORT SEGUIMIENTO PEDIDOS T/P', [
+                'archivo' => $request->file('archivo')
+                    ? $request->file('archivo')->getClientOriginalName()
+                    : null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return back()->with(
+                'error',
+                'No se pudo importar el archivo: ' . $e->getMessage()
+            );
         }
-
-        return back()->with('success', $mensaje);
     }
 
     public function show($id)
