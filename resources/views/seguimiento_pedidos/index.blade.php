@@ -159,7 +159,14 @@
                         $otsConfirmadas = (int) $pedido->ots_confirmadas;
                         $otsTotal = (int) $pedido->detalles_count;
                         $pctPt = $cantidad > 0 ? min(100, round(($pt / $cantidad) * 100)) : 0;
-                        $pctConf = $movLocales > 0 ? min(100, round(($confLocales / $movLocales) * 100)) : 0;
+
+                        // El porcentaje "Confirmado" representa el cierre real del pedido:
+                        // OTs confirmadas / OTs totales. No debe dar 100% sólo porque
+                        // todo lo ya enviado haya sido recibido si todavía existe una OT
+                        // sin despacho o sin confirmación.
+                        $pctConf = $otsTotal > 0
+                            ? min(100, round(($otsConfirmadas / $otsTotal) * 100))
+                            : 0;
 
                         if (!empty($pedido->completo_locales)) {
                             $situacion = 'COMPLETO'; $clase = 'success'; $icono = 'check-circle';
