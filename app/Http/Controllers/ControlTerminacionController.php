@@ -390,9 +390,14 @@ class ControlTerminacionController extends Controller
             ->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta])
             ->when($buscar !== '', function ($q) use ($buscar) {
                 $q->where(function ($sub) use ($buscar) {
-                    $sub->where('o.nro_ot', '::text', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                    if (is_numeric($buscar)) {
+                        $sub->where('o.nro_ot', (int) $buscar)
+                            ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                            ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                    } else {
+                        $sub->where('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                            ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                    }
                 });
             })
             ->groupBy('o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion', 'o.cantidad_orden')
