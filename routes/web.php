@@ -852,7 +852,7 @@ Route::get('/seguimiento-pedidos/{id}', [SeguimientoPedidoController::class, 'sh
 |--------------------------------------------------------------------------
 */
 Route::get('/seguimiento-produccion', [SeguimientoPedidoProduccionController::class, 'index'])->name('seguimiento-produccion.index');
-Route::post('/seguimiento-produccion/importar', [SeguimientoPedidoProduccionController::class, 'importar'])->name('seguimiento-produccion.importar');
+Route::post('/seguimiento-produccion/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-produccion.importar');
 Route::get('/seguimiento-produccion/{id}', [SeguimientoPedidoProduccionController::class, 'show'])->name('seguimiento-produccion.show');
 
 
