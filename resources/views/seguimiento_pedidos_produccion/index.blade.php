@@ -48,27 +48,33 @@
         </div>
     </div>
 
-    <div class="card card-outline card-primary collapsed-card">
+    <div class="card card-outline card-primary mb-4">
         <div class="card-header">
             <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar pedidos P</h3>
-            <div class="card-tools">
-                <button type="button" class="btn btn-tool" data-card-widget="collapse"><i class="fas fa-plus"></i></button>
-            </div>
+            <span class="float-right text-muted small">NRO OT + PEDIDO + FECHA PEDIDO</span>
         </div>
         <form method="POST" action="{{ route('seguimiento-produccion.importar') }}" enctype="multipart/form-data">
             @csrf
             <div class="card-body">
                 <div class="alert alert-info">
-                    El Excel usa las mismas columnas: <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
-                    El pedido puede venir como <strong>P1</strong>, <strong>P2</strong>, etc. Si viene sólo el número, el sistema agrega la P.
+                    Usá el mismo formato del seguimiento T:
+                    <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
+                    Para producción el pedido debe ser <strong>P1, P2, P3...</strong>.
                 </div>
-                <div class="custom-file">
-                    <input type="file" name="archivo" class="custom-file-input" id="archivo-produccion" accept=".xlsx,.xls,.csv" required>
-                    <label class="custom-file-label" for="archivo-produccion">Seleccionar archivo...</label>
+
+                <div class="form-group mb-0">
+                    <label for="archivo-produccion"><i class="fas fa-file-upload mr-1"></i>Archivo Excel</label>
+                    <div class="custom-file">
+                        <input type="file" name="archivo" class="custom-file-input" id="archivo-produccion" accept=".xlsx,.xls,.csv" required>
+                        <label class="custom-file-label" for="archivo-produccion">Seleccionar archivo .xlsx, .xls o .csv</label>
+                    </div>
                 </div>
             </div>
-            <div class="card-footer text-right">
-                <button class="btn btn-primary"><i class="fas fa-upload mr-1"></i> Importar pedido a producción</button>
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <small class="text-muted">El sistema vincula cada NRO OT existente al pedido P indicado.</small>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-upload mr-1"></i> Importar pedido a producción
+                </button>
             </div>
         </form>
     </div>
