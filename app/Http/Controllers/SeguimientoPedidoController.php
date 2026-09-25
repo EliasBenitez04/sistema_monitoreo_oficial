@@ -92,7 +92,49 @@ class SeguimientoPedidoController extends Controller
             return $pedido;
         });
 
-        return view('seguimiento_pedidos.index', compact('pedidos', 'buscar'));
+        $resumenBase = (clone $query)->get();
+
+        $totalPedidos = $resumenBase->count();
+        $totalPrendas = (int) $resumenBase->sum('cantidad_total');
+        $totalPt = (int) $resumenBase->sum(function ($p) {
+            return min((int) $p->cantidad_total, (int) $p->producto_terminado);
+        });
+        $totalConfirmado = (int) $resumenBase->sum(function ($p) {
+            return min((int) $p->cantidad_total, (int) $p->confirmado);
+        });
+        $completos = $resumenBase->filter(function ($p) {
+            return (int) $p->cantidad_total > 0 && (int) $p->confirmado >= (int) $p->cantidad_total;
+        });
+        $enCurso = $resumenBase->reject(function ($p) {
+            return (int) $p->cantidad_total > 0 && (int) $p->confirmado >= (int) $p->cantidad_total;
+        });
+        $dias = $completos->map(function ($p) {
+            if (!$p->fecha_pedido || !$p->primera_confirmacion) return null;
+            return Carbon::parse($p->fecha_pedido)->startOfDay()
+                ->diffInDays(Carbon::parse($p->primera_confirmacion)->startOfDay(), false);
+        })->filter(function ($d) {
+            return $d !== null && $d >= 0;
+        });
+
+        $resumenGerencial = (object) [
+            'pedidos' => $totalPedidos,
+            'ots' => (int) $resumenBase->sum('detalles_count'),
+            'prendas' => $totalPrendas,
+            'pt' => $totalPt,
+            'confirmado' => $totalConfirmado,
+            'pendiente_pt' => max(0, $totalPrendas - $totalPt),
+            'pendiente_confirmar' => max(0, $totalPrendas - $totalConfirmado),
+            'cobertura_pt' => $totalPrendas > 0 ? round(($totalPt / $totalPrendas) * 100, 1) : 0,
+            'cobertura_confirmada' => $totalPrendas > 0 ? round(($totalConfirmado / $totalPrendas) * 100, 1) : 0,
+            'completos' => $completos->count(),
+            'en_curso' => $enCurso->count(),
+            'sin_movimiento' => $enCurso->filter(function ($p) { return (int) $p->movimientos <= 0; })->count(),
+            'sin_confirmar' => $enCurso->filter(function ($p) { return (int) $p->movimientos > 0 && (int) $p->confirmado <= 0; })->count(),
+            'recepcion_parcial' => $enCurso->filter(function ($p) { return (int) $p->confirmado > 0; })->count(),
+            'promedio_dias' => $dias->count() ? round($dias->avg(), 1) : null,
+        ];
+
+        return view('seguimiento_pedidos.index', compact('pedidos', 'buscar', 'resumenGerencial'));
     }
 
     public function importar(Request $request)
