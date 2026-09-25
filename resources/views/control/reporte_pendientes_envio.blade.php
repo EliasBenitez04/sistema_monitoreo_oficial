@@ -42,7 +42,7 @@
                 <thead><tr>
                     <th>OT</th><th>Código / Descripción</th><th>Fecha PT / Logística</th>
                     <th class="text-right">PT</th><th class="text-right">Enviado</th><th class="text-right">Falta enviar</th>
-                    <th>Primer envío</th><th>Último envío</th><th class="text-right">Días esperando</th><th>Solicitud</th>
+                    <th>Primer envío</th><th>Último envío</th><th class="text-right">Días desde PT</th><th class="text-right">Días desde último envío</th><th>Solicitud</th>
                 </tr></thead>
                 <tbody>
                 @forelse($reporte as $item)
@@ -55,11 +55,18 @@
                         <td class="text-right"><span class="rp-pending">{{ number_format($item->pendiente_envio,0,',','.') }}</span></td>
                         <td>{{ $item->primer_envio ? \Carbon\Carbon::parse($item->primer_envio)->format('d/m/Y') : 'SIN ENVÍO' }}</td>
                         <td>{{ $item->ultimo_envio ? \Carbon\Carbon::parse($item->ultimo_envio)->format('d/m/Y') : '—' }}</td>
-                        <td class="text-right">{{ $item->dias_espera }}</td>
-                        <td><strong>Enviar {{ number_format($item->pendiente_envio,0,',','.') }} prendas</strong></td>
+                        <td class="text-right">{{ $item->dias_desde_pt }}</td>
+                        <td class="text-right">
+                            @if($item->dias_desde_ultimo_envio !== null)
+                                <strong>{{ $item->dias_desde_ultimo_envio }}</strong>
+                            @else
+                                <span class="badge badge-danger">SIN ENVÍO</span>
+                            @endif
+                        </td>
+                        <td><strong>Enviar {{ number_format($item->pendiente_envio,0,',','.') }} {{ $item->pendiente_envio == 1 ? 'prenda' : 'prendas' }}</strong></td>
                     </tr>
                 @empty
-                    <tr><td colspan="10" class="text-center py-5 text-muted"><i class="fas fa-check-circle text-success mr-1"></i>No hay prendas pendientes de envío en el período.</td></tr>
+                    <tr><td colspan="11" class="text-center py-5 text-muted"><i class="fas fa-check-circle text-success mr-1"></i>No hay prendas pendientes de envío en el período.</td></tr>
                 @endforelse
                 </tbody>
                 @if($reporte->isNotEmpty())
@@ -68,7 +75,7 @@
                     <td class="text-right">{{ number_format($reporte->sum('cantidad_pt'),0,',','.') }}</td>
                     <td class="text-right">{{ number_format($reporte->sum('enviado'),0,',','.') }}</td>
                     <td class="text-right text-danger">{{ number_format($reporte->sum('pendiente_envio'),0,',','.') }}</td>
-                    <td colspan="4"></td>
+                    <td colspan="5"></td>
                 </tr></tfoot>
                 @endif
             </table>
