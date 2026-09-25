@@ -2866,6 +2866,32 @@ class OtController extends Controller
             : 0;
 
         /*
+         * Resumen ejecutivo: pocos indicadores accionables.
+         * El pendiente de recepción es lo ya remitido que todavía no fue confirmado.
+         */
+        $totalPendienteRecepcion = max(0, $totalRemitido - $totalRecibido);
+        $otsConProblema = $otsSinRemision + $otsPendientes;
+        $otsAlDia = max(0, $totalOT - $otsConProblema);
+
+        $alertasOt = collect($resumenOt)->filter(function ($resumen) {
+            return (int) $resumen->remitido < (int) $resumen->plan;
+        })->count();
+
+        $resumenEjecutivo = (object) [
+            'ots' => $totalOT,
+            'plan' => $totalCantidadEnviada,
+            'remitido' => $totalRemitido,
+            'recibido' => $totalRecibido,
+            'transito' => $totalEnTransito,
+            'pendiente_remitir' => $totalPendienteRemitir,
+            'pendiente_recepcion' => $totalPendienteRecepcion,
+            'ots_al_dia' => $otsAlDia,
+            'ots_atencion' => $alertasOt,
+            'avance_remision' => $coberturaRemision,
+            'avance_recepcion' => $coberturaRecepcion,
+        ];
+
+        /*
          * Ranking por sucursal: muestra plan, documentación y recepción.
          */
         $querySucursal = clone $baseQuery;
@@ -2962,6 +2988,7 @@ class OtController extends Controller
             'otsExcedidas',
             'coberturaRemision',
             'coberturaRecepcion',
+            'resumenEjecutivo',
             'promedioCantidadOT',
             'porSucursal',
             'porFecha',
