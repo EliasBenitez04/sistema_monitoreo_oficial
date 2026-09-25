@@ -10,6 +10,12 @@
     .lg-table td{font-size:13px;vertical-align:middle}.lg-code{font-family:monospace;font-size:12px}.lg-nowrap{white-space:nowrap}
     .lg-badge{min-width:82px;display:inline-block;padding:5px 7px}.lg-attention{border-left:4px solid #f6c23e}
     .lg-ok{border-left:4px solid #1cc88a}.lg-flow{font-size:12px;color:#66788a}
+    .lg-kpi{transition:.18s ease;cursor:pointer}.lg-kpi:hover{transform:translateY(-2px);box-shadow:0 9px 24px rgba(15,23,42,.09)}
+    .lg-kpi.active{border-color:#4e73df;box-shadow:0 0 0 2px rgba(78,115,223,.12)}
+    .lg-toolbar{background:#f8fafc;border:1px solid #e7ecf2;border-radius:10px;padding:10px 12px}
+    .lg-status-filter .btn{border-radius:18px;margin-right:5px;margin-bottom:4px}
+    .lg-row{cursor:pointer}.lg-detail-row{display:none;background:#fafbfd}.lg-detail-box{padding:12px 18px}
+    .lg-step{display:inline-flex;align-items:center;margin-right:14px;margin-bottom:5px}.lg-step i{margin-right:5px}
 </style>
 
 <div class="container-fluid py-3">
@@ -41,10 +47,10 @@
     </div></div>
 
     <div class="row">
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100"><div class="card-body"><div class="label">OT en el período</div><div class="value">{{ number_format($resumenEjecutivo->ots,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->plan,0,',','.') }} prendas planificadas</div></div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100"><div class="card-body"><div class="label">Remitido desde Central</div><div class="value">{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan</div></div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100"><div class="card-body"><div class="label">Confirmado por locales</div><div class="value">{{ number_format($resumenEjecutivo->recibido,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->avance_recepcion,1,',','.') }}% de lo remitido</div></div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 {{ $resumenEjecutivo->pendiente_remitir>0?'lg-attention':'lg-ok' }}"><div class="card-body"><div class="label">Pendiente de remitir</div><div class="value">{{ number_format($resumenEjecutivo->pendiente_remitir,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->ots_atencion,0,',','.') }} OT requieren revisión</div></div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter" data-filter="TODOS"><div class="card-body"><div class="label">OT en el período</div><div class="value">{{ number_format($resumenEjecutivo->ots,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->plan,0,',','.') }} prendas planificadas</div></div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter" data-filter="REMITIDO"><div class="card-body"><div class="label">Remitido desde Central</div><div class="value">{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan</div></div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter" data-filter="COMPLETO"><div class="card-body"><div class="label">Confirmado por locales</div><div class="value">{{ number_format($resumenEjecutivo->recibido,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->avance_recepcion,1,',','.') }}% de lo remitido</div></div></div></div>
+        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter {{ $resumenEjecutivo->pendiente_remitir>0?'lg-attention':'lg-ok' }}" data-filter="PENDIENTE"><div class="card-body"><div class="label">Pendiente de remitir</div><div class="value">{{ number_format($resumenEjecutivo->pendiente_remitir,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->ots_atencion,0,',','.') }} OT requieren revisión</div></div></div></div>
     </div>
 
     <div class="card lg-card mb-3"><div class="card-body py-3">
@@ -66,6 +72,17 @@
         </div>
     </div></div>
 
+    <div class="lg-toolbar mb-3 d-flex justify-content-between align-items-center flex-wrap">
+        <div class="lg-status-filter">
+            <button type="button" class="btn btn-sm btn-primary js-status active" data-filter="TODOS">Todas</button>
+            <button type="button" class="btn btn-sm btn-outline-warning js-status" data-filter="PENDIENTE">Pendientes</button>
+            <button type="button" class="btn btn-sm btn-outline-primary js-status" data-filter="TRANSITO">En tránsito</button>
+            <button type="button" class="btn btn-sm btn-outline-success js-status" data-filter="COMPLETO">Completas</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary js-status" data-filter="SIN_REMISION">Sin remisión</button>
+        </div>
+        <small class="text-muted"><i class="fas fa-mouse-pointer mr-1"></i>Hacé clic en una OT para ver su trazabilidad sin salir de la pantalla.</small>
+    </div>
+
     <div class="card lg-card mb-3">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
             <div><strong><i class="fas fa-exclamation-circle text-warning mr-1"></i>Seguimiento por OT</strong><div class="lg-subtitle">Una fila responde: cuánto debía salir, cuánto salió y cuánto falta.</div></div>
@@ -75,8 +92,13 @@
             <thead><tr><th>OT / artículo</th><th>Salida</th><th class="text-right">Plan</th><th class="text-right">Remitido</th><th class="text-right">Recibido</th><th class="text-right">Falta remitir</th><th class="text-right">En tránsito</th><th>Estado</th></tr></thead>
             <tbody>
             @forelse($detalles as $item)
-                <tr>
-                    <td><strong>{{ $item->nro_ot }}</strong> <span class="lg-code ml-1">{{ $item->codigo }}</span><br><small class="text-muted">{{ \Illuminate\Support\Str::limit($item->descripcion,55) }}</small></td>
+                @php
+                    $estadoFila = $item->pendiente_remitir > 0 ? 'PENDIENTE'
+                        : ($item->cantidad_en_transito > 0 ? 'TRANSITO'
+                        : (($item->cantidad_remitida > 0 && $item->cantidad_recibida >= $item->cantidad_remitida) ? 'COMPLETO' : 'SIN_REMISION'));
+                @endphp
+                <tr class="lg-row js-ot-row" data-estado="{{ $estadoFila }}" data-detail="detail-{{ $item->id_ot }}">
+                    <td><i class="fas fa-chevron-right text-muted mr-1 js-chevron"></i><strong>{{ $item->nro_ot }}</strong> <span class="lg-code ml-1">{{ $item->codigo }}</span><br><small class="text-muted">{{ \Illuminate\Support\Str::limit($item->descripcion,55) }}</small></td>
                     <td class="lg-nowrap">{{ $item->primera_salida ? \Carbon\Carbon::parse($item->primera_salida)->format('d/m/Y') : '—' }}</td>
                     <td class="text-right"><strong>{{ number_format($item->cantidad_logistica,0,',','.') }}</strong></td>
                     <td class="text-right">{{ number_format($item->cantidad_remitida,0,',','.') }}</td>
@@ -89,6 +111,27 @@
                         @elseif($item->cantidad_remitida>0 && $item->cantidad_recibida >= $item->cantidad_remitida)<span class="badge badge-success lg-badge">COMPLETO</span>
                         @else<span class="badge badge-secondary lg-badge">SIN REMISIÓN</span>@endif
                         @if($item->cantidad_redistribuida>0)<br><small class="text-muted">{{ number_format($item->cantidad_redistribuida,0,',','.') }} redistribuidas</small>@endif
+                    </td>
+                </tr>
+                <tr id="detail-{{ $item->id_ot }}" class="lg-detail-row" data-parent-estado="{{ $estadoFila }}">
+                    <td colspan="8">
+                        <div class="lg-detail-box">
+                            <div class="row">
+                                <div class="col-lg-8">
+                                    <strong>Trazabilidad de la OT {{ $item->nro_ot }}</strong>
+                                    <div class="mt-2">
+                                        <span class="lg-step"><i class="fas fa-box text-secondary"></i>PT: <strong class="ml-1">{{ number_format($item->cantidad_pt,0,',','.') }}</strong></span>
+                                        <span class="lg-step"><i class="fas fa-clipboard-list text-info"></i>Plan: <strong class="ml-1">{{ number_format($item->cantidad_logistica,0,',','.') }}</strong></span>
+                                        <span class="lg-step"><i class="fas fa-file-alt text-primary"></i>Remitido: <strong class="ml-1">{{ number_format($item->cantidad_remitida,0,',','.') }}</strong></span>
+                                        <span class="lg-step"><i class="fas fa-check-circle text-success"></i>Recibido: <strong class="ml-1">{{ number_format($item->cantidad_recibida,0,',','.') }}</strong></span>
+                                    </div>
+                                </div>
+                                <div class="col-lg-4">
+                                    <small class="text-muted d-block">Destinos</small><strong>{{ number_format($item->destinos,0,',','.') }}</strong>
+                                    @if($item->cantidad_redistribuida>0)<small class="text-muted d-block mt-1">Redistribuciones posteriores: {{ number_format($item->cantidad_redistribuida,0,',','.') }}</small>@endif
+                                </div>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             @empty<tr><td colspan="8" class="text-center text-muted py-5">Sin movimientos para los filtros seleccionados.</td></tr>@endforelse
@@ -121,6 +164,28 @@
 
 <script>
 $(function () {
+    function filtrar(estado) {
+        $('.js-status').removeClass('active btn-primary btn-warning btn-success btn-secondary')
+            .addClass(function(){ return $(this).data('filter')==='PENDIENTE'?'btn-outline-warning':($(this).data('filter')==='TRANSITO'?'btn-outline-primary':($(this).data('filter')==='COMPLETO'?'btn-outline-success':($(this).data('filter')==='SIN_REMISION'?'btn-outline-secondary':'btn-outline-primary'))); });
+        $('.js-status[data-filter="'+estado+'"]').addClass('active').removeClass('btn-outline-primary btn-outline-warning btn-outline-success btn-outline-secondary').addClass('btn-primary');
+        $('.js-kpi-filter').removeClass('active');
+        $('.js-kpi-filter[data-filter="'+estado+'"]').addClass('active');
+        $('.js-ot-row').each(function(){
+            var visible = estado==='TODOS' || (estado==='REMITIDO' ? $(this).find('td:nth-child(4)').text().trim()!=='0' : $(this).data('estado')===estado);
+            $(this).toggle(visible);
+            $('#'+$(this).data('detail')).hide();
+            $(this).find('.js-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+        });
+    }
+
+    $('.js-status').on('click', function(){ filtrar($(this).data('filter')); });
+    $('.js-kpi-filter').on('click', function(){ filtrar($(this).data('filter')); });
+    $('.js-ot-row').on('click', function(){
+        var detail=$('#'+$(this).data('detail'));
+        detail.toggle();
+        $(this).find('.js-chevron').toggleClass('fa-chevron-right fa-chevron-down');
+    });
+
     if ($.fn.select2) {
         $('#sucursal').select2({
             placeholder: 'Todas las sucursales',
