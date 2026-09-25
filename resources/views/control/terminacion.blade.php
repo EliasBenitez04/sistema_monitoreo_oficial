@@ -39,6 +39,9 @@
         </div>
 
         <div class="mt-2 mt-md-0">
+            <a href="{{ route('control.flujo-diario', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>$buscar]) }}" class="btn btn-primary btn-sm mr-1">
+                <i class="fas fa-project-diagram mr-1"></i>Flujo diario detallado
+            </a>
             <a href="{{ route('dashboard.ot-logistica') }}" class="btn btn-outline-primary btn-sm">
                 <i class="fas fa-truck-loading mr-1"></i>Ir a Dashboard Logística
             </a>
