@@ -1,3 +1,8 @@
+<style>
+    .td-codigo-variante{font-size:15px;font-weight:800;color:#111!important;letter-spacing:.02em}
+    .td-subtotal-local{font-size:15px;font-weight:800;color:#26364a}
+    .td-subtotal-row{background:#f8fafc}
+</style>
 <div class="p-2">
     <div class="d-flex justify-content-between align-items-start flex-wrap mb-3">
         <div>
@@ -36,10 +41,8 @@
         <table class="table table-sm table-bordered table-hover mb-0">
             <thead class="thead-light">
                 <tr>
-                    <th>Plan logística</th>
                     <th>Destino real</th>
                     <th>Código variante</th>
-                    <th class="text-right">Plan</th>
                     <th>Salida</th>
                     <th>Remisión</th>
                     <th class="text-right">Remitido</th>
@@ -53,16 +56,18 @@
                         <tr>
                             <td><strong>{{ $detalle->sucursal }}</strong></td>
                             <td class="text-muted">—</td>
-                            <td class="text-muted">—</td>
-                            <td class="text-right">{{ number_format($detalle->cantidad, 0, ',', '.') }}</td>
                             <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
                             <td colspan="3" class="text-muted">Todavía sin remisión vinculada.</td>
                             <td><span class="badge badge-secondary">SIN REMISIÓN</span></td>
                         </tr>
                     @else
+                        @php
+                            $subtotalLocal = (int) $detalle->remisiones->sum('cantidad');
+                            $destinoGrupo = optional($detalle->remisiones->first())->destino_real ?: $detalle->sucursal;
+                        @endphp
+
                         @foreach($detalle->remisiones as $remision)
                             <tr>
-                                <td><strong>{{ $remision->destino_planificado }}</strong></td>
                                 <td>
                                     <strong>{{ $remision->destino_real ?: '—' }}</strong>
                                     @if($remision->es_redireccion)
@@ -72,11 +77,7 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <code class="font-weight-bold">{{ $remision->codigo ?: '—' }}</code>
-                                </td>
-                                <td class="text-right">
-                                    {{ number_format($detalle->cantidad, 0, ',', '.') }}
-                                    <br><small class="text-muted">Pend. {{ number_format($detalle->pendiente_remitir, 0, ',', '.') }}</small>
+                                    <span class="td-codigo-variante">{{ $remision->codigo ?: '—' }}</span>
                                 </td>
                                 <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
                                 <td>
@@ -85,7 +86,7 @@
                                         {{ $remision->fecha_remision ? \Carbon\Carbon::parse($remision->fecha_remision)->format('d/m/Y') : '—' }}
                                     </small>
                                 </td>
-                                <td class="text-right">{{ number_format($remision->cantidad, 0, ',', '.') }}</td>
+                                <td class="text-right"><strong>{{ number_format($remision->cantidad, 0, ',', '.') }}</strong></td>
                                 <td>{{ $remision->fecha_recepcion ? \Carbon\Carbon::parse($remision->fecha_recepcion)->format('d/m/Y') : 'Pendiente' }}</td>
                                 <td>
                                     @if($remision->fecha_recepcion)
@@ -96,10 +97,28 @@
                                 </td>
                             </tr>
                         @endforeach
+
+                        <tr class="td-subtotal-row">
+                            <td colspan="4" class="text-right">
+                                <strong>Subtotal {{ $destinoGrupo }}:</strong>
+                            </td>
+                            <td class="text-right">
+                                <span class="td-subtotal-local">{{ number_format($subtotalLocal, 0, ',', '.') }}</span>
+                            </td>
+                            <td colspan="2">
+                                @if($detalle->pendiente_remitir > 0)
+                                    <small class="text-warning">
+                                        Pendiente {{ number_format($detalle->pendiente_remitir, 0, ',', '.') }}
+                                    </small>
+                                @else
+                                    <small class="text-success">Plan completo</small>
+                                @endif
+                            </td>
+                        </tr>
                     @endif
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">
+                        <td colspan="7" class="text-center text-muted py-4">
                             Esta OT todavía no tiene distribución logística.
                         </td>
                     </tr>
