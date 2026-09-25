@@ -424,6 +424,7 @@
                         <th class="text-right">Tránsito</th>
                         <th class="text-right">Pendiente</th>
                         <th class="text-right">Destinos</th>
+                        <th class="text-right">Redistrib.</th>
                         <th>Documentación</th>
                         <th>Recepción</th>
                     </tr>
@@ -468,6 +469,15 @@
                                 @endif
                             </td>
                             <td class="text-right">{{ number_format($item->destinos, 0, ',', '.') }}</td>
+                            <td class="text-right">
+                                @if($item->cantidad_redistribuida > 0)
+                                    <span class="badge badge-light border" title="Movimientos posteriores entre sucursales. No vuelven a sumar como salida de la OT.">
+                                        {{ number_format($item->cantidad_redistribuida, 0, ',', '.') }}
+                                    </span>
+                                @else
+                                    0
+                                @endif
+                            </td>
                             <td>
                                 @if($item->estado_documental === 'COMPLETO')
                                     <span class="badge badge-success lg-badge">COMPLETO</span>
@@ -492,7 +502,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="12" class="text-center text-muted py-5">No se encontraron movimientos logísticos.</td></tr>
+                        <tr><td colspan="13" class="text-center text-muted py-5">No se encontraron movimientos logísticos.</td></tr>
                     @endforelse
                 </tbody>
             </table>
