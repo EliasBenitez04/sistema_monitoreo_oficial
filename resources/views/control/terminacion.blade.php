@@ -112,26 +112,34 @@
     </div>
 
     <div class="row mb-2">
-        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100"><div class="card-body">
-            <div class="label">OT con Producto Terminado</div>
-            <div class="value">{{ number_format($totalOTs,0,',','.') }}</div>
-            <div class="meta">{{ number_format($totalTerminado,0,',','.') }} prendas terminadas</div>
-        </div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100"><div class="card-body">
-            <div class="label">Avance de Terminación</div>
-            <div class="value">{{ number_format($porcentajeTerminado,1,',','.') }}%</div>
-            <div class="meta">{{ number_format($totalTerminado,0,',','.') }} de {{ number_format($totalIngresoTerminacion,0,',','.') }} prendas</div>
-        </div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100 {{ $totalPendienteTerminar>0?'border-warning':'' }}"><div class="card-body">
-            <div class="label">Pendiente en Terminación</div>
-            <div class="value">{{ number_format($totalPendienteTerminar,0,',','.') }}</div>
-            <div class="meta">{{ number_format($otsParciales,0,',','.') }} OTs parciales</div>
-        </div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card ct-card ct-kpi h-100"><div class="card-body">
-            <div class="label">Tiempo en Terminación</div>
-            <div class="value">{{ number_format($promedioDiasTerminacion,1,',','.') }} <small>días</small></div>
-            <div class="meta">Máxima espera parcial: {{ number_format($antiguedadMaximaPendiente,0,',','.') }} días</div>
-        </div></div></div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100"><div class="card-body">
+                <div class="label"><i class="fas fa-sign-in-alt text-primary mr-1"></i>Terminación</div>
+                <div class="value">{{ number_format($totalIngresoTerminacion,0,',','.') }}</div>
+                <div class="meta">Prendas que ingresaron a Terminación</div>
+            </div></div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100"><div class="card-body">
+                <div class="label"><i class="fas fa-check-double text-success mr-1"></i>Producto Terminado / Logística</div>
+                <div class="value">{{ number_format($totalTerminado,0,',','.') }}</div>
+                <div class="meta">{{ number_format($porcentajeTerminado,1,',','.') }}% del ingreso · entrada a Logística</div>
+            </div></div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100"><div class="card-body">
+                <div class="label"><i class="fas fa-store text-info mr-1"></i>Recepción Local</div>
+                <div class="value">{{ number_format($totalRecepcionLocal,0,',','.') }}</div>
+                <div class="meta">Prendas confirmadas por los locales</div>
+            </div></div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100 {{ $totalPendienteTerminar>0?'border-warning':'' }}"><div class="card-body">
+                <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Pendiente Terminación</div>
+                <div class="value">{{ number_format($totalPendienteTerminar,0,',','.') }}</div>
+                <div class="meta">{{ number_format($otsParciales,0,',','.') }} OTs parciales · máx. {{ number_format($antiguedadMaximaPendiente,0,',','.') }} días</div>
+            </div></div>
+        </div>
     </div>
 
     <div class="ct-summary mb-3">
