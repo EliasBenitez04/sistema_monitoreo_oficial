@@ -137,6 +137,126 @@ class SeguimientoPedidoController extends Controller
         return view('seguimiento_pedidos.index', compact('pedidos', 'buscar', 'resumenGerencial'));
     }
 
+
+    public function informeGerencial(Request $request)
+    {
+        $hoy = Carbon::today();
+
+        $pedidos = SeguimientoPedido::query()
+            ->select('seguimiento_pedido.*')
+            ->orderBy('fecha_pedido')
+            ->get();
+
+        $idsPedido = $pedidos->pluck('id')->all();
+
+        $ots = collect();
+        if (!empty($idsPedido)) {
+            $ots = DB::table('seguimiento_pedido_detalle as spd')
+                ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
+                ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+                ->whereIn('spd.seguimiento_pedido_id', $idsPedido)
+                ->select(
+                    'spd.seguimiento_pedido_id',
+                    'sp.nro_pedido',
+                    'sp.fecha_pedido',
+                    'o.id_ot',
+                    'o.nro_ot',
+                    'o.codigo',
+                    'o.descripcion',
+                    'o.cantidad_orden'
+                )
+                ->get();
+        }
+
+        $idsOt = $ots->pluck('id_ot')->unique()->values()->all();
+        $trazas = collect();
+        $remisiones = collect();
+
+        if (!empty($idsOt)) {
+            $trazas = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt)
+                ->whereIn('proceso', [
+                    'TERMINACION - TERMINACION',
+                    'TERMINACION - PRODUCTO TERMINADO',
+                ])
+                ->select(
+                    'id_ot',
+                    'proceso',
+                    DB::raw('MIN(fecha_proceso) as primera_fecha'),
+                    DB::raw('MAX(fecha_proceso) as ultima_fecha')
+                )
+                ->groupBy('id_ot', 'proceso')
+                ->get()
+                ->groupBy('id_ot');
+
+            $remisiones = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $idsOt)
+                ->whereNotNull('fecha_recepcion')
+                ->select('id_ot', DB::raw('MIN(fecha_recepcion) as primera_recepcion'))
+                ->groupBy('id_ot')
+                ->get()
+                ->keyBy('id_ot');
+        }
+
+        $filas = $ots->map(function ($ot) use ($trazas, $remisiones, $hoy) {
+            $porProceso = collect($trazas->get($ot->id_ot, collect()))->keyBy('proceso');
+            $terminacion = $porProceso->get('TERMINACION - TERMINACION');
+            $pt = $porProceso->get('TERMINACION - PRODUCTO TERMINADO');
+            $recepcion = $remisiones->get($ot->id_ot);
+
+            $fechaTerminacion = $terminacion->primera_fecha ?? null;
+            $fechaLogistica = $pt->ultima_fecha ?? null;
+            $fechaRecepcion = $recepcion->primera_recepcion ?? null;
+
+            if ($fechaRecepcion) {
+                $etapa = 'CONFIRMADO';
+                $desde = Carbon::parse($fechaRecepcion)->startOfDay();
+                $dias = 0;
+            } elseif ($fechaLogistica) {
+                $etapa = 'LOGISTICA';
+                $desde = Carbon::parse($fechaLogistica)->startOfDay();
+                $dias = $desde->diffInDays($hoy, false);
+            } elseif ($fechaTerminacion) {
+                $etapa = 'TERMINACION';
+                $desde = Carbon::parse($fechaTerminacion)->startOfDay();
+                $dias = $desde->diffInDays($hoy, false);
+            } else {
+                $etapa = 'SIN INICIAR';
+                $desde = $ot->fecha_pedido ? Carbon::parse($ot->fecha_pedido)->startOfDay() : null;
+                $dias = $desde ? $desde->diffInDays($hoy, false) : null;
+            }
+
+            $urgente = $etapa !== 'CONFIRMADO' && $dias !== null && $dias >= 2;
+
+            $ot->fecha_terminacion = $fechaTerminacion;
+            $ot->fecha_logistica = $fechaLogistica;
+            $ot->fecha_recepcion = $fechaRecepcion;
+            $ot->etapa_gerencial = $etapa;
+            $ot->dias_etapa = $dias;
+            $ot->urgente = $urgente;
+
+            return $ot;
+        });
+
+        $pendientes = $filas->where('etapa_gerencial', '!=', 'CONFIRMADO')
+            ->sortByDesc(function ($fila) {
+                return ($fila->urgente ? 100000 : 0) + (int) ($fila->dias_etapa ?? 0);
+            })
+            ->values();
+
+        $resumen = (object) [
+            'pedidos' => $pendientes->pluck('seguimiento_pedido_id')->unique()->count(),
+            'ots' => $pendientes->count(),
+            'prendas' => (int) $pendientes->sum('cantidad_orden'),
+            'urgentes' => $pendientes->where('urgente', true)->count(),
+            'en_terminacion' => $pendientes->where('etapa_gerencial', 'TERMINACION')->count(),
+            'en_logistica' => $pendientes->where('etapa_gerencial', 'LOGISTICA')->count(),
+        ];
+
+        return view('seguimiento_pedidos.informe_gerencial', compact('pendientes', 'resumen'));
+    }
+
+
     public function importar(Request $request)
     {
         $request->validate([
