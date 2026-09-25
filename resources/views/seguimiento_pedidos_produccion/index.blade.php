@@ -8,9 +8,14 @@
             <h1><i class="fas fa-industry mr-2"></i>Seguimiento de Pedido a Producción</h1>
             <p class="text-muted mb-0">Pedidos P1, P2... completos cuando todas sus OT alcanzan TERMINACION - INGRESO TERMINACION.</p>
         </div>
-        <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary">
-            <i class="fas fa-route mr-1"></i> Seguimiento a locales
-        </a>
+        <div>
+            <a href="{{ route('seguimiento-pedidos.index', ['abrir_import' => 1]) }}#importar-pedidos" class="btn btn-primary mr-1">
+                <i class="fas fa-file-import mr-1"></i> Importar pedidos T / P
+            </a>
+            <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-route mr-1"></i> Seguimiento a locales
+            </a>
+        </div>
     </div>
 </div>
 </section>
@@ -32,62 +37,78 @@
         </div>
     @endif
 
-    <div class="row">
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-white border-left border-primary shadow-sm">
-                <div class="inner"><h3>{{ number_format($resumen->pedidos,0,',','.') }}</h3><p>Pedidos P visibles</p></div>
-                <div class="icon"><i class="fas fa-clipboard-list text-primary"></i></div>
+    @php
+        $pendientesProduccion = max(0, $resumen->ots - $resumen->ots_completas);
+        $avanceProduccion = $resumen->ots > 0
+            ? min(100, round(($resumen->ots_completas / $resumen->ots) * 100))
+            : 0;
+    @endphp
+
+    <div class="row produccion-kpis mb-3">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="prod-kpi-card">
+                <div class="prod-kpi-top">
+                    <div class="prod-kpi-icon"><i class="fas fa-clipboard-list"></i></div>
+                    <span class="prod-kpi-tag">Pedidos</span>
+                </div>
+                <div class="prod-kpi-value">{{ number_format($resumen->pedidos,0,',','.') }}</div>
+                <div class="prod-kpi-label">Pedidos a Producción</div>
+                <div class="prod-kpi-meta">P1, P2, P3...</div>
             </div>
         </div>
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-white border-left border-info shadow-sm">
-                <div class="inner"><h3>{{ number_format($resumen->ots,0,',','.') }}</h3><p>OT vinculadas</p></div>
-                <div class="icon"><i class="fas fa-list-ol text-info"></i></div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="prod-kpi-card">
+                <div class="prod-kpi-top">
+                    <div class="prod-kpi-icon"><i class="fas fa-layer-group"></i></div>
+                    <span class="prod-kpi-tag">Carga</span>
+                </div>
+                <div class="prod-kpi-value">{{ number_format($resumen->ots,0,',','.') }}</div>
+                <div class="prod-kpi-label">OT vinculadas</div>
+                <div class="prod-kpi-meta">Total incluido en los pedidos P</div>
             </div>
         </div>
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-white border-left border-success shadow-sm">
-                <div class="inner"><h3>{{ number_format($resumen->ots_completas,0,',','.') }}</h3><p>OT ingresadas a Terminación</p></div>
-                <div class="icon"><i class="fas fa-check-circle text-success"></i></div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="prod-kpi-card prod-kpi-success">
+                <div class="prod-kpi-top">
+                    <div class="prod-kpi-icon"><i class="fas fa-check"></i></div>
+                    <span class="prod-kpi-tag">Completado</span>
+                </div>
+                <div class="prod-kpi-value">{{ number_format($resumen->ots_completas,0,',','.') }}</div>
+                <div class="prod-kpi-label">OT ingresadas a Terminación</div>
+                <div class="prod-kpi-meta">{{ $avanceProduccion }}% del total de OT</div>
             </div>
         </div>
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-white border-left border-warning shadow-sm">
-                <div class="inner"><h3>{{ number_format(max(0,$resumen->ots-$resumen->ots_completas),0,',','.') }}</h3><p>OT pendientes</p></div>
-                <div class="icon"><i class="fas fa-hourglass-half text-warning"></i></div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="prod-kpi-card {{ $pendientesProduccion > 0 ? 'prod-kpi-warning' : 'prod-kpi-success' }}">
+                <div class="prod-kpi-top">
+                    <div class="prod-kpi-icon"><i class="fas fa-hourglass-half"></i></div>
+                    <span class="prod-kpi-tag">Pendiente</span>
+                </div>
+                <div class="prod-kpi-value">{{ number_format($pendientesProduccion,0,',','.') }}</div>
+                <div class="prod-kpi-label">OT por ingresar a Terminación</div>
+                <div class="prod-kpi-meta">{{ 100 - $avanceProduccion }}% pendiente</div>
             </div>
         </div>
     </div>
 
-    <div class="card card-outline card-primary mb-4">
-        <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar pedidos P</h3>
-            <span class="float-right text-muted small">NRO OT + PEDIDO + FECHA PEDIDO</span>
+    <div class="produccion-avance-card mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+            <div>
+                <strong>Avance general a Terminación</strong>
+                <div class="text-muted small">El pedido se completa cuando todas sus OT alcanzan INGRESO TERMINACIÓN.</div>
+            </div>
+            <div class="produccion-avance-numero">{{ $avanceProduccion }}%</div>
         </div>
-        <form method="POST" action="{{ route('seguimiento-produccion.importar') }}" enctype="multipart/form-data">
-            @csrf
-            <div class="card-body">
-                <div class="alert alert-info">
-                    Este formulario usa <strong>exactamente el mismo importador</strong> del seguimiento T.
-                    Columnas: <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
-                    Para este módulo usá <strong>P1, P2, P3...</strong>.
-                </div>
-
-                <div class="form-group mb-0">
-                    <label for="archivo-produccion"><i class="fas fa-file-upload mr-1"></i>Archivo Excel</label>
-                    <div class="custom-file">
-                        <input type="file" name="archivo" class="custom-file-input" id="archivo-produccion" accept=".xlsx,.xls,.csv" required>
-                        <label class="custom-file-label" for="archivo-produccion">Seleccionar archivo .xlsx, .xls o .csv</label>
-                    </div>
-                </div>
-            </div>
-            <div class="card-footer d-flex justify-content-between align-items-center">
-                <small class="text-muted">El sistema vincula cada NRO OT existente al pedido P indicado.</small>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-upload mr-1"></i> Importar pedido a producción
-                </button>
-            </div>
-        </form>
+        <div class="produccion-progress">
+            <div class="produccion-progress-bar" style="width:{{ $avanceProduccion }}%"></div>
+        </div>
+        <div class="d-flex justify-content-between mt-2 small text-muted">
+            <span>{{ number_format($resumen->ots_completas,0,',','.') }} OT completas</span>
+            <span>{{ number_format($pendientesProduccion,0,',','.') }} OT pendientes</span>
+        </div>
     </div>
 
     <div class="card">
@@ -162,22 +183,56 @@
 </section>
 @endsection
 
-@push('page_scripts')
-<script>
-document.getElementById('archivo-produccion').addEventListener('change', function () {
-    this.nextElementSibling.textContent = this.files.length ? this.files[0].name : 'Seleccionar archivo...';
-});
-</script>
-@endpush
-
 @push('page_css')
 <style>
 .produccion-resumen th{font-size:.75rem;text-transform:uppercase;letter-spacing:.02em;color:#6c757d;background:#f8fafc;vertical-align:middle!important;white-space:nowrap}
 .produccion-resumen td{vertical-align:middle!important}
-.pedido-produccion{font-size:1.08rem;font-weight:800;color:#343a40}
+.pedido-produccion{font-size:1.08rem;font-weight:800;color:#26364a}
 .progreso-celda{min-width:120px}
 .progress-xs{height:4px;margin:4px auto 0;max-width:110px;background:#e9ecef}
-.small-box.bg-white .icon{top:8px;font-size:48px;opacity:.16}
-.border-left{border-left-width:4px!important}
+
+.prod-kpi-card{
+    position:relative;
+    background:#fff;
+    border:1px solid #e6ebf1;
+    border-radius:14px;
+    padding:18px;
+    min-height:150px;
+    box-shadow:0 6px 18px rgba(15,23,42,.05);
+    overflow:hidden;
+}
+.prod-kpi-card:before{
+    content:'';
+    position:absolute;
+    left:0;top:0;bottom:0;
+    width:4px;
+    background:#3b82f6;
+}
+.prod-kpi-success:before{background:#22c55e}
+.prod-kpi-warning:before{background:#f59e0b}
+.prod-kpi-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.prod-kpi-icon{
+    width:38px;height:38px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:#f1f5f9;color:#334155;font-size:16px;
+}
+.prod-kpi-tag{
+    font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+    font-weight:800;color:#94a3b8;
+}
+.prod-kpi-value{font-size:30px;line-height:1;font-weight:800;color:#0f172a;margin-bottom:6px}
+.prod-kpi-label{font-size:13px;font-weight:700;color:#334155}
+.prod-kpi-meta{font-size:11px;color:#94a3b8;margin-top:3px}
+
+.produccion-avance-card{
+    background:#fff;
+    border:1px solid #e6ebf1;
+    border-radius:14px;
+    padding:18px 20px;
+    box-shadow:0 6px 18px rgba(15,23,42,.04);
+}
+.produccion-avance-numero{font-size:24px;font-weight:800;color:#0f172a}
+.produccion-progress{height:8px;background:#edf2f7;border-radius:999px;overflow:hidden}
+.produccion-progress-bar{height:100%;background:#22c55e;border-radius:999px;transition:width .25s ease}
 </style>
 @endpush
