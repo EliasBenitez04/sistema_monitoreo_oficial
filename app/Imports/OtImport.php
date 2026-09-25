@@ -19,6 +19,7 @@ class OtImport implements ToCollection, WithHeadingRow
     private $trazabilidadesExistentes = 0;
     private $omitidas = 0;
     private $errores = 0;
+    private $observaciones = [];
 
     public function collection(Collection $rows)
     {
@@ -28,17 +29,17 @@ class OtImport implements ToCollection, WithHeadingRow
             try {
                 $fila = $index + 2;
 
-                $nroOtRaw = $this->get($row, ['n_ot', 'n_ot ', 'n° ot', 'nro_ot']);
-                $codigoRaw = $this->get($row, ['codigo']);
-                $descripcion = $this->get($row, ['descripcion', 'descripción']);
-                $orden = $this->get($row, ['orden']);
-                $resultado = $this->get($row, ['resultado']);
-                $fechaRaw = $this->get($row, ['fecha']);
-                $proceso = $this->get($row, ['procesos', 'proceso']);
+                $nroOtRaw = $this->get($row, ['n_ot', 'nro_ot', 'ot', 'numero_ot', 'n°_ot', 'n_ot ']);
+                $codigoRaw = $this->get($row, ['codigo', 'cod_articulo', 'codigo_articulo']);
+                $descripcion = $this->get($row, ['descripcion', 'descripción', 'articulo', 'artículo']);
+                $orden = $this->get($row, ['orden', 'cantidad_orden', 'cantidad']);
+                $resultado = $this->get($row, ['resultado', 'cantidad_resultado', 'resultado_proceso']);
+                $fechaRaw = $this->get($row, ['fecha', 'fecha_proceso', 'fecha proceso']);
+                $proceso = $this->get($row, ['procesos', 'proceso', 'nombre_proceso']);
 
                 $nroOt = $this->normalizarNroOt($nroOtRaw);
                 $codigo = $this->normalizarCodigoBase($codigoRaw);
-                $proceso = trim((string) $proceso);
+                $proceso = preg_replace('/\s+/u', ' ', trim((string) $proceso));
                 $descripcion = trim((string) $descripcion);
                 $orden = is_numeric($orden) ? (int) round((float) $orden) : 0;
                 $resultado = is_numeric($resultado) ? (int) round((float) $resultado) : 0;
@@ -46,6 +47,12 @@ class OtImport implements ToCollection, WithHeadingRow
 
                 if (!$nroOt || $proceso === '') {
                     $this->omitidas++;
+
+                    $this->agregarObservacion(
+                        $fila,
+                        $nroOtRaw,
+                        'OMITIDA: número de OT o proceso vacío'
+                    );
 
                     Log::warning('IMPORT OT - FILA OMITIDA', [
                         'fila' => $fila,
@@ -59,6 +66,12 @@ class OtImport implements ToCollection, WithHeadingRow
 
                 if (!$fecha) {
                     $this->omitidas++;
+
+                    $this->agregarObservacion(
+                        $fila,
+                        $nroOt,
+                        'OMITIDA: fecha inválida [' . (string) $fechaRaw . ']'
+                    );
 
                     Log::warning('IMPORT OT - FECHA INVALIDA', [
                         'fila' => $fila,
@@ -140,6 +153,12 @@ class OtImport implements ToCollection, WithHeadingRow
                     'fecha_proceso' => $fecha,
                 ]);
 
+                if (!$trazabilidad || !$trazabilidad->id_trazabilidad) {
+                    throw new \RuntimeException(
+                        'La OT fue encontrada/guardada pero no se obtuvo id_trazabilidad.'
+                    );
+                }
+
                 if ($trazabilidad->wasRecentlyCreated) {
                     $this->trazabilidadesNuevas++;
                 } else {
@@ -159,6 +178,13 @@ class OtImport implements ToCollection, WithHeadingRow
             } catch (\Throwable $e) {
                 $this->errores++;
 
+                $nroError = isset($nroOt) && $nroOt ? $nroOt : ($nroOtRaw ?? null);
+                $this->agregarObservacion(
+                    $index + 2,
+                    $nroError,
+                    'ERROR: ' . $e->getMessage()
+                );
+
                 Log::error('ERROR IMPORT OT', [
                     'fila' => $index + 2,
                     'error' => $e->getMessage(),
@@ -168,6 +194,24 @@ class OtImport implements ToCollection, WithHeadingRow
                 ]);
             }
         }
+    }
+
+    private function agregarObservacion($fila, $nroOt, string $mensaje): void
+    {
+        if (count($this->observaciones) >= 20) {
+            return;
+        }
+
+        $this->observaciones[] = [
+            'fila' => $fila,
+            'nro_ot' => $nroOt,
+            'mensaje' => $mensaje,
+        ];
+    }
+
+    public function getObservaciones(): array
+    {
+        return $this->observaciones;
     }
 
     public function getProcesadas()
