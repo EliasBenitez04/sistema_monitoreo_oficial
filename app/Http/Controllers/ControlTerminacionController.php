@@ -407,6 +407,10 @@ class ControlTerminacionController extends Controller
         if (Schema::hasTable('ot_logistica_remisiones') && $detalles->isNotEmpty()) {
             $remisionesPorDetalle = DB::table('ot_logistica_remisiones')
                 ->whereIn('id_logistica_detalle', $detalles->pluck('id')->all())
+                ->where(function ($q) {
+                    $q->where('cod_sucursal_salida', 1)
+                        ->orWhere('sucursal_salida', 'ILIKE', 'CASA CENTRAL');
+                })
                 ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
                 ->orderBy('serie')
                 ->orderBy('numero_remision')
