@@ -16,6 +16,7 @@ use App\Http\Controllers\ProcesadorImagenController;
 use App\Http\Controllers\RedistribucionSugeridaController;
 use App\Http\Controllers\RemisionesController;
 use App\Http\Controllers\SeguimientoPedidoController;
+use App\Http\Controllers\SeguimientoPedidoProduccionController;
 
 
 /*
@@ -844,6 +845,15 @@ Route::get('/seguimiento-pedidos', [SeguimientoPedidoController::class, 'index']
 Route::get('/seguimiento-pedidos-informe-gerencial', [SeguimientoPedidoController::class, 'informeGerencial'])->name('seguimiento-pedidos.informe-gerencial');
 Route::post('/seguimiento-pedidos/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-pedidos.importar');
 Route::get('/seguimiento-pedidos/{id}', [SeguimientoPedidoController::class, 'show'])->name('seguimiento-pedidos.show');
+
+/*
+|--------------------------------------------------------------------------
+| SEGUIMIENTO DE PEDIDO A PRODUCCIÓN
+|--------------------------------------------------------------------------
+*/
+Route::get('/seguimiento-produccion', [SeguimientoPedidoProduccionController::class, 'index'])->name('seguimiento-produccion.index');
+Route::post('/seguimiento-produccion/importar', [SeguimientoPedidoProduccionController::class, 'importar'])->name('seguimiento-produccion.importar');
+Route::get('/seguimiento-produccion/{id}', [SeguimientoPedidoProduccionController::class, 'show'])->name('seguimiento-produccion.show');
 
 
 Route::get(
