@@ -138,6 +138,10 @@
                 <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Pendiente a Envío</div>
                 <div class="value">{{ number_format($totalPendienteEnvio,0,',','.') }}</div>
                 <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con prendas pendientes de remitir</div>
+                <a href="{{ route('control.terminacion.reporte-pendientes-envio', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>$buscar]) }}"
+                   class="btn btn-sm btn-outline-warning mt-2">
+                    <i class="fas fa-file-alt mr-1"></i>Ver pendientes para solicitar
+                </a>
             </div></div>
         </div>
     </div>
