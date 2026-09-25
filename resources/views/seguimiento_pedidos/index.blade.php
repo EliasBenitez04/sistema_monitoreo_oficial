@@ -8,6 +8,9 @@
                 <h1><i class="fas fa-route mr-2"></i>Seguimiento de Pedidos</h1>
                 <p class="text-muted mb-0">Seguimiento desde Terminación hasta la recepción confirmada por los locales.</p>
             </div>
+            <a href="{{ route('seguimiento-pedidos.informe-gerencial') }}" class="btn btn-danger shadow-sm">
+                <i class="fas fa-briefcase mr-1"></i> Informe gerencial
+            </a>
         </div>
     </div>
 </section>
