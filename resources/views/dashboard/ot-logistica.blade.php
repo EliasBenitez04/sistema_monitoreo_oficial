@@ -16,6 +16,9 @@
     .lg-status-filter .btn{border-radius:18px;margin-right:5px;margin-bottom:4px}
     .lg-row{cursor:pointer}.lg-detail-row{display:none;background:#fafbfd}.lg-detail-box{padding:12px 18px}
     .lg-step{display:inline-flex;align-items:center;margin-right:14px;margin-bottom:5px}.lg-step i{margin-right:5px}
+    .lg-confirm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:10px}
+    .lg-confirm-item{background:#fff;border:1px solid #e7ecf2;border-radius:9px;padding:9px 11px}
+    .lg-confirm-item .branch{font-weight:700;color:#34465a}.lg-confirm-item .numbers{font-size:12px;color:#687789;margin-top:3px}
 </style>
 
 <div class="container-fluid py-3">
@@ -127,8 +130,51 @@
                                     </div>
                                 </div>
                                 <div class="col-lg-4">
-                                    <small class="text-muted d-block">Destinos</small><strong>{{ number_format($item->destinos,0,',','.') }}</strong>
+                                    <small class="text-muted d-block">Confirmación de sucursales</small>
+                                    <strong class="text-success">{{ number_format($item->sucursales_confirmadas,0,',','.') }} confirmadas</strong>
+                                    @if($item->sucursales_pendientes_confirmar>0)
+                                        <span class="text-warning ml-2"><strong>{{ number_format($item->sucursales_pendientes_confirmar,0,',','.') }}</strong> pendientes</span>
+                                    @endif
                                     @if($item->cantidad_redistribuida>0)<small class="text-muted d-block mt-1">Redistribuciones posteriores: {{ number_format($item->cantidad_redistribuida,0,',','.') }}</small>@endif
+                                </div>
+                            </div>
+
+                            <div class="mt-3 border-top pt-2">
+                                <small class="font-weight-bold text-uppercase text-muted">Confirmación real por sucursal</small>
+                                <div class="lg-confirm-grid">
+                                    @forelse($item->confirmaciones_sucursales as $confirmacion)
+                                        <div class="lg-confirm-item">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <span class="branch">{{ $confirmacion->sucursal_confirmacion }}</span>
+                                                @if($confirmacion->estado_confirmacion === 'CONFIRMADO')
+                                                    <span class="badge badge-success">CONFIRMADO</span>
+                                                @elseif($confirmacion->estado_confirmacion === 'PARCIAL')
+                                                    <span class="badge badge-info">PARCIAL</span>
+                                                @else
+                                                    <span class="badge badge-warning">PENDIENTE</span>
+                                                @endif
+                                            </div>
+                                            <div class="numbers">
+                                                Enviado <strong>{{ number_format($confirmacion->cantidad_enviada,0,',','.') }}</strong>
+                                                · Confirmado <strong>{{ number_format($confirmacion->cantidad_confirmada,0,',','.') }}</strong>
+                                                @if($confirmacion->pendiente_confirmar>0)
+                                                    · Falta <strong class="text-warning">{{ number_format($confirmacion->pendiente_confirmar,0,',','.') }}</strong>
+                                                @endif
+                                            </div>
+                                            <small class="text-muted">
+                                                @if($confirmacion->primera_confirmacion)
+                                                    Confirmó {{ \Carbon\Carbon::parse($confirmacion->primera_confirmacion)->format('d/m/Y') }}
+                                                    @if($confirmacion->ultima_confirmacion && $confirmacion->ultima_confirmacion !== $confirmacion->primera_confirmacion)
+                                                        · última {{ \Carbon\Carbon::parse($confirmacion->ultima_confirmacion)->format('d/m/Y') }}
+                                                    @endif
+                                                @else
+                                                    Sin fecha de recepción
+                                                @endif
+                                            </small>
+                                        </div>
+                                    @empty
+                                        <div class="text-muted small">Todavía no hay remisiones originales asociadas a esta OT.</div>
+                                    @endforelse
                                 </div>
                             </div>
                         </div>
