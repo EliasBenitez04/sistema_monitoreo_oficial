@@ -118,16 +118,12 @@
                         <td>{{ $otKpi->fecha_ingreso ? date('d/m/Y', strtotime($otKpi->fecha_ingreso)) : '-' }}</td>
                         <td>
                             {{ $otKpi->kpi_fecha_logistica ? date('d/m/Y', strtotime($otKpi->kpi_fecha_logistica)) : '-' }}
-                            @if($otKpi->kpi_ot_disponible_previamente)
-                                <small class="d-block text-info">OT disponible previamente</small>
-                            @endif
+
                         </td>
                         <td>{{ $otKpi->kpi_fecha_recepcion ? date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) : '-' }}</td>
                         <td>
                             @if($otKpi->kpi_dias !== null)
                                 <strong>{{ $otKpi->kpi_dias }} días</strong>
-                            @elseif($otKpi->kpi_estado === 'DISTRIBUIDA ANTES DEL PEDIDO')
-                                <span class="text-muted">N/A</span>
                             @else
                                 -
                             @endif
@@ -135,13 +131,8 @@
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
                                 <span class="badge badge-success">CONFIRMADO</span>
-                            @elseif($otKpi->kpi_estado === 'CONFIRMADO - OT DISPONIBLE')
-                                <span class="badge badge-info">CONFIRMADO - OT DISPONIBLE</span>
                             @elseif($otKpi->kpi_estado === 'DESPACHADO SIN CONFIRMAR')
                                 <span class="badge badge-warning">DESPACHADO SIN CONFIRMAR</span>
-                            @elseif($otKpi->kpi_estado === 'DISTRIBUIDA ANTES DEL PEDIDO')
-                                <span class="badge badge-info">DISTRIBUIDA ANTES DEL PEDIDO</span>
-                                <small class="d-block text-muted mt-1">Fuera del promedio de días</small>
                             @else
                                 <span class="badge badge-secondary">{{ $otKpi->kpi_estado }}</span>
                             @endif
