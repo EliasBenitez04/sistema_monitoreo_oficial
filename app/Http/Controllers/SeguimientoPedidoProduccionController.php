@@ -224,8 +224,17 @@ class SeguimientoPedidoProduccionController extends Controller
 
         $pendientes = $filas
             ->where('completo', false)
-            ->sortByDesc(function ($fila) {
-                return ($fila->urgente ? 100000 : 0) + (int) $fila->dias_pendiente;
+            ->sort(function ($a, $b) {
+                $procesoA = strtoupper(trim((string) $a->proceso_actual));
+                $procesoB = strtoupper(trim((string) $b->proceso_actual));
+
+                $cmp = strcmp($procesoA, $procesoB);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+
+                // Dentro del mismo proceso, mostrar primero la OT con más días pendiente.
+                return ((int) $b->dias_pendiente) <=> ((int) $a->dias_pendiente);
             })
             ->values();
 
