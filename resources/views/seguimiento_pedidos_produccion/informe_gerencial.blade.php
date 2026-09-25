@@ -27,7 +27,7 @@
 
     <div class="mgr-hero mb-4">
         <div class="row align-items-center">
-            <div class="col-lg-8">
+            <div class="col-12">
                 <div class="d-flex align-items-center flex-wrap">
                     <span class="mgr-pill {{ $resumen->ots_pendientes > 0 ? 'is-warning' : 'is-success' }}">
                         <i class="fas {{ $resumen->ots_pendientes > 0 ? 'fa-industry' : 'fa-check-circle' }} mr-1"></i>
@@ -52,16 +52,6 @@
                 </div>
             </div>
 
-            <div class="col-lg-4 mt-4 mt-lg-0">
-                <div class="mgr-focus">
-                    <div class="mgr-focus-label">FOCO DE HOY</div>
-                    <div class="mgr-focus-value">{{ number_format($resumen->urgentes,0,',','.') }}</div>
-                    <div class="mgr-focus-title">OT urgentes</div>
-                    <div class="mgr-focus-meta">
-                        {{ number_format($resumen->prendas_pendientes,0,',','.') }} prendas pendientes en total
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -105,7 +95,7 @@
                 <div>
                     <div class="mgr-kpi-value">{{ number_format($resumen->urgentes,0,',','.') }}</div>
                     <div class="mgr-kpi-label">OT urgentes</div>
-                    <div class="mgr-kpi-meta">2 días o más pendientes</div>
+                    <div class="mgr-kpi-meta">30 días o más desde el pedido</div>
                 </div>
             </div>
         </div>
@@ -132,7 +122,7 @@
                     @if($resumen->urgentes > 0)
                         <span class="text-danger font-weight-bold">{{ $resumen->urgentes }} requieren atención prioritaria.</span>
                     @else
-                        <span class="text-success font-weight-bold">No hay OT en condición urgente.</span>
+                        <span class="text-success font-weight-bold">No hay OT con 30 días o más de atraso.</span>
                     @endif
                 </div>
             </div>
@@ -160,7 +150,7 @@
                 <small class="text-muted">Ordenado por urgencia y días transcurridos desde la fecha del pedido.</small>
             </div>
             <div class="mt-2 mt-md-0">
-                <span class="mgr-legend is-urgent"><i class="fas fa-circle mr-1"></i>Urgente ≥ 2 días</span>
+                <span class="mgr-legend is-urgent"><i class="fas fa-circle mr-1"></i>Atraso ≥ 30 días</span>
             </div>
         </div>
 
@@ -185,8 +175,6 @@
                         <td>
                             @if($fila->urgente)
                                 <span class="mgr-priority is-urgent"><i class="fas fa-exclamation-triangle mr-1"></i>URGENTE</span>
-                            @else
-                                <span class="mgr-priority is-normal">NORMAL</span>
                             @endif
                         </td>
                         <td><strong class="text-dark">{{ $fila->nro_pedido }}</strong></td>
@@ -199,7 +187,7 @@
                         </td>
                         <td>
                             @if(strtoupper(trim($fila->proceso_actual)) === 'SIN PROCESO')
-                                <span class="mgr-process is-empty">SIN PROCESO</span>
+                                <span class="mgr-process is-empty"><i class="fas fa-exclamation-circle mr-1"></i>SIN PROCESO</span>
                             @else
                                 <span class="mgr-process">{{ $fila->proceso_actual }}</span>
                             @endif
@@ -247,13 +235,6 @@
 .mgr-avance-detail{font-size:18px;font-weight:850;color:#334155}
 .mgr-progress{height:10px;background:#eef2f7;border-radius:999px;overflow:hidden}
 .mgr-progress-bar{height:100%;background:#22c55e;border-radius:999px}
-.mgr-focus{
-    text-align:center;background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:20px
-}
-.mgr-focus-label{font-size:10px;font-weight:850;letter-spacing:.08em;color:#c2410c}
-.mgr-focus-value{font-size:36px;line-height:1;font-weight:900;color:#9a3412;margin:8px 0 4px}
-.mgr-focus-title{font-size:13px;font-weight:800;color:#7c2d12}
-.mgr-focus-meta{font-size:11px;color:#9a3412;margin-top:4px}
 .mgr-kpi{
     min-height:112px;display:flex;align-items:center;gap:13px;
     background:#fff;border:1px solid #e6ebf1;border-radius:14px;
@@ -288,14 +269,29 @@
 .is-urgent-row{background:#fff8f8}
 .mgr-priority{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:850}
 .mgr-priority.is-urgent{background:#fef2f2;color:#b91c1c}
-.mgr-priority.is-normal{background:#f1f5f9;color:#64748b}
 .mgr-ot{font-size:13px;font-weight:900;color:#0f172a}
 .mgr-code{font-size:12px;color:#0f172a}
 .mgr-process{
-    display:inline-block;background:#eff6ff;color:#1d4ed8;border-radius:7px;
-    padding:5px 7px;font-size:9px;font-weight:800;max-width:220px
+    display:inline-block;
+    background:#eff6ff;
+    color:#1d4ed8;
+    border:1px solid #dbeafe;
+    border-radius:9px;
+    padding:8px 11px;
+    font-size:12px;
+    line-height:1.35;
+    font-weight:900;
+    letter-spacing:.01em;
+    min-width:180px;
+    max-width:340px;
+    white-space:normal;
+    text-align:center;
 }
-.mgr-process.is-empty{background:#fef2f2;color:#b91c1c}
+.mgr-process.is-empty{
+    background:#fef2f2;
+    color:#b91c1c;
+    border-color:#fecaca;
+}
 .mgr-legend{font-size:10px;font-weight:750;color:#64748b}
 .mgr-legend.is-urgent{color:#b91c1c}
 .mgr-empty-icon{font-size:34px;color:#22c55e}
