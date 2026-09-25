@@ -23,6 +23,7 @@ class SeguimientoPedidoController extends Controller
         $buscar = trim((string) $request->input('buscar', ''));
 
         $query = SeguimientoPedido::query()
+            ->where('seguimiento_pedido.nro_pedido', 'ILIKE', 'T%')
             ->select('seguimiento_pedido.*')
             ->selectSub(function ($q) {
                 $q->from('seguimiento_pedido_detalle as spd_total')
@@ -245,6 +246,7 @@ class SeguimientoPedidoController extends Controller
         $hoy = Carbon::today();
 
         $pedidos = SeguimientoPedido::query()
+            ->where('nro_pedido', 'ILIKE', 'T%')
             ->select('seguimiento_pedido.*')
             ->orderBy('fecha_pedido')
             ->get();
