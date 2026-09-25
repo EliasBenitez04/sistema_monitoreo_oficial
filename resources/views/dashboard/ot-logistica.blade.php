@@ -19,6 +19,9 @@
     .lg-confirm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-top:10px}
     .lg-confirm-item{background:#fff;border:1px solid #e7ecf2;border-radius:9px;padding:9px 11px}
     .lg-confirm-item .branch{font-weight:700;color:#34465a}.lg-confirm-item .numbers{font-size:12px;color:#687789;margin-top:3px}
+    .lg-envios{margin-top:12px;border:1px solid #e7ecf2;border-radius:9px;overflow:hidden;background:#fff}
+    .lg-envios th{background:#f5f7fa;font-size:10px;text-transform:uppercase;color:#6c7a89;white-space:nowrap}
+    .lg-envios td{font-size:12px;vertical-align:middle}
 </style>
 
 <div class="container-fluid py-3">
@@ -136,6 +139,53 @@
                                         <span class="text-warning ml-2"><strong>{{ number_format($item->sucursales_pendientes_confirmar,0,',','.') }}</strong> pendientes</span>
                                     @endif
                                     @if($item->cantidad_redistribuida>0)<small class="text-muted d-block mt-1">Redistribuciones posteriores: {{ number_format($item->cantidad_redistribuida,0,',','.') }}</small>@endif
+                                </div>
+                            </div>
+
+                            <div class="mt-3 border-top pt-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <small class="font-weight-bold text-uppercase text-muted">Envíos realizados de esta OT</small>
+                                    <span class="badge badge-light border">{{ $item->envios->count() }} movimientos</span>
+                                </div>
+                                <div class="table-responsive lg-envios">
+                                    <table class="table table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha envío</th>
+                                                <th>Remisión</th>
+                                                <th>Origen</th>
+                                                <th>Destino</th>
+                                                <th class="text-right">Cantidad</th>
+                                                <th>Confirmación</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @forelse($item->envios as $envio)
+                                                <tr>
+                                                    <td>{{ $envio->fecha_remision ? \Carbon\Carbon::parse($envio->fecha_remision)->format('d/m/Y') : '—' }}</td>
+                                                    <td>
+                                                        <strong>{{ $envio->serie ? $envio->serie.'-' : '' }}{{ $envio->numero_remision ?: 'S/N' }}</strong>
+                                                        @if($envio->tipo_envio === 'REDISTRIBUCION')
+                                                            <span class="badge badge-light border ml-1">REDISTRIB.</span>
+                                                        @endif
+                                                    </td>
+                                                    <td>{{ $envio->sucursal_salida ?: ($envio->cod_sucursal_salida ?: '—') }}</td>
+                                                    <td><strong>{{ $envio->sucursal_destino ?: ($envio->cod_sucursal_destino ?: '—') }}</strong></td>
+                                                    <td class="text-right"><strong>{{ number_format($envio->cantidad_envio,0,',','.') }}</strong></td>
+                                                    <td>
+                                                        @if($envio->estado_envio === 'RECIBIDO')
+                                                            <span class="badge badge-success">RECIBIDO</span>
+                                                            <small class="text-muted ml-1">{{ \Carbon\Carbon::parse($envio->fecha_recepcion)->format('d/m/Y') }}</small>
+                                                        @else
+                                                            <span class="badge badge-primary">EN TRÁNSITO</span>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @empty
+                                                <tr><td colspan="6" class="text-center text-muted py-3">No hay envíos/remisiones vinculados a esta OT.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
 
