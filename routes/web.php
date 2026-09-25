@@ -810,6 +810,11 @@ Route::get(
 )->name('control.terminacion');
 
 Route::get(
+    '/control/flujo-diario',
+    [ControlTerminacionController::class, 'flujoDiario']
+)->name('control.flujo-diario');
+
+Route::get(
     '/control/terminacion/{idOt}/detalle',
     [ControlTerminacionController::class, 'detalle']
 )->name('control.terminacion.detalle');
