@@ -407,20 +407,48 @@ class SeguimientoPedidoController extends Controller
             $ot->locales_comerciales = $ot->locales->reject($esMayorista)->values();
             $ot->canal_mayorista = $ot->locales->filter($esMayorista)->values();
 
-            // Movimientos físicos: auditoría. Pueden superar la cantidad de la OT por retornos/reenvíos.
+            // Auditoría física total: incluye redistribuciones y puede superar la OT.
             $ot->movimientos_fisicos = (int) $ot->locales->sum('enviado');
             $ot->movimientos_confirmados = (int) $ot->locales->sum('recibido');
 
-            // Avance efectivo: nunca supera las prendas reales de la OT.
+            /*
+             * Avance REAL del pedido:
+             * sólo cuenta el despacho ORIGINAL Casa Central/Matriz -> Local.
+             * Las redistribuciones Local -> Local quedan como auditoría y no vuelven
+             * a incrementar "Enviado" ni "Confirmado".
+             */
+            $despachosOriginales = $movsOt->filter(function ($mov) {
+                $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
+                $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
+
+                return in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true)
+                    && !in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true);
+            });
+
+            $despachadoOriginal = (int) $despachosOriginales->sum('cantidad');
+            $confirmadoOriginal = (int) $despachosOriginales
+                ->filter(function ($mov) {
+                    return !empty($mov->fecha_recepcion);
+                })
+                ->sum('cantidad');
+
             $topeOt = max(0, (int) $ot->cantidad_orden);
-            $ot->enviado = min($topeOt, $ot->movimientos_fisicos);
-            $ot->recibido = min($topeOt, $ot->movimientos_confirmados);
+            $objetivoOt = $ot->producto_terminado > 0
+                ? min($topeOt, (int) $ot->producto_terminado)
+                : $topeOt;
+
+            $ot->enviado = min($topeOt, $despachadoOriginal);
+            $ot->recibido = min($topeOt, $confirmadoOriginal);
+            $ot->objetivo_confirmacion = $objetivoOt;
+            $ot->pendiente_envio = max(0, $objetivoOt - $ot->enviado);
+            $ot->pendiente_recepcion = max(0, $ot->enviado - $ot->recibido);
+            $ot->pendiente_confirmacion_total = max(0, $objetivoOt - $ot->recibido);
+
             $ot->movimientos_adicionales = max(0, $ot->movimientos_fisicos - $topeOt);
             $ot->movimientos_confirmados_adicionales = max(0, $ot->movimientos_confirmados - $topeOt);
 
             $ot->locales_enviados = $ot->locales_comerciales->count();
             $ot->locales_confirmados = $ot->locales_comerciales->where('estado_local', 'RECIBIDO')->count();
-            $ot->pendiente_recepcion = max(0, $topeOt - $ot->recibido);
 
             // Etapa real de punta a punta. No se infiere por una etiqueta manual:
             // se determina por la evidencia existente en trazabilidad/remisiones.
@@ -432,15 +460,19 @@ class SeguimientoPedidoController extends Controller
                 $ot->etapa_actual = 'TERMINACION';
                 $ot->etapa_numero = 1;
                 $ot->estado_seguimiento = 'EN TERMINACION';
-            } elseif ($ot->distribuido <= 0) {
+            } elseif ($ot->distribuido <= 0 && $ot->enviado <= 0) {
                 $ot->etapa_actual = 'PRODUCTO TERMINADO';
                 $ot->etapa_numero = 2;
                 $ot->estado_seguimiento = 'TERMINADO';
-            } elseif ($ot->movimientos_fisicos <= 0) {
+            } elseif ($ot->enviado <= 0) {
                 $ot->etapa_actual = 'LOGISTICA';
                 $ot->etapa_numero = 3;
                 $ot->estado_seguimiento = 'EN LOGISTICA';
-            } elseif ($ot->recibido < $ot->enviado) {
+            } elseif ($ot->enviado < $ot->objetivo_confirmacion) {
+                $ot->etapa_actual = 'REMISION';
+                $ot->etapa_numero = 4;
+                $ot->estado_seguimiento = 'DESPACHO PARCIAL';
+            } elseif ($ot->recibido < $ot->objetivo_confirmacion) {
                 $ot->etapa_actual = 'REMISION';
                 $ot->etapa_numero = 4;
                 $ot->estado_seguimiento = $ot->recibido > 0 ? 'RECEPCION PARCIAL' : 'EN TRANSITO';
@@ -613,6 +645,8 @@ class SeguimientoPedidoController extends Controller
             'terminado' => (int) $ots->sum('producto_terminado'),
             'enviado' => (int) $ots->sum('enviado'),
             'recibido' => (int) $ots->sum('recibido'),
+            'pendiente_envio' => (int) $ots->sum('pendiente_envio'),
+            'pendiente_confirmar' => (int) $ots->sum('pendiente_confirmacion_total'),
             'completas' => $ots->where('estado_seguimiento', 'COMPLETO')->count(),
             'fecha_pedido' => $pedido->fecha_pedido,
             'primer_envio_logistica' => $primerEnvioLogistica,
