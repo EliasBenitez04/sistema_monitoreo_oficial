@@ -418,6 +418,19 @@ class ControlTerminacionController extends Controller
                 ->orderBy('id')
                 ->get();
 
+            // Una remisión puede tener varias líneas del mismo artículo (talles/variantes).
+            // Para AYALA / MODELO la unidad de decisión es el DOCUMENTO completo:
+            // serie + número + destino. El mismo documento nunca puede repartirse
+            // entre ambos planes.
+            $documentos = $remisionesOriginales->groupBy(function ($remision) {
+                return implode('|', [
+                    (string) $remision->serie,
+                    (string) $remision->numero_remision,
+                    (string) $remision->cod_sucursal_salida,
+                    (string) $remision->cod_sucursal_destino,
+                ]);
+            });
+
             /*
              * Una misma línea física hacia COMERCIAL MATRIZ no puede aparecer
              * simultáneamente en AYALA y MODELO MUESTRA. Primero respetamos el
@@ -431,40 +444,45 @@ class ControlTerminacionController extends Controller
             $asignado = array_fill_keys(array_keys($capacidad), 0);
             $asignadas = [];
 
-            foreach ($remisionesOriginales as $remision) {
-                $idDetalleActual = (int) $remision->id_logistica_detalle;
-                $destinoReal = $remision->sucursal_destino ?: $remision->sucursal_logistica;
+            foreach ($documentos as $lineasDocumento) {
+                $primera = $lineasDocumento->first();
+                $destinoReal = $primera->sucursal_destino ?: $primera->sucursal_logistica;
                 $destinoNormalizado = $this->normalizarDestinoMovimiento($destinoReal);
-                $cantidadRemision = max(0, (int) $remision->cantidad);
+                $cantidadDocumento = (int) $lineasDocumento->sum('cantidad');
                 $idAsignado = null;
 
-                $detalleActual = $detallesPorId->get($idDetalleActual);
-                if ($detalleActual) {
-                    $planActual = $this->normalizarDestinoMovimiento($detalleActual->sucursal);
-                    $compatible = $destinoNormalizado === $planActual
-                        || ($destinoNormalizado === 'MATRIZ'
-                            && in_array($planActual, ['AYALA', 'MODELO'], true));
+                // Para destinos normales, conservar el detalle persistido si es compatible.
+                // Para COMERCIAL MATRIZ, decidir el documento completo entre AYALA/MODELO.
+                if ($destinoNormalizado !== 'MATRIZ') {
+                    $idDetalleActual = (int) $primera->id_logistica_detalle;
+                    $detalleActual = $detallesPorId->get($idDetalleActual);
 
-                    if ($compatible
-                        && (($asignado[$idDetalleActual] ?? 0) + $cantidadRemision)
-                            <= ($capacidad[$idDetalleActual] ?? 0)) {
-                        $idAsignado = $idDetalleActual;
-                    }
-                }
+                    if ($detalleActual) {
+                        $planActual = $this->normalizarDestinoMovimiento($detalleActual->sucursal);
 
-                if (!$idAsignado && $destinoNormalizado === 'MATRIZ') {
-                    foreach ($detalles as $candidato) {
-                        $idCandidato = (int) $candidato->id;
-                        $planCandidato = $this->normalizarDestinoMovimiento($candidato->sucursal);
-
-                        if (!in_array($planCandidato, ['AYALA', 'MODELO'], true)) {
-                            continue;
+                        if ($destinoNormalizado === $planActual
+                            && (($asignado[$idDetalleActual] ?? 0) + $cantidadDocumento)
+                                <= ($capacidad[$idDetalleActual] ?? 0)) {
+                            $idAsignado = $idDetalleActual;
                         }
+                    }
+                } else {
+                    // Prioridad: completar AYALA con documentos completos; una vez lleno,
+                    // los documentos siguientes de MATRIZ pasan a MODELO MUESTRA.
+                    foreach (['AYALA', 'MODELO'] as $planBuscado) {
+                        foreach ($detalles as $candidato) {
+                            $idCandidato = (int) $candidato->id;
+                            $planCandidato = $this->normalizarDestinoMovimiento($candidato->sucursal);
 
-                        if ((($asignado[$idCandidato] ?? 0) + $cantidadRemision)
-                            <= ($capacidad[$idCandidato] ?? 0)) {
-                            $idAsignado = $idCandidato;
-                            break;
+                            if ($planCandidato !== $planBuscado) {
+                                continue;
+                            }
+
+                            if ((($asignado[$idCandidato] ?? 0) + $cantidadDocumento)
+                                <= ($capacidad[$idCandidato] ?? 0)) {
+                                $idAsignado = $idCandidato;
+                                break 2;
+                            }
                         }
                     }
                 }
@@ -473,9 +491,12 @@ class ControlTerminacionController extends Controller
                     continue;
                 }
 
-                $asignado[$idAsignado] = ($asignado[$idAsignado] ?? 0) + $cantidadRemision;
-                $remision->id_detalle_visual = $idAsignado;
-                $asignadas[] = $remision;
+                $asignado[$idAsignado] = ($asignado[$idAsignado] ?? 0) + $cantidadDocumento;
+
+                foreach ($lineasDocumento as $remision) {
+                    $remision->id_detalle_visual = $idAsignado;
+                    $asignadas[] = $remision;
+                }
             }
 
             $remisionesPorDetalle = collect($asignadas)->groupBy('id_detalle_visual');
