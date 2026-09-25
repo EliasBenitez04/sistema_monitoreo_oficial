@@ -2738,7 +2738,69 @@ class OtController extends Controller
             ->paginate(35)
             ->withQueryString();
 
+        /*
+         * Confirmación real por sucursal para las OTs visibles en la página.
+         * Se toma únicamente la distribución original CASA CENTRAL/MATRIZ -> local.
+         * fecha_recepcion es la confirmación efectiva del destino.
+         */
+        $confirmacionesPorOt = collect();
+
+        if ($tablaRemisionesDisponible && $detalles->count() > 0) {
+            $idsOtPagina = $detalles->pluck('id_ot')->filter()->values()->all();
+
+            $confirmacionesPorOt = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $idsOtPagina)
+                ->where(function ($q) {
+                    $q->where('cod_sucursal_salida', 1)
+                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'")
+                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'");
+                })
+                ->where(function ($q) {
+                    $q->whereNull('sucursal_destino')
+                        ->orWhereRaw("UPPER(COALESCE(sucursal_destino, '')) NOT LIKE '%CASA CENTRAL%'");
+                })
+                ->select(
+                    'id_ot',
+                    DB::raw("COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), 'SIN DESTINO') as sucursal_confirmacion"),
+                    DB::raw('SUM(cantidad) as cantidad_enviada'),
+                    DB::raw('SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as cantidad_confirmada'),
+                    DB::raw('MIN(fecha_remision) as primera_remision'),
+                    DB::raw('MIN(fecha_recepcion) as primera_confirmacion'),
+                    DB::raw('MAX(fecha_recepcion) as ultima_confirmacion')
+                )
+                ->groupBy(
+                    'id_ot',
+                    DB::raw("COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), 'SIN DESTINO')")
+                )
+                ->orderBy(DB::raw("COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), 'SIN DESTINO')"))
+                ->get()
+                ->groupBy('id_ot');
+        }
+
         foreach ($detalles as $item) {
+            $item->confirmaciones_sucursales = collect($confirmacionesPorOt->get($item->id_ot, collect()))
+                ->map(function ($confirmacion) {
+                    $confirmacion->cantidad_enviada = (int) $confirmacion->cantidad_enviada;
+                    $confirmacion->cantidad_confirmada = (int) $confirmacion->cantidad_confirmada;
+                    $confirmacion->pendiente_confirmar = max(
+                        0,
+                        $confirmacion->cantidad_enviada - $confirmacion->cantidad_confirmada
+                    );
+                    $confirmacion->estado_confirmacion = $confirmacion->cantidad_confirmada <= 0
+                        ? 'PENDIENTE'
+                        : ($confirmacion->pendiente_confirmar > 0 ? 'PARCIAL' : 'CONFIRMADO');
+
+                    return $confirmacion;
+                })
+                ->values();
+
+            $item->sucursales_confirmadas = $item->confirmaciones_sucursales
+                ->where('estado_confirmacion', 'CONFIRMADO')
+                ->count();
+            $item->sucursales_pendientes_confirmar = $item->confirmaciones_sucursales
+                ->where('estado_confirmacion', '<>', 'CONFIRMADO')
+                ->count();
+
             $item->cantidad_pt = (int) $item->cantidad_pt;
             $item->cantidad_logistica = (int) $item->cantidad_logistica;
             $item->cantidad_remitida = (int) $item->cantidad_remitida;
