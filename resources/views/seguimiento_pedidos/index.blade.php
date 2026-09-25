@@ -156,13 +156,17 @@
                         $mov = (int) $pedido->movimientos; // historial completo, incluye Comercial Matriz
                         $movLocales = (int) $pedido->movimientos_locales;
                         $confLocales = (int) $pedido->confirmado_locales;
+                        $otsConfirmadas = (int) $pedido->ots_confirmadas;
+                        $otsTotal = (int) $pedido->detalles_count;
                         $pctPt = $cantidad > 0 ? min(100, round(($pt / $cantidad) * 100)) : 0;
                         $pctConf = $movLocales > 0 ? min(100, round(($confLocales / $movLocales) * 100)) : 0;
 
                         if (!empty($pedido->completo_locales)) {
                             $situacion = 'COMPLETO'; $clase = 'success'; $icono = 'check-circle';
+                        } elseif ($otsConfirmadas > 0) {
+                            $situacion = 'RECEPCIÓN PARCIAL'; $clase = 'warning'; $icono = 'truck';
                         } elseif ($movLocales > 0) {
-                            $situacion = $confLocales > 0 ? 'RECEPCIÓN PARCIAL' : 'EN REMISIÓN'; $clase = 'warning'; $icono = 'truck';
+                            $situacion = 'EN REMISIÓN'; $clase = 'warning'; $icono = 'truck';
                         } elseif ($pt > 0) {
                             $situacion = $pt >= $cantidad ? 'PRODUCTO TERMINADO' : 'EN PRODUCCIÓN'; $clase = 'info'; $icono = 'box';
                         } else {
@@ -185,6 +189,9 @@
                         <td class="align-middle progreso-celda">
                             <strong>{{ number_format($confLocales,0,',','.') }} / {{ number_format($movLocales,0,',','.') }}</strong>
                             <small class="d-block text-muted">{{ $pctConf }}% de lo enviado a locales</small>
+                            <small class="d-block {{ $otsConfirmadas >= $otsTotal && $otsTotal > 0 ? 'text-success' : 'text-warning' }}">
+                                {{ $otsConfirmadas }}/{{ $otsTotal }} OT confirmadas
+                            </small>
                             <div class="progress progress-xs"><div class="progress-bar bg-success" style="width:{{ $pctConf }}%"></div></div>
                         </td>
                         <td class="align-middle"><span class="badge badge-{{ $clase }} px-2 py-2"><i class="fas fa-{{ $icono }} mr-1"></i>{{ $situacion }}</span></td>
