@@ -46,6 +46,7 @@
                     <th>Salida</th>
                     <th>Remisión</th>
                     <th class="text-right">Remitido</th>
+                    <th class="text-right">Confirmado</th>
                     <th>Recepción</th>
                     <th>Estado</th>
                 </tr>
@@ -57,12 +58,15 @@
                             <td><strong>{{ $detalle->sucursal }}</strong></td>
                             <td class="text-muted">—</td>
                             <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
-                            <td colspan="3" class="text-muted">Todavía sin remisión vinculada.</td>
+                            <td colspan="4" class="text-muted">Todavía sin remisión vinculada.</td>
                             <td><span class="badge badge-secondary">SIN REMISIÓN</span></td>
                         </tr>
                     @else
                         @php
                             $subtotalLocal = (int) $detalle->remisiones->sum('cantidad');
+                            $subtotalConfirmado = (int) $detalle->remisiones
+                                ->filter(function ($r) { return !empty($r->fecha_recepcion); })
+                                ->sum('cantidad');
                             $destinoGrupo = optional($detalle->remisiones->first())->destino_real ?: $detalle->sucursal;
                         @endphp
 
@@ -87,6 +91,11 @@
                                     </small>
                                 </td>
                                 <td class="text-right"><strong>{{ number_format($remision->cantidad, 0, ',', '.') }}</strong></td>
+                                <td class="text-right">
+                                    <strong class="{{ $remision->fecha_recepcion ? 'text-success' : 'text-muted' }}">
+                                        {{ number_format($remision->fecha_recepcion ? $remision->cantidad : 0, 0, ',', '.') }}
+                                    </strong>
+                                </td>
                                 <td>{{ $remision->fecha_recepcion ? \Carbon\Carbon::parse($remision->fecha_recepcion)->format('d/m/Y') : 'Pendiente' }}</td>
                                 <td>
                                     @if($remision->fecha_recepcion)
@@ -105,6 +114,9 @@
                             <td class="text-right">
                                 <span class="td-subtotal-local">{{ number_format($subtotalLocal, 0, ',', '.') }}</span>
                             </td>
+                            <td class="text-right">
+                                <span class="td-subtotal-local text-success">{{ number_format($subtotalConfirmado, 0, ',', '.') }}</span>
+                            </td>
                             <td colspan="2">
                                 @if($detalle->pendiente_remitir > 0)
                                     <small class="text-warning">
@@ -118,7 +130,7 @@
                     @endif
                 @empty
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-4">
+                        <td colspan="8" class="text-center text-muted py-4">
                             Esta OT todavía no tiene distribución logística.
                         </td>
                     </tr>
