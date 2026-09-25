@@ -19,11 +19,12 @@
     ['OT', $resumen->ots, 'clipboard-list'],
     ['Cantidad orden', number_format($resumen->cantidad,0,',','.'), 'boxes'],
     ['Producto terminado', number_format($resumen->terminado,0,',','.'), 'check-circle'],
-    ['Distribución efectiva', number_format($resumen->enviado,0,',','.'), 'truck'],
-    ['Confirmado efectivo', number_format($resumen->recibido,0,',','.'), 'store'],
+    ['Enviado a locales', number_format($resumen->enviado,0,',','.'), 'truck'],
+    ['Confirmado por locales', number_format($resumen->recibido,0,',','.'), 'store'],
+    ['Pendiente confirmar', number_format($resumen->pendiente_confirmar,0,',','.'), 'hourglass-half'],
     ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double']
 ] as $kpi)
-<div class="col-lg-2 col-md-4 col-6">
+<div class="col-xl col-lg-3 col-md-4 col-6">
     <div class="small-box bg-light border"><div class="inner"><h4>{{ $kpi[1] }}</h4><p>{{ $kpi[0] }}</p></div><div class="icon"><i class="fas fa-{{ $kpi[2] }}"></i></div></div>
 </div>
 @endforeach
@@ -190,8 +191,9 @@
             <div class="col-md"><small class="text-muted d-block">Ingreso Terminación</small><strong>{{ number_format($ot->ingreso_terminacion,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_ingreso ? date('d/m/Y', strtotime($ot->fecha_ingreso)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Producto Terminado</small><strong>{{ number_format($ot->producto_terminado,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_pt ? date('d/m/Y', strtotime($ot->fecha_pt)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª salida: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. movimiento: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
-            <div class="col-md"><small class="text-muted d-block">Distribución efectiva</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
-            <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+            <div class="col-md"><small class="text-muted d-block">Enviado a locales</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->objetivo_confirmacion,0,',','.') }}</strong></div>
+            <div class="col-md"><small class="text-muted d-block">Confirmado por locales</small><strong class="text-success">{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->objetivo_confirmacion,0,',','.') }}</strong></div>
+            <div class="col-md"><small class="text-muted d-block">Pendiente confirmar</small><strong class="{{ $ot->pendiente_confirmacion_total > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($ot->pendiente_confirmacion_total,0,',','.') }}</strong></div>
         </div>
 
         @php
