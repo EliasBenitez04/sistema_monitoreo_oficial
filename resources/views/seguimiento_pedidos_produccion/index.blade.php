@@ -20,6 +20,17 @@
     @if(session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
     @endif
+    @if(session('error'))
+        <div class="alert alert-danger">{{ session('error') }}</div>
+    @endif
+    @if($errors->any())
+        <div class="alert alert-danger">
+            <strong>No se pudo importar:</strong>
+            <ul class="mb-0 pl-3">
+                @foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach
+            </ul>
+        </div>
+    @endif
 
     <div class="row">
         <div class="col-lg-3 col-6">
@@ -57,9 +68,9 @@
             @csrf
             <div class="card-body">
                 <div class="alert alert-info">
-                    Usá el mismo formato del seguimiento T:
-                    <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
-                    Para producción el pedido debe ser <strong>P1, P2, P3...</strong>.
+                    Este formulario usa <strong>exactamente el mismo importador</strong> del seguimiento T.
+                    Columnas: <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
+                    Para este módulo usá <strong>P1, P2, P3...</strong>.
                 </div>
 
                 <div class="form-group mb-0">
