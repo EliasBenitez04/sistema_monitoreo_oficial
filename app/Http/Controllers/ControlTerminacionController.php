@@ -273,6 +273,12 @@ class ControlTerminacionController extends Controller
          * Recepción Local = unidades efectivamente confirmadas por fecha_recepcion.
          */
         $totalRecepcionLocal = (int) $produccionTerminada->sum('recibido_efectivo');
+        $totalPendienteEnvio = (int) $produccionTerminada->sum(function ($item) {
+            return max(0, (int) $item->cantidad_terminada - (int) $item->remitido_efectivo);
+        });
+        $otsPendientesEnvio = $produccionTerminada->filter(function ($item) {
+            return (int) $item->cantidad_terminada > (int) $item->remitido_efectivo;
+        })->count();
 
         // Mismo valor por definición del flujo.
         $totalEntregadoLogistica = $totalTerminado;
@@ -355,6 +361,8 @@ class ControlTerminacionController extends Controller
             'totalTerminado',
             'totalEntregadoLogistica',
             'totalRecepcionLocal',
+            'totalPendienteEnvio',
+            'otsPendientesEnvio',
             'totalPendienteTerminar',
             'totalExcesoProductoTerminado',
             'totalOTs',
@@ -367,6 +375,71 @@ class ControlTerminacionController extends Controller
             'antiguedadMaximaPendiente',
             'otMasAntiguaPendiente',
             'promedioDiasTerminacion'
+        ));
+    }
+
+    public function reportePendientesEnvio(Request $request)
+    {
+        $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
+        $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
+        $buscar = trim((string) $request->input('buscar', ''));
+
+        $ots = DB::table('ot_trazabilidad as pt')
+            ->join('ot as o', 'o.id_ot', '=', 'pt.id_ot')
+            ->where('pt.proceso', 'TERMINACION - PRODUCTO TERMINADO')
+            ->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta])
+            ->when($buscar !== '', function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('o.nro_ot', '::text', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                });
+            })
+            ->groupBy('o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion', 'o.cantidad_orden')
+            ->select(
+                'o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion', 'o.cantidad_orden',
+                DB::raw('SUM(pt.resultado) as cantidad_pt'),
+                DB::raw('MIN(pt.fecha_proceso) as fecha_pt')
+            )
+            ->get();
+
+        $ids = $ots->pluck('id_ot')->all();
+        $remisiones = collect();
+
+        if (!empty($ids) && Schema::hasTable('ot_logistica_remisiones')) {
+            $remisiones = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $ids)
+                ->where(function ($q) {
+                    $q->where('cod_sucursal_salida', 1)
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'");
+                })
+                ->groupBy('id_ot')
+                ->select(
+                    'id_ot',
+                    DB::raw('SUM(cantidad) as enviado'),
+                    DB::raw('MIN(COALESCE(fecha_remision, fecha_creacion)) as primer_envio'),
+                    DB::raw('MAX(COALESCE(fecha_remision, fecha_creacion)) as ultimo_envio')
+                )
+                ->get()->keyBy('id_ot');
+        }
+
+        $reporte = $ots->map(function ($ot) use ($remisiones) {
+            $mov = $remisiones->get($ot->id_ot);
+            $ot->cantidad_pt = (int) $ot->cantidad_pt;
+            $ot->enviado = min($ot->cantidad_pt, (int) ($mov->enviado ?? 0));
+            $ot->pendiente_envio = max(0, $ot->cantidad_pt - $ot->enviado);
+            $ot->primer_envio = $mov->primer_envio ?? null;
+            $ot->ultimo_envio = $mov->ultimo_envio ?? null;
+            $ot->dias_espera = $ot->pendiente_envio > 0
+                ? max(0, \Carbon\Carbon::parse($ot->fecha_pt)->startOfDay()->diffInDays(now()->startOfDay(), false))
+                : 0;
+            return $ot;
+        })->filter(function ($ot) {
+            return $ot->pendiente_envio > 0;
+        })->sortByDesc('dias_espera')->values();
+
+        return view('control.reporte_pendientes_envio', compact(
+            'fechaDesde', 'fechaHasta', 'buscar', 'reporte'
         ));
     }
 
