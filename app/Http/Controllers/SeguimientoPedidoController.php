@@ -401,8 +401,11 @@ class SeguimientoPedidoController extends Controller
                 })
                 ->first();
 
-            $ot->kpi_fecha_logistica = $fechaLogisticaHistorica
-                ? $fechaLogisticaHistorica->format('Y-m-d')
+            // Para el seguimiento del pedido, "Entrada a Logística" comienza cuando
+            // la OT queda como PRODUCTO TERMINADO. La trazabilidad de LOGISTICA se
+            // conserva aparte como antecedente operativo, pero no define esta columna.
+            $ot->kpi_fecha_logistica = !empty($ot->fecha_pt)
+                ? Carbon::parse($ot->fecha_pt)->startOfDay()->format('Y-m-d')
                 : null;
             $ot->kpi_ot_disponible_previamente = $otDisponiblePreviamente;
             $ot->kpi_fecha_envio = $primerDespacho->fecha_remision ?? null;
