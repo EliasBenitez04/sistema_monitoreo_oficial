@@ -140,7 +140,7 @@
                         <th>Prendas</th>
                         <th>Prod. terminado</th>
                         <th>Movimientos</th>
-                        <th>Confirmado</th>
+                        <th>Confirmado locales</th>
                         <th>Situación</th>
                         <th>Fecha pedido</th>
                         <th>1ª confirmación local</th>
@@ -153,14 +153,16 @@
                     @php
                         $cantidad = (int) $pedido->cantidad_total;
                         $pt = min($cantidad, (int) $pedido->producto_terminado);
-                        $mov = (int) $pedido->movimientos;
-                        $conf = min($cantidad, (int) $pedido->confirmado);
+                        $mov = (int) $pedido->movimientos; // historial completo, incluye Comercial Matriz
+                        $movLocales = (int) $pedido->movimientos_locales;
+                        $confLocales = (int) $pedido->confirmado_locales;
                         $pctPt = $cantidad > 0 ? min(100, round(($pt / $cantidad) * 100)) : 0;
-                        $pctConf = $cantidad > 0 ? min(100, round(($conf / $cantidad) * 100)) : 0;
-                        if ($cantidad > 0 && $conf >= $cantidad) {
+                        $pctConf = $movLocales > 0 ? min(100, round(($confLocales / $movLocales) * 100)) : 0;
+
+                        if (!empty($pedido->completo_locales)) {
                             $situacion = 'COMPLETO'; $clase = 'success'; $icono = 'check-circle';
-                        } elseif ($mov > 0) {
-                            $situacion = $conf > 0 ? 'RECEPCIÓN PARCIAL' : 'EN REMISIÓN'; $clase = 'warning'; $icono = 'truck';
+                        } elseif ($movLocales > 0) {
+                            $situacion = $confLocales > 0 ? 'RECEPCIÓN PARCIAL' : 'EN REMISIÓN'; $clase = 'warning'; $icono = 'truck';
                         } elseif ($pt > 0) {
                             $situacion = $pt >= $cantidad ? 'PRODUCTO TERMINADO' : 'EN PRODUCCIÓN'; $clase = 'info'; $icono = 'box';
                         } else {
@@ -181,8 +183,8 @@
                             @if($mov > $cantidad)<small class="d-block text-warning">+{{ number_format($mov-$cantidad,0,',','.') }} mov. extra</small>@endif
                         </td>
                         <td class="align-middle progreso-celda">
-                            <strong>{{ number_format($conf,0,',','.') }} / {{ number_format($cantidad,0,',','.') }}</strong>
-                            <small class="d-block text-muted">{{ $pctConf }}%</small>
+                            <strong>{{ number_format($confLocales,0,',','.') }} / {{ number_format($movLocales,0,',','.') }}</strong>
+                            <small class="d-block text-muted">{{ $pctConf }}% de lo enviado a locales</small>
                             <div class="progress progress-xs"><div class="progress-bar bg-success" style="width:{{ $pctConf }}%"></div></div>
                         </td>
                         <td class="align-middle"><span class="badge badge-{{ $clase }} px-2 py-2"><i class="fas fa-{{ $icono }} mr-1"></i>{{ $situacion }}</span></td>
