@@ -421,24 +421,47 @@ class ControlTerminacionController extends Controller
         foreach ($detalles as $detalle) {
             $planNormalizado = $this->normalizarDestinoMovimiento($detalle->sucursal);
 
+            $cantidadPlan = max(0, (int) $detalle->cantidad);
+            $acumuladoDetalle = 0;
+
             $detalle->remisiones = collect(
                 $remisionesPorDetalle->get($detalle->id, collect())
-            )->filter(function ($remision) use ($planNormalizado) {
+            )->filter(function ($remision) use ($planNormalizado, $cantidadPlan, &$acumuladoDetalle) {
                 $destinoReal = $remision->sucursal_destino
                     ?: $remision->sucursal_logistica;
+                $destinoNormalizado = $this->normalizarDestinoMovimiento($destinoReal);
 
-                // El id_logistica_detalle puede quedar reutilizado por remisiones
-                // posteriores. Para este renglón sólo pertenece la remisión cuyo
-                // destino real coincide con el destino planificado.
-                return $this->normalizarDestinoMovimiento($destinoReal)
-                    === $planNormalizado;
-            })->map(function ($remision) use ($detalle) {
+                $esDestinoDirecto = $destinoNormalizado === $planNormalizado;
+                $esMatrizCompatible = $destinoNormalizado === 'MATRIZ'
+                    && in_array($planNormalizado, ['AYALA', 'MODELO'], true);
+
+                if (!$esDestinoDirecto && !$esMatrizCompatible) {
+                    return false;
+                }
+
+                // No permitir que un detalle de Ayala/Modelo muestre más unidades
+                // que las planificadas. Los movimientos sobrantes corresponden al
+                // otro detalle que comparte destino físico COMERCIAL MATRIZ.
+                if ($acumuladoDetalle >= $cantidadPlan) {
+                    return false;
+                }
+
+                $cantidad = max(0, (int) $remision->cantidad);
+
+                if (($acumuladoDetalle + $cantidad) > $cantidadPlan) {
+                    return false;
+                }
+
+                $acumuladoDetalle += $cantidad;
+                return true;
+            })->map(function ($remision) use ($detalle, $planNormalizado) {
                 $destinoReal = $remision->sucursal_destino
                     ?: $remision->sucursal_logistica;
+                $destinoNormalizado = $this->normalizarDestinoMovimiento($destinoReal);
 
                 $remision->destino_planificado = $detalle->sucursal;
                 $remision->destino_real = $destinoReal;
-                $remision->es_redireccion = false;
+                $remision->es_redireccion = $destinoNormalizado !== $planNormalizado;
 
                 return $remision;
             })->values();
