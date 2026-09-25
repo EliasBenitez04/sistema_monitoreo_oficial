@@ -60,6 +60,7 @@
             <div class="mgr-main-kpi is-pending">
                 <div class="mgr-main-kpi-icon"><i class="fas fa-hourglass-half"></i></div>
                 <div class="mgr-main-kpi-content">
+                    <div class="mgr-main-kpi-topline"><span>CONTROL DE CARGA</span></div>
                     <div class="mgr-main-kpi-label">OT pendientes</div>
                     <div class="mgr-main-kpi-value">{{ number_format($resumen->ots_pendientes,0,',','.') }}</div>
                     <div class="mgr-main-kpi-meta">
@@ -74,6 +75,7 @@
             <div class="mgr-main-kpi is-garments">
                 <div class="mgr-main-kpi-icon"><i class="fas fa-boxes"></i></div>
                 <div class="mgr-main-kpi-content">
+                    <div class="mgr-main-kpi-topline"><span>VOLUMEN PENDIENTE</span></div>
                     <div class="mgr-main-kpi-label">Prendas pendientes</div>
                     <div class="mgr-main-kpi-value">{{ number_format($resumen->prendas_pendientes,0,',','.') }}</div>
                     <div class="mgr-main-kpi-meta">
@@ -84,6 +86,66 @@
         </div>
     </div>
 
+    <div class="mgr-process-section mb-4">
+        <div class="d-flex justify-content-between align-items-end flex-wrap mb-3">
+            <div>
+                <div class="mgr-section-eyebrow">DISTRIBUCIÓN DE LA CARGA</div>
+                <h3 class="mgr-section-title mb-1">OT pendientes por proceso actual</h3>
+                <p class="text-muted small mb-0">Cada tarjeta muestra cuántas OT y prendas están concentradas actualmente en ese proceso.</p>
+            </div>
+            <div class="mgr-process-total mt-2 mt-md-0">
+                <strong>{{ number_format($resumen->ots_pendientes,0,',','.') }}</strong>
+                <span>OT pendientes</span>
+            </div>
+        </div>
+
+        <div class="row">
+            @forelse($porProcesos as $proceso)
+                @php
+                    $sinProceso = strtoupper(trim($proceso->proceso)) === 'SIN PROCESO';
+                @endphp
+                <div class="col-xl-3 col-lg-4 col-md-6 mb-3">
+                    <div class="mgr-process-kpi {{ $sinProceso ? 'is-empty' : '' }}">
+                        <div class="mgr-process-kpi-head">
+                            <div class="mgr-process-kpi-icon">
+                                <i class="fas {{ $sinProceso ? 'fa-exclamation-circle' : 'fa-cogs' }}"></i>
+                            </div>
+                            <div class="mgr-process-kpi-share">{{ number_format($proceso->porcentaje,1,',','.') }}%</div>
+                        </div>
+
+                        <div class="mgr-process-kpi-name">{{ $proceso->proceso }}</div>
+
+                        <div class="mgr-process-kpi-stats">
+                            <div>
+                                <strong>{{ number_format($proceso->ots,0,',','.') }}</strong>
+                                <span>OT</span>
+                            </div>
+                            <div>
+                                <strong>{{ number_format($proceso->prendas,0,',','.') }}</strong>
+                                <span>Prendas</span>
+                            </div>
+                            <div>
+                                <strong>{{ number_format($proceso->pedidos,0,',','.') }}</strong>
+                                <span>Pedidos</span>
+                            </div>
+                        </div>
+
+                        <div class="mgr-process-kpi-progress">
+                            <div style="width:{{ min(100,$proceso->porcentaje) }}%"></div>
+                        </div>
+                        <div class="mgr-process-kpi-foot">{{ number_format($proceso->porcentaje,1,',','.') }}% de las OT pendientes</div>
+                    </div>
+                </div>
+            @empty
+                <div class="col-12">
+                    <div class="mgr-process-empty">
+                        <i class="fas fa-check-circle mr-2"></i>No hay carga pendiente por proceso.
+                    </div>
+                </div>
+            @endforelse
+        </div>
+    </div>
+
     <div class="mgr-summary mb-4">
         <div class="row align-items-center">
             <div class="col-12">
@@ -91,7 +153,7 @@
                 <div class="mgr-summary-text">
                     Hay <strong>{{ number_format($resumen->ots_pendientes,0,',','.') }} OT</strong> pendientes de llegar a Terminación,
                     pertenecientes a <strong>{{ number_format($resumen->pedidos_con_pendiente,0,',','.') }} pedidos</strong>.
-                    El detalle inferior está agrupado por <strong>proceso actual</strong> para identificar rápidamente dónde se concentran las OT pendientes.
+                    Los KPI superiores muestran la concentración por proceso y el detalle inferior permite revisar las OT que componen cada grupo.
                 </div>
             </div>
         </div>
@@ -103,7 +165,7 @@
                 <h3 class="card-title font-weight-bold mb-0">
                     <i class="fas fa-stream mr-2 text-primary"></i>OT pendientes por proceso
                 </h3>
-                <small class="text-muted">Ordenado por proceso actual; dentro de cada proceso, primero aparecen las OT con más días pendientes.</small>
+                <small class="text-muted">Agrupado por proceso actual; dentro de cada grupo aparecen primero las OT con más días pendientes.</small>
             </div>
         </div>
 
@@ -122,7 +184,27 @@
                     </tr>
                 </thead>
                 <tbody>
+                @php $procesoAnterior = null; @endphp
                 @forelse($pendientes as $fila)
+                    @php
+                        $procesoFila = trim((string) $fila->proceso_actual) !== ''
+                            ? trim((string) $fila->proceso_actual)
+                            : 'SIN PROCESO';
+                    @endphp
+
+                    @if($procesoAnterior !== $procesoFila)
+                        <tr class="mgr-process-group-row">
+                            <td colspan="8">
+                                <div class="mgr-process-group">
+                                    <span class="mgr-process-group-icon"><i class="fas fa-cogs"></i></span>
+                                    <strong>{{ $procesoFila }}</strong>
+                                    <span>{{ $porProcesos->firstWhere('proceso', $procesoFila)->ots ?? 0 }} OT</span>
+                                </div>
+                            </td>
+                        </tr>
+                        @php $procesoAnterior = $procesoFila; @endphp
+                    @endif
+
                     <tr>
                         <td><strong class="text-dark">{{ $fila->nro_pedido }}</strong></td>
                         <td>{{ $fila->fecha_pedido ? date('d/m/Y',strtotime($fila->fecha_pedido)) : '-' }}</td>
@@ -231,6 +313,202 @@
     color:#94a3b8;
     line-height:1.4;
 }
+.mgr-main-kpi{
+    transition:transform .18s ease, box-shadow .18s ease;
+}
+.mgr-main-kpi:hover{
+    transform:translateY(-2px);
+    box-shadow:0 11px 28px rgba(15,23,42,.08);
+}
+.mgr-main-kpi-topline span{
+    display:inline-block;
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.09em;
+    color:#94a3b8;
+    margin-bottom:5px;
+}
+
+.mgr-process-section{
+    background:#fff;
+    border:1px solid #e6ebf1;
+    border-radius:16px;
+    padding:20px;
+    box-shadow:0 7px 22px rgba(15,23,42,.04);
+}
+.mgr-section-eyebrow{
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.11em;
+    color:#94a3b8;
+}
+.mgr-section-title{
+    font-size:18px;
+    font-weight:900;
+    color:#0f172a;
+}
+.mgr-process-total{
+    text-align:right;
+}
+.mgr-process-total strong{
+    display:block;
+    font-size:22px;
+    line-height:1;
+    color:#0f172a;
+}
+.mgr-process-total span{
+    font-size:10px;
+    text-transform:uppercase;
+    font-weight:800;
+    letter-spacing:.05em;
+    color:#94a3b8;
+}
+
+.mgr-process-kpi{
+    height:100%;
+    min-height:185px;
+    background:linear-gradient(180deg,#fff,#fbfdff);
+    border:1px solid #e6ebf1;
+    border-radius:14px;
+    padding:16px;
+    box-shadow:0 4px 14px rgba(15,23,42,.035);
+    transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.mgr-process-kpi:hover{
+    transform:translateY(-2px);
+    border-color:#cbd5e1;
+    box-shadow:0 9px 20px rgba(15,23,42,.07);
+}
+.mgr-process-kpi.is-empty{
+    background:#fffafa;
+    border-color:#fecaca;
+}
+.mgr-process-kpi-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:12px;
+}
+.mgr-process-kpi-icon{
+    width:34px;
+    height:34px;
+    border-radius:10px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#eff6ff;
+    color:#2563eb;
+}
+.mgr-process-kpi.is-empty .mgr-process-kpi-icon{
+    background:#fef2f2;
+    color:#dc2626;
+}
+.mgr-process-kpi-share{
+    font-size:12px;
+    font-weight:900;
+    color:#475569;
+}
+.mgr-process-kpi-name{
+    min-height:38px;
+    font-size:13px;
+    line-height:1.35;
+    font-weight:900;
+    color:#0f172a;
+    margin-bottom:13px;
+}
+.mgr-process-kpi-stats{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:7px;
+    margin-bottom:13px;
+}
+.mgr-process-kpi-stats div{
+    background:#f8fafc;
+    border-radius:8px;
+    padding:7px 5px;
+    text-align:center;
+}
+.mgr-process-kpi-stats strong{
+    display:block;
+    font-size:14px;
+    line-height:1.1;
+    color:#0f172a;
+}
+.mgr-process-kpi-stats span{
+    display:block;
+    margin-top:3px;
+    font-size:8px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    font-weight:800;
+    color:#94a3b8;
+}
+.mgr-process-kpi-progress{
+    height:5px;
+    overflow:hidden;
+    border-radius:999px;
+    background:#edf2f7;
+}
+.mgr-process-kpi-progress div{
+    height:100%;
+    border-radius:999px;
+    background:#3b82f6;
+}
+.mgr-process-kpi.is-empty .mgr-process-kpi-progress div{
+    background:#ef4444;
+}
+.mgr-process-kpi-foot{
+    font-size:9px;
+    color:#94a3b8;
+    margin-top:6px;
+}
+.mgr-process-empty{
+    border:1px dashed #bbf7d0;
+    background:#f0fdf4;
+    color:#15803d;
+    border-radius:12px;
+    padding:18px;
+    text-align:center;
+    font-weight:800;
+}
+
+.mgr-process-group-row td{
+    background:#f1f5f9!important;
+    border-top:2px solid #e2e8f0!important;
+    border-bottom:1px solid #e2e8f0!important;
+    padding:8px 12px!important;
+}
+.mgr-process-group{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    text-align:left;
+}
+.mgr-process-group-icon{
+    width:28px;
+    height:28px;
+    border-radius:8px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:#fff;
+    color:#2563eb;
+}
+.mgr-process-group strong{
+    font-size:12px;
+    color:#0f172a;
+}
+.mgr-process-group span{
+    font-size:9px;
+    text-transform:uppercase;
+    font-weight:900;
+    letter-spacing:.05em;
+    color:#64748b;
+    background:#fff;
+    border-radius:999px;
+    padding:3px 7px;
+}
+
 .mgr-summary{
     background:#f8fafc;border:1px solid #e6ebf1;border-radius:14px;padding:17px 20px
 }
@@ -242,7 +520,7 @@
     letter-spacing:.04em;white-space:nowrap;vertical-align:middle!important
 }
 .mgr-table td{font-size:12px;vertical-align:middle!important;text-align:center}
-.mgr-table td:nth-child(6){text-align:left}
+.mgr-table td:nth-child(5){text-align:left}
 .mgr-ot{font-size:13px;font-weight:900;color:#0f172a}
 .mgr-code{font-size:12px;color:#0f172a}
 .mgr-process{
