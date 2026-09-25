@@ -940,6 +940,20 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $evaluados = $cercanos;
         }
 
+        // Cuando COMERCIAL MATRIZ representa AYALA / MODELO MUESTRA,
+        // respetamos primero la capacidad pendiente de cada detalle. Una línea
+        // no puede seguir cargándose sobre AYALA después de completar su plan;
+        // a partir de allí debe competir con MODELO u otro detalle con saldo.
+        $conSaldo = $evaluados
+            ->filter(function ($item) {
+                return $item->_tiene_saldo === 1;
+            })
+            ->values();
+
+        if ($conSaldo->isNotEmpty()) {
+            $evaluados = $conSaldo;
+        }
+
         return $evaluados
             ->sort(function ($a, $b) {
                 if ($a->_distancia_dias !== $b->_distancia_dias) {
