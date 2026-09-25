@@ -266,6 +266,14 @@ class ControlTerminacionController extends Controller
         $totalIngresoTerminacion = (int) $produccionTerminada->sum('cantidad_ingreso_terminacion');
         $totalTerminado = (int) $produccionTerminada->sum('cantidad_terminada');
 
+        /*
+         * KPIs del flujo físico, sin alterar la lógica de seguimiento:
+         * Terminación = ingreso al área.
+         * Producto Terminado = salida de Terminación / entrada a Logística.
+         * Recepción Local = unidades efectivamente confirmadas por fecha_recepcion.
+         */
+        $totalRecepcionLocal = (int) $produccionTerminada->sum('recibido_efectivo');
+
         // Mismo valor por definición del flujo.
         $totalEntregadoLogistica = $totalTerminado;
 
@@ -346,6 +354,7 @@ class ControlTerminacionController extends Controller
             'totalIngresoTerminacion',
             'totalTerminado',
             'totalEntregadoLogistica',
+            'totalRecepcionLocal',
             'totalPendienteTerminar',
             'totalExcesoProductoTerminado',
             'totalOTs',
