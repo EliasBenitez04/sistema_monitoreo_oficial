@@ -14,50 +14,19 @@
 </section>
 
 <section class="content"><div class="container-fluid">
-<div class="card card-outline card-primary mb-3">
-    <div class="card-header py-2">
-        <h3 class="card-title"><i class="fas fa-stream mr-2"></i>Avance del pedido</h3>
-        <span class="float-right text-muted small">{{ $resumen->ots }} OT</span>
-    </div>
-    <div class="card-body py-3">
-        <div class="row text-center pedido-embudo">
-            <div class="col-md">
-                <div class="text-muted small text-uppercase">Cantidad pedido</div>
-                <div class="h4 mb-0 font-weight-bold">{{ number_format($resumen->cantidad,0,',','.') }}</div>
-            </div>
-            <div class="col-md">
-                <div class="text-muted small text-uppercase">Producto terminado</div>
-                <div class="h4 mb-0 font-weight-bold text-info">{{ number_format($resumen->terminado,0,',','.') }}</div>
-            </div>
-            <div class="col-md">
-                <div class="text-muted small text-uppercase">Enviado a locales</div>
-                <div class="h4 mb-0 font-weight-bold text-primary">{{ number_format($resumen->enviado,0,',','.') }}</div>
-            </div>
-            <div class="col-md">
-                <div class="text-muted small text-uppercase">Confirmado por locales</div>
-                <div class="h4 mb-0 font-weight-bold text-success">{{ number_format($resumen->recibido,0,',','.') }}</div>
-            </div>
-        </div>
-
-        <div class="row text-center mt-3 pt-3 border-top">
-            <div class="col-md-4 mb-2 mb-md-0">
-                <div class="text-muted small text-uppercase">Pendiente de PT</div>
-                <strong class="{{ $resumen->pendiente_pt > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($resumen->pendiente_pt,0,',','.') }}</strong>
-            </div>
-            <div class="col-md-4 mb-2 mb-md-0">
-                <div class="text-muted small text-uppercase">Pendiente de envío</div>
-                <strong class="{{ $resumen->pendiente_envio > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($resumen->pendiente_envio,0,',','.') }}</strong>
-            </div>
-            <div class="col-md-4">
-                <div class="text-muted small text-uppercase">Pendiente de confirmación</div>
-                <strong class="{{ $resumen->pendiente_confirmar > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($resumen->pendiente_confirmar,0,',','.') }}</strong>
-            </div>
-        </div>
-
-        <div class="small text-muted text-center mt-3">
-            OT cerradas completamente: <strong>{{ $resumen->completas }}/{{ $resumen->ots }}</strong>
-        </div>
-    </div>
+<div class="row">
+@foreach([
+    ['OT', $resumen->ots, 'clipboard-list'],
+    ['Cantidad orden', number_format($resumen->cantidad,0,',','.'), 'boxes'],
+    ['Producto terminado', number_format($resumen->terminado,0,',','.'), 'check-circle'],
+    ['Distribución efectiva', number_format($resumen->enviado,0,',','.'), 'truck'],
+    ['Confirmado efectivo', number_format($resumen->recibido,0,',','.'), 'store'],
+    ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double']
+] as $kpi)
+<div class="col-lg-2 col-md-4 col-6">
+    <div class="small-box bg-light border"><div class="inner"><h4>{{ $kpi[1] }}</h4><p>{{ $kpi[0] }}</p></div><div class="icon"><i class="fas fa-{{ $kpi[2] }}"></i></div></div>
+</div>
+@endforeach
 </div>
 
 <div class="card card-outline card-info mb-4">
@@ -221,9 +190,8 @@
             <div class="col-md"><small class="text-muted d-block">Ingreso Terminación</small><strong>{{ number_format($ot->ingreso_terminacion,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_ingreso ? date('d/m/Y', strtotime($ot->fecha_ingreso)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Producto Terminado</small><strong>{{ number_format($ot->producto_terminado,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_pt ? date('d/m/Y', strtotime($ot->fecha_pt)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª salida: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. movimiento: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
-            <div class="col-md"><small class="text-muted d-block">Enviado a locales</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->objetivo_confirmacion,0,',','.') }}</strong></div>
-            <div class="col-md"><small class="text-muted d-block">Confirmado por locales</small><strong class="text-success">{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->objetivo_confirmacion,0,',','.') }}</strong></div>
-            <div class="col-md"><small class="text-muted d-block">Pendiente confirmar</small><strong class="{{ $ot->pendiente_recepcion > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong></div>
+            <div class="col-md"><small class="text-muted d-block">Distribución efectiva</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+            <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
         </div>
 
         @php
