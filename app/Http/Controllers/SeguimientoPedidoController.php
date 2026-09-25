@@ -440,9 +440,10 @@ class SeguimientoPedidoController extends Controller
             $ot->enviado = min($topeOt, $despachadoOriginal);
             $ot->recibido = min($topeOt, $confirmadoOriginal);
             $ot->objetivo_confirmacion = $objetivoOt;
-            $ot->pendiente_envio = max(0, $objetivoOt - $ot->enviado);
+            $ot->pendiente_pt = max(0, $topeOt - (int) $ot->producto_terminado);
+            $ot->pendiente_envio = max(0, min($topeOt, (int) $ot->producto_terminado) - $ot->enviado);
             $ot->pendiente_recepcion = max(0, $ot->enviado - $ot->recibido);
-            $ot->pendiente_confirmacion_total = max(0, $objetivoOt - $ot->recibido);
+            $ot->pendiente_confirmacion_total = $ot->pendiente_recepcion;
 
             $ot->movimientos_adicionales = max(0, $ot->movimientos_fisicos - $topeOt);
             $ot->movimientos_confirmados_adicionales = max(0, $ot->movimientos_confirmados - $topeOt);
@@ -645,8 +646,9 @@ class SeguimientoPedidoController extends Controller
             'terminado' => (int) $ots->sum('producto_terminado'),
             'enviado' => (int) $ots->sum('enviado'),
             'recibido' => (int) $ots->sum('recibido'),
+            'pendiente_pt' => (int) $ots->sum('pendiente_pt'),
             'pendiente_envio' => (int) $ots->sum('pendiente_envio'),
-            'pendiente_confirmar' => (int) $ots->sum('pendiente_confirmacion_total'),
+            'pendiente_confirmar' => (int) $ots->sum('pendiente_recepcion'),
             'completas' => $ots->where('estado_seguimiento', 'COMPLETO')->count(),
             'fecha_pedido' => $pedido->fecha_pedido,
             'primer_envio_logistica' => $primerEnvioLogistica,
