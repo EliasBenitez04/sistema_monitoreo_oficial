@@ -73,24 +73,42 @@ class SeguimientoPedidoController extends Controller
             ->selectSub(function ($q) {
                 $q->from('seguimiento_pedido_detalle as spd_conf')
                     ->whereColumn('spd_conf.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereExists(function ($r) {
-                        $r->select(DB::raw(1))
-                            ->from('ot_logistica_remisiones as rc')
-                            ->whereColumn('rc.id_ot', 'spd_conf.id_ot')
-                            ->whereNotNull('rc.fecha_recepcion')
-                            ->where(function ($origen) {
-                                $origen->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
-                                    ->orWhere('rc.cod_sucursal_salida', 1);
-                            })
-                            ->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_logistica, rc.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
-                            ->where(function ($fecha) {
-                                $fecha->whereNull('seguimiento_pedido.fecha_pedido')
-                                    ->orWhereColumn('rc.fecha_remision', '>=', 'seguimiento_pedido.fecha_pedido');
-                            })
-                            ->where(function ($fecha) {
-                                $fecha->whereNull('seguimiento_pedido.fecha_pedido')
-                                    ->orWhereColumn('rc.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
-                            });
+                    ->where(function ($estadoOt) {
+                        // Caso normal: despacho original posterior al pedido con recepción local.
+                        $estadoOt->whereExists(function ($r) {
+                            $r->select(DB::raw(1))
+                                ->from('ot_logistica_remisiones as rc')
+                                ->whereColumn('rc.id_ot', 'spd_conf.id_ot')
+                                ->whereNotNull('rc.fecha_recepcion')
+                                ->where(function ($origen) {
+                                    $origen->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
+                                        ->orWhere('rc.cod_sucursal_salida', 1);
+                                })
+                                ->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_logistica, rc.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
+                                ->where(function ($fecha) {
+                                    $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                                        ->orWhereColumn('rc.fecha_remision', '>=', 'seguimiento_pedido.fecha_pedido');
+                                })
+                                ->where(function ($fecha) {
+                                    $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                                        ->orWhereColumn('rc.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                                });
+                        })
+                        // Caso histórico: la OT ya había sido despachada antes del pedido.
+                        // Se considera atendida, pero no participa del cálculo de días.
+                        ->orWhereExists(function ($r) {
+                            $r->select(DB::raw(1))
+                                ->from('ot_logistica_remisiones as rh')
+                                ->whereColumn('rh.id_ot', 'spd_conf.id_ot')
+                                ->whereNotNull('seguimiento_pedido.fecha_pedido')
+                                ->whereNotNull('rh.fecha_remision')
+                                ->where(function ($origen) {
+                                    $origen->whereRaw("UPPER(TRIM(COALESCE(rh.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
+                                        ->orWhere('rh.cod_sucursal_salida', 1);
+                                })
+                                ->whereRaw("UPPER(TRIM(COALESCE(rh.sucursal_logistica, rh.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
+                                ->whereColumn('rh.fecha_remision', '<', 'seguimiento_pedido.fecha_pedido');
+                        });
                     })
                     ->selectRaw('COUNT(DISTINCT spd_conf.id_ot)');
             }, 'ots_confirmadas')
@@ -99,7 +117,19 @@ class SeguimientoPedidoController extends Controller
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
                     ->whereNotNull('r.fecha_recepcion')
-                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
+                    ->where(function ($origen) {
+                        $origen->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
+                            ->orWhere('r.cod_sucursal_salida', 1);
+                    })
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
+                    ->where(function ($fecha) {
+                        $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                            ->orWhereColumn('r.fecha_remision', '>=', 'seguimiento_pedido.fecha_pedido');
+                    })
+                    ->where(function ($fecha) {
+                        $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                            ->orWhereColumn('r.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                    })
                     ->selectRaw('MIN(r.fecha_recepcion)');
             }, 'primera_confirmacion')
             ->selectSub(function ($q) {
@@ -107,7 +137,19 @@ class SeguimientoPedidoController extends Controller
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
                     ->whereNotNull('r.fecha_recepcion')
-                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
+                    ->where(function ($origen) {
+                        $origen->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
+                            ->orWhere('r.cod_sucursal_salida', 1);
+                    })
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
+                    ->where(function ($fecha) {
+                        $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                            ->orWhereColumn('r.fecha_remision', '>=', 'seguimiento_pedido.fecha_pedido');
+                    })
+                    ->where(function ($fecha) {
+                        $fecha->whereNull('seguimiento_pedido.fecha_pedido')
+                            ->orWhereColumn('r.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                    })
                     ->selectRaw('MAX(r.fecha_recepcion)');
             }, 'ultima_confirmacion')
             ->orderByDesc('id');
@@ -604,7 +646,7 @@ class SeguimientoPedidoController extends Controller
                 });
 
                 $ot->kpi_estado = ($otDisponiblePreviamente && $tuvoDespachoAnterior)
-                    ? 'DISTRIBUIDA ANTES DEL PEDIDO'
+                    ? 'CONFIRMADO'
                     : 'SIN DESPACHO DEL PEDIDO';
             } else {
                 $recepcionValida = $despachosCentral
@@ -625,9 +667,7 @@ class SeguimientoPedidoController extends Controller
                 if (!$recepcionValida) {
                     $ot->kpi_estado = 'DESPACHADO SIN CONFIRMAR';
                 } else {
-                    $ot->kpi_estado = $otDisponiblePreviamente
-                        ? 'CONFIRMADO - OT DISPONIBLE'
-                        : 'CONFIRMADO';
+                    $ot->kpi_estado = 'CONFIRMADO';
 
                     if ($fechaPedido) {
                         $ot->kpi_dias = $fechaPedido->diffInDays(
@@ -689,8 +729,8 @@ class SeguimientoPedidoController extends Controller
                 ? round($diasValidos->avg(), 1)
                 : null,
             'ots_con_envio_valido' => $salidasLogisticaValidas->count(),
-            'ots_confirmadas_kpi' => $recepcionesValidas->count(),
-            'ots_distribuidas_antes_pedido' => $kpisOt->where('estado', 'DISTRIBUIDA ANTES DEL PEDIDO')->count(),
+            'ots_confirmadas_kpi' => $kpisOt->where('estado', 'CONFIRMADO')->count(),
+            'ots_distribuidas_antes_pedido' => 0,
             'movimientos_anteriores_omitidos' => $movimientosAnteriores,
             'dias_transcurridos' => ($fechaPedido && $recepcionesValidas->isEmpty())
                 ? $fechaPedido->diffInDays(Carbon::today(), false)
