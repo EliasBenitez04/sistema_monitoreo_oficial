@@ -10,14 +10,22 @@
 </div>
 <div class="alert alert-light border shadow-sm"><strong>{{ number_format($resumen->prendas,0,',','.') }} prendas pendientes</strong> en {{ $resumen->ots }} OT. <span class="text-danger ml-2"><i class="fas fa-circle mr-1"></i>URGENTE</span> = 2 días o más desde la fecha del pedido y todavía pendiente.</div>
 <div class="card card-outline card-danger"><div class="card-header"><h3 class="card-title"><i class="fas fa-bullseye mr-2"></i>Prioridades para decisión</h3><span class="float-right text-muted small">Ordenado por urgencia y antigüedad</span></div>
-<div class="table-responsive"><table class="table table-hover table-sm mb-0 text-center informe-gerencial"><thead><tr><th>Prioridad</th><th>Pedido</th><th>Fecha pedido</th><th>OT</th><th>Cantidad</th><th class="text-left">Descripción</th><th>Etapa actual</th><th>Desde pedido</th><th>Días desde pedido</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table table-hover table-sm mb-0 text-center informe-gerencial"><thead><tr><th>Prioridad</th><th>Pedido</th><th>Fecha pedido</th><th>OT</th><th>Cantidad</th><th class="text-left">Descripción</th><th>Etapa actual</th><th>Fecha proceso actual</th><th>Días desde pedido</th></tr></thead><tbody>
 @forelse($pendientes as $fila)
 
 <tr class="{{ $fila->urgente ? 'fila-urgente' : '' }}">
 <td>@if($fila->urgente)<span class="badge badge-danger px-2 py-2"><i class="fas fa-exclamation-triangle mr-1"></i>URGENTE</span>@else<span class="badge badge-secondary">NORMAL</span>@endif</td>
 <td><strong>{{ $fila->nro_pedido }}</strong></td><td>{{ $fila->fecha_pedido ? date('d/m/Y',strtotime($fila->fecha_pedido)) : '-' }}</td><td><strong>{{ $fila->nro_ot }}</strong></td><td><strong>{{ number_format($fila->cantidad_orden,0,',','.') }}</strong></td><td class="text-left">{{ $fila->descripcion ?: '-' }}</td>
 <td>@if($fila->etapa_gerencial==='LOGISTICA')<span class="badge badge-info">LOGÍSTICA</span>@elseif($fila->etapa_gerencial==='TERMINACION')<span class="badge badge-warning">TERMINACIÓN</span>@else<span class="badge badge-secondary">SIN INICIAR</span>@endif</td>
-<td>{{ $fila->fecha_pedido ? date('d/m/Y',strtotime($fila->fecha_pedido)) : '-' }}</td><td>@if($fila->dias_etapa!==null)<strong class="{{ $fila->urgente ? 'text-danger' : '' }}">{{ $fila->dias_etapa }} días</strong>@else-@endif</td>
+<td>
+@if($fila->etapa_gerencial==='LOGISTICA' && $fila->fecha_logistica)
+{{ date('d/m/Y',strtotime($fila->fecha_logistica)) }}
+@elseif($fila->etapa_gerencial==='TERMINACION' && $fila->fecha_terminacion)
+{{ date('d/m/Y',strtotime($fila->fecha_terminacion)) }}
+@else
+-
+@endif
+</td><td>@if($fila->dias_etapa!==null)<strong class="{{ $fila->urgente ? 'text-danger' : '' }}">{{ $fila->dias_etapa }} días</strong>@else-@endif</td>
 </tr>
 @empty<tr><td colspan="9" class="text-success py-5"><i class="fas fa-check-circle mr-2"></i>No hay OT pendientes.</td></tr>@endforelse
 </tbody></table></div></div>
