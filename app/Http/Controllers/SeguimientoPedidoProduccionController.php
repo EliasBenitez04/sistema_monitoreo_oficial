@@ -275,9 +275,37 @@ class SeguimientoPedidoProduccionController extends Controller
             })->count(),
         ];
 
+        /*
+         * Resumen por proceso actual para lectura gerencial.
+         * Se agrupan únicamente las OT todavía pendientes de llegar a
+         * TERMINACION - INGRESO TERMINACION.
+         */
+        $porProcesos = $pendientes
+            ->groupBy(function ($fila) {
+                $proceso = trim((string) $fila->proceso_actual);
+                return $proceso !== '' ? $proceso : 'SIN PROCESO';
+            })
+            ->map(function ($grupo, $proceso) use ($totalPendientes) {
+                $otsProceso = $grupo->count();
+                $prendasProceso = (int) $grupo->sum('cantidad_orden');
+
+                return (object) [
+                    'proceso' => $proceso,
+                    'ots' => $otsProceso,
+                    'prendas' => $prendasProceso,
+                    'pedidos' => $grupo->pluck('seguimiento_pedido_id')->unique()->count(),
+                    'porcentaje' => $totalPendientes > 0
+                        ? round(($otsProceso / $totalPendientes) * 100, 1)
+                        : 0,
+                ];
+            })
+            ->sortByDesc('ots')
+            ->values();
+
         return view('seguimiento_pedidos_produccion.informe_gerencial', compact(
             'pendientes',
-            'resumen'
+            'resumen',
+            'porProcesos'
         ));
     }
 
