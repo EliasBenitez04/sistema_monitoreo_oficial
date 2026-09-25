@@ -8,9 +8,12 @@
             <h1><i class="fas fa-industry mr-2"></i>Seguimiento de Pedido a Producción</h1>
             <p class="text-muted mb-0">Pedidos P1, P2... completos cuando todas sus OT alcanzan TERMINACION - INGRESO TERMINACION.</p>
         </div>
-        <div>
-            <a href="{{ route('seguimiento-pedidos.index', ['abrir_import' => 1]) }}#importar-pedidos" class="btn btn-primary mr-1">
-                <i class="fas fa-file-import mr-1"></i> Importar pedidos T / P
+        <div class="mt-2 mt-md-0">
+            <a href="{{ route('seguimiento-produccion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
+                <i class="fas fa-chart-line mr-1"></i> Informe gerencial
+            </a>
+            <a href="{{ route('seguimiento-pedidos.index', ['abrir_import' => 1]) }}#importar-pedidos" class="btn btn-primary shadow-sm mr-1">
+                <i class="fas fa-file-import mr-1"></i> Importar T / P
             </a>
             <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-route mr-1"></i> Seguimiento a locales
@@ -53,7 +56,10 @@
                 </div>
                 <div class="prod-kpi-value">{{ number_format($resumen->pedidos,0,',','.') }}</div>
                 <div class="prod-kpi-label">Pedidos a Producción</div>
-                <div class="prod-kpi-meta">P1, P2, P3...</div>
+                <div class="prod-kpi-meta">
+                    <strong>{{ number_format($resumen->completos,0,',','.') }}</strong> completos ·
+                    <strong>{{ number_format(max(0,$resumen->pedidos-$resumen->completos),0,',','.') }}</strong> en curso
+                </div>
             </div>
         </div>
 
@@ -65,7 +71,7 @@
                 </div>
                 <div class="prod-kpi-value">{{ number_format($resumen->ots,0,',','.') }}</div>
                 <div class="prod-kpi-label">OT vinculadas</div>
-                <div class="prod-kpi-meta">Total incluido en los pedidos P</div>
+                <div class="prod-kpi-meta">Base total del seguimiento de Producción</div>
             </div>
         </div>
 
@@ -200,6 +206,11 @@
     min-height:150px;
     box-shadow:0 6px 18px rgba(15,23,42,.05);
     overflow:hidden;
+    transition:transform .18s ease, box-shadow .18s ease;
+}
+.prod-kpi-card:hover{
+    transform:translateY(-2px);
+    box-shadow:0 10px 24px rgba(15,23,42,.08);
 }
 .prod-kpi-card:before{
     content:'';
@@ -214,7 +225,8 @@
 .prod-kpi-icon{
     width:38px;height:38px;border-radius:10px;
     display:flex;align-items:center;justify-content:center;
-    background:#f1f5f9;color:#334155;font-size:16px;
+    background:linear-gradient(135deg,#eff6ff,#f8fafc);color:#334155;font-size:16px;
+    box-shadow:inset 0 0 0 1px rgba(148,163,184,.12);
 }
 .prod-kpi-tag{
     font-size:10px;text-transform:uppercase;letter-spacing:.08em;
