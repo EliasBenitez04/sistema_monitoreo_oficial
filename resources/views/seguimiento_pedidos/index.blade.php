@@ -114,29 +114,44 @@
     </div>
     @endif
 
-    <div class="card card-outline card-primary">
-        <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar OT por pedido T / P</h3>
-            <span class="float-right text-muted small">Panel siempre visible</span>
+    <div class="mb-3" id="importar-pedidos">
+        <button class="btn btn-outline-primary shadow-sm"
+                type="button"
+                data-toggle="collapse"
+                data-target="#panelImportacionPedidos"
+                aria-expanded="{{ request('abrir_import') ? 'true' : 'false' }}"
+                aria-controls="panelImportacionPedidos">
+            <i class="fas fa-file-import mr-1"></i>
+            Importar pedidos T / P
+            <i class="fas fa-chevron-down ml-2"></i>
+        </button>
+    </div>
+
+    <div class="collapse {{ request('abrir_import') ? 'show' : '' }}" id="panelImportacionPedidos">
+        <div class="card card-outline card-primary mb-4">
+            <div class="card-header">
+                <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importador único de pedidos</h3>
+                <span class="float-right text-muted small">T = locales · P = producción</span>
+            </div>
+            <form method="POST" action="{{ route('seguimiento-pedidos.importar') }}" enctype="multipart/form-data">
+                @csrf
+                <div class="card-body">
+                    <div class="alert alert-info mb-3">
+                        Columnas: <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
+                        Ejemplo local: <strong>30703 / T1 / 01/09/2026</strong>.
+                        Ejemplo producción: <strong>30703 / P1 / 01/09/2026</strong>.
+                    </div>
+                    <div class="custom-file">
+                        <input type="file" name="archivo" class="custom-file-input" id="archivo-pedidos" accept=".xlsx,.xls,.csv" required>
+                        <label class="custom-file-label" for="archivo-pedidos">Seleccionar archivo...</label>
+                    </div>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Un solo archivo puede contener pedidos T y P.</small>
+                    <button class="btn btn-primary"><i class="fas fa-upload mr-1"></i> Importar pedidos</button>
+                </div>
+            </form>
         </div>
-        <form method="POST" action="{{ route('seguimiento-pedidos.importar') }}" enctype="multipart/form-data">
-            @csrf
-            <div class="card-body">
-                <div class="alert alert-info mb-3">
-                    El Excel debe contener <strong>NRO OT</strong>, <strong>NRO PEDIDO</strong> y <strong>FECHA PEDIDO</strong> (también se aceptan OT, PEDIDO y FECHA).
-                    Ejemplos: <strong>30703 / T1 / 01/09/2026</strong> para seguimiento a locales o
-                    <strong>30703 / P1 / 01/09/2026</strong> para seguimiento a producción.
-                    El mismo importador reconoce ambos tipos; cada módulo muestra solamente su prefijo.
-                </div>
-                <div class="custom-file">
-                    <input type="file" name="archivo" class="custom-file-input" id="archivo-pedidos" accept=".xlsx,.xls,.csv" required>
-                    <label class="custom-file-label" for="archivo-pedidos">Seleccionar archivo...</label>
-                </div>
-            </div>
-            <div class="card-footer text-right">
-                <button class="btn btn-primary"><i class="fas fa-upload mr-1"></i> Importar pedidos</button>
-            </div>
-        </form>
     </div>
 
     <div class="card">
