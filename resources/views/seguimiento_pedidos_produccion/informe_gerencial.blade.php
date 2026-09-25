@@ -55,58 +55,30 @@
         </div>
     </div>
 
-    <div class="row mgr-kpis">
-        <div class="col-xl col-lg-4 col-md-6 mb-3">
-            <div class="mgr-kpi">
-                <div class="mgr-kpi-icon is-blue"><i class="fas fa-clipboard-list"></i></div>
-                <div>
-                    <div class="mgr-kpi-value">{{ number_format($resumen->pedidos_con_pendiente,0,',','.') }}</div>
-                    <div class="mgr-kpi-label">Pedidos con pendientes</div>
-                    <div class="mgr-kpi-meta">{{ number_format($resumen->pedidos_completos,0,',','.') }} pedidos completos</div>
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-3 mb-lg-0">
+            <div class="mgr-main-kpi is-pending">
+                <div class="mgr-main-kpi-icon"><i class="fas fa-hourglass-half"></i></div>
+                <div class="mgr-main-kpi-content">
+                    <div class="mgr-main-kpi-label">OT pendientes</div>
+                    <div class="mgr-main-kpi-value">{{ number_format($resumen->ots_pendientes,0,',','.') }}</div>
+                    <div class="mgr-main-kpi-meta">
+                        de {{ number_format($resumen->ots,0,',','.') }} OT totales ·
+                        {{ number_format($resumen->ots_completas,0,',','.') }} ya ingresaron a Terminación
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-xl col-lg-4 col-md-6 mb-3">
-            <div class="mgr-kpi">
-                <div class="mgr-kpi-icon is-amber"><i class="fas fa-hourglass-half"></i></div>
-                <div>
-                    <div class="mgr-kpi-value">{{ number_format($resumen->ots_pendientes,0,',','.') }}</div>
-                    <div class="mgr-kpi-label">OT pendientes</div>
-                    <div class="mgr-kpi-meta">de {{ number_format($resumen->ots,0,',','.') }} OT totales</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl col-lg-4 col-md-6 mb-3">
-            <div class="mgr-kpi">
-                <div class="mgr-kpi-icon is-violet"><i class="fas fa-boxes"></i></div>
-                <div>
-                    <div class="mgr-kpi-value">{{ number_format($resumen->prendas_pendientes,0,',','.') }}</div>
-                    <div class="mgr-kpi-label">Prendas pendientes</div>
-                    <div class="mgr-kpi-meta">asociadas a OT sin cierre</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl col-lg-4 col-md-6 mb-3">
-            <div class="mgr-kpi">
-                <div class="mgr-kpi-icon is-red"><i class="fas fa-exclamation-triangle"></i></div>
-                <div>
-                    <div class="mgr-kpi-value">{{ number_format($resumen->urgentes,0,',','.') }}</div>
-                    <div class="mgr-kpi-label">OT urgentes</div>
-                    <div class="mgr-kpi-meta">30 días o más desde el pedido</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl col-lg-4 col-md-6 mb-3">
-            <div class="mgr-kpi">
-                <div class="mgr-kpi-icon is-slate"><i class="fas fa-stopwatch"></i></div>
-                <div>
-                    <div class="mgr-kpi-value">{{ number_format($resumen->antiguedad_maxima,0,',','.') }}</div>
-                    <div class="mgr-kpi-label">Días máx. de espera</div>
-                    <div class="mgr-kpi-meta">promedio {{ number_format($resumen->promedio_pendiente,1,',','.') }} días</div>
+        <div class="col-lg-6">
+            <div class="mgr-main-kpi is-garments">
+                <div class="mgr-main-kpi-icon"><i class="fas fa-boxes"></i></div>
+                <div class="mgr-main-kpi-content">
+                    <div class="mgr-main-kpi-label">Prendas pendientes</div>
+                    <div class="mgr-main-kpi-value">{{ number_format($resumen->prendas_pendientes,0,',','.') }}</div>
+                    <div class="mgr-main-kpi-meta">
+                        asociadas a {{ number_format($resumen->ots_pendientes,0,',','.') }} OT que aún no llegaron a Ingreso Terminación
+                    </div>
                 </div>
             </div>
         </div>
@@ -114,28 +86,12 @@
 
     <div class="mgr-summary mb-4">
         <div class="row align-items-center">
-            <div class="col-lg-8">
+            <div class="col-12">
                 <div class="mgr-summary-title"><i class="fas fa-bullseye mr-2"></i>Lectura ejecutiva</div>
                 <div class="mgr-summary-text">
                     Hay <strong>{{ number_format($resumen->ots_pendientes,0,',','.') }} OT</strong> pendientes de llegar a Terminación,
                     pertenecientes a <strong>{{ number_format($resumen->pedidos_con_pendiente,0,',','.') }} pedidos</strong>.
-                    @if($resumen->urgentes > 0)
-                        <span class="text-danger font-weight-bold">{{ $resumen->urgentes }} requieren atención prioritaria.</span>
-                    @else
-                        <span class="text-success font-weight-bold">No hay OT con 30 días o más de atraso.</span>
-                    @endif
-                </div>
-            </div>
-            <div class="col-lg-4 mt-3 mt-lg-0">
-                <div class="row text-center">
-                    <div class="col-6">
-                        <div class="mgr-mini-value text-success">{{ number_format($resumen->ots_completas,0,',','.') }}</div>
-                        <div class="mgr-mini-label">OT completas</div>
-                    </div>
-                    <div class="col-6">
-                        <div class="mgr-mini-value {{ $resumen->sin_proceso > 0 ? 'text-danger' : 'text-success' }}">{{ number_format($resumen->sin_proceso,0,',','.') }}</div>
-                        <div class="mgr-mini-label">Sin proceso</div>
-                    </div>
+                    El detalle inferior está agrupado por <strong>proceso actual</strong> para identificar rápidamente dónde se concentran las OT pendientes.
                 </div>
             </div>
         </div>
@@ -145,12 +101,9 @@
         <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap">
             <div>
                 <h3 class="card-title font-weight-bold mb-0">
-                    <i class="fas fa-list-ol mr-2 text-danger"></i>Prioridades de Producción
+                    <i class="fas fa-stream mr-2 text-primary"></i>OT pendientes por proceso
                 </h3>
-                <small class="text-muted">Ordenado por urgencia y días transcurridos desde la fecha del pedido.</small>
-            </div>
-            <div class="mt-2 mt-md-0">
-                <span class="mgr-legend is-urgent"><i class="fas fa-circle mr-1"></i>Atraso ≥ 30 días</span>
+                <small class="text-muted">Ordenado por proceso actual; dentro de cada proceso, primero aparecen las OT con más días pendientes.</small>
             </div>
         </div>
 
@@ -158,7 +111,6 @@
             <table class="table table-hover mb-0 mgr-table">
                 <thead>
                     <tr>
-                        <th>Prioridad</th>
                         <th>Pedido</th>
                         <th>Fecha pedido</th>
                         <th>OT</th>
@@ -171,12 +123,7 @@
                 </thead>
                 <tbody>
                 @forelse($pendientes as $fila)
-                    <tr class="{{ $fila->urgente ? 'is-urgent-row' : '' }}">
-                        <td>
-                            @if($fila->urgente)
-                                <span class="mgr-priority is-urgent"><i class="fas fa-exclamation-triangle mr-1"></i>URGENTE</span>
-                            @endif
-                        </td>
+                    <tr>
                         <td><strong class="text-dark">{{ $fila->nro_pedido }}</strong></td>
                         <td>{{ $fila->fecha_pedido ? date('d/m/Y',strtotime($fila->fecha_pedido)) : '-' }}</td>
                         <td><span class="mgr-ot">{{ $fila->nro_ot }}</span></td>
@@ -194,7 +141,7 @@
                         </td>
                         <td>{{ $fila->fecha_proceso_actual ? date('d/m/Y',strtotime($fila->fecha_proceso_actual)) : '-' }}</td>
                         <td>
-                            <strong class="{{ $fila->urgente ? 'text-danger' : 'text-dark' }}">
+                            <strong class="text-dark">
                                 {{ number_format($fila->dias_pendiente,0,',','.') }}
                                 {{ $fila->dias_pendiente == 1 ? 'día' : 'días' }}
                             </strong>
@@ -202,7 +149,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center py-5">
+                        <td colspan="8" class="text-center py-5">
                             <div class="mgr-empty-icon"><i class="fas fa-check-circle"></i></div>
                             <strong class="text-success d-block mt-2">Producción sin pendientes</strong>
                             <small class="text-muted">Todas las OT de los pedidos P alcanzaron Ingreso Terminación.</small>
@@ -235,30 +182,60 @@
 .mgr-avance-detail{font-size:18px;font-weight:850;color:#334155}
 .mgr-progress{height:10px;background:#eef2f7;border-radius:999px;overflow:hidden}
 .mgr-progress-bar{height:100%;background:#22c55e;border-radius:999px}
-.mgr-kpi{
-    min-height:112px;display:flex;align-items:center;gap:13px;
-    background:#fff;border:1px solid #e6ebf1;border-radius:14px;
-    padding:16px;box-shadow:0 5px 18px rgba(15,23,42,.04)
+.mgr-main-kpi{
+    min-height:148px;
+    display:flex;
+    align-items:center;
+    gap:20px;
+    background:#fff;
+    border:1px solid #e6ebf1;
+    border-radius:16px;
+    padding:22px 24px;
+    box-shadow:0 7px 22px rgba(15,23,42,.05);
+    position:relative;
+    overflow:hidden;
 }
-.mgr-kpi-icon{
-    width:42px;height:42px;border-radius:12px;display:flex;align-items:center;
-    justify-content:center;flex:0 0 42px;font-size:16px
+.mgr-main-kpi:before{
+    content:'';
+    position:absolute;
+    left:0;top:0;bottom:0;
+    width:5px;
 }
-.mgr-kpi-icon.is-blue{background:#eff6ff;color:#2563eb}
-.mgr-kpi-icon.is-amber{background:#fffbeb;color:#d97706}
-.mgr-kpi-icon.is-violet{background:#f5f3ff;color:#7c3aed}
-.mgr-kpi-icon.is-red{background:#fef2f2;color:#dc2626}
-.mgr-kpi-icon.is-slate{background:#f1f5f9;color:#475569}
-.mgr-kpi-value{font-size:24px;line-height:1;font-weight:900;color:#0f172a}
-.mgr-kpi-label{font-size:12px;font-weight:800;color:#334155;margin-top:5px}
-.mgr-kpi-meta{font-size:10px;color:#94a3b8;margin-top:2px}
+.mgr-main-kpi.is-pending:before{background:#f59e0b}
+.mgr-main-kpi.is-garments:before{background:#7c3aed}
+.mgr-main-kpi-icon{
+    width:58px;height:58px;
+    border-radius:15px;
+    display:flex;align-items:center;justify-content:center;
+    flex:0 0 58px;
+    font-size:22px;
+}
+.mgr-main-kpi.is-pending .mgr-main-kpi-icon{background:#fffbeb;color:#d97706}
+.mgr-main-kpi.is-garments .mgr-main-kpi-icon{background:#f5f3ff;color:#7c3aed}
+.mgr-main-kpi-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.07em;
+    font-weight:900;
+    color:#64748b;
+}
+.mgr-main-kpi-value{
+    font-size:38px;
+    line-height:1;
+    font-weight:900;
+    color:#0f172a;
+    margin:7px 0 6px;
+}
+.mgr-main-kpi-meta{
+    font-size:11px;
+    color:#94a3b8;
+    line-height:1.4;
+}
 .mgr-summary{
     background:#f8fafc;border:1px solid #e6ebf1;border-radius:14px;padding:17px 20px
 }
 .mgr-summary-title{font-size:13px;font-weight:850;color:#334155;margin-bottom:4px}
 .mgr-summary-text{font-size:12px;color:#64748b}
-.mgr-mini-value{font-size:22px;font-weight:900}
-.mgr-mini-label{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;font-weight:800}
 .mgr-table-card{border:1px solid #e6ebf1;border-radius:14px;overflow:hidden;box-shadow:0 5px 18px rgba(15,23,42,.04)}
 .mgr-table th{
     background:#f8fafc;color:#64748b;font-size:10px;text-transform:uppercase;
@@ -266,9 +243,6 @@
 }
 .mgr-table td{font-size:12px;vertical-align:middle!important;text-align:center}
 .mgr-table td:nth-child(6){text-align:left}
-.is-urgent-row{background:#fff8f8}
-.mgr-priority{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;font-size:9px;font-weight:850}
-.mgr-priority.is-urgent{background:#fef2f2;color:#b91c1c}
 .mgr-ot{font-size:13px;font-weight:900;color:#0f172a}
 .mgr-code{font-size:12px;color:#0f172a}
 .mgr-process{
@@ -292,8 +266,6 @@
     color:#b91c1c;
     border-color:#fecaca;
 }
-.mgr-legend{font-size:10px;font-weight:750;color:#64748b}
-.mgr-legend.is-urgent{color:#b91c1c}
 .mgr-empty-icon{font-size:34px;color:#22c55e}
 @media(max-width:767.98px){
     .mgr-title{font-size:24px}
