@@ -75,7 +75,7 @@ class SeguimientoPedidoController extends Controller
                             ->whereColumn('rc.id_ot', 'spd_conf.id_ot')
                             ->whereNotNull('rc.fecha_recepcion')
                             ->where(function ($origen) {
-                                $origen->whereIn(DB::raw("UPPER(TRIM(COALESCE(rc.sucursal_salida, '')))"), ['CASA CENTRAL', 'MATRIZ'])
+                                $origen->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
                                     ->orWhere('rc.cod_sucursal_salida', 1);
                             })
                             ->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_logistica, rc.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')")
@@ -88,7 +88,7 @@ class SeguimientoPedidoController extends Controller
                                     ->orWhereColumn('rc.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
                             });
                     })
-                    ->selectRaw('COUNT(*)');
+                    ->selectRaw('COUNT(DISTINCT spd_conf.id_ot)');
             }, 'ots_confirmadas')
             ->selectSub(function ($q) {
                 $q->from('seguimiento_pedido_detalle as spd')
