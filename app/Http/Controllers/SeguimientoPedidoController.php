@@ -55,8 +55,23 @@ class SeguimientoPedidoController extends Controller
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
+                    ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
+            }, 'movimientos_locales')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
                     ->whereNotNull('r.fecha_recepcion')
-                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
+                    ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
+            }, 'confirmado_locales')
+            ->selectSub(function ($q) {
+                $q->from('seguimiento_pedido_detalle as spd')
+                    ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
+                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
+                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
                     ->selectRaw('MIN(r.fecha_recepcion)');
             }, 'primera_confirmacion')
             ->selectSub(function ($q) {
@@ -64,7 +79,7 @@ class SeguimientoPedidoController extends Controller
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
                     ->whereNotNull('r.fecha_recepcion')
-                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
+                    ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
                     ->selectRaw('MIN(r.fecha_recepcion)');
             }, 'ultima_confirmacion')
             ->orderByDesc('id');
@@ -79,8 +94,19 @@ class SeguimientoPedidoController extends Controller
             $inicio = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
             $fin = $pedido->ultima_confirmacion ? Carbon::parse($pedido->ultima_confirmacion)->startOfDay() : null;
 
-            $completo = (int) $pedido->cantidad_total > 0
-                && (int) $pedido->confirmado >= (int) $pedido->cantidad_total;
+            $cantidad = (int) $pedido->cantidad_total;
+            $pt = min($cantidad, (int) $pedido->producto_terminado);
+            $movLocales = (int) $pedido->movimientos_locales;
+            $confLocales = (int) $pedido->confirmado_locales;
+
+            $completo = $cantidad > 0
+                && $pt >= $cantidad
+                && $movLocales > 0
+                && $confLocales >= $movLocales;
+
+            $pedido->movimientos_locales = $movLocales;
+            $pedido->confirmado_locales = $confLocales;
+            $pedido->completo_locales = $completo;
 
             $pedido->dias_confirmacion = ($inicio && $fin && $completo)
                 ? $inicio->diffInDays($fin, false)
@@ -103,10 +129,26 @@ class SeguimientoPedidoController extends Controller
             return min((int) $p->cantidad_total, (int) $p->confirmado);
         });
         $completos = $resumenBase->filter(function ($p) {
-            return (int) $p->cantidad_total > 0 && (int) $p->confirmado >= (int) $p->cantidad_total;
+            $cantidad = (int) $p->cantidad_total;
+            $pt = min($cantidad, (int) $p->producto_terminado);
+            $movLocales = (int) $p->movimientos_locales;
+            $confLocales = (int) $p->confirmado_locales;
+
+            return $cantidad > 0
+                && $pt >= $cantidad
+                && $movLocales > 0
+                && $confLocales >= $movLocales;
         });
         $enCurso = $resumenBase->reject(function ($p) {
-            return (int) $p->cantidad_total > 0 && (int) $p->confirmado >= (int) $p->cantidad_total;
+            $cantidad = (int) $p->cantidad_total;
+            $pt = min($cantidad, (int) $p->producto_terminado);
+            $movLocales = (int) $p->movimientos_locales;
+            $confLocales = (int) $p->confirmado_locales;
+
+            return $cantidad > 0
+                && $pt >= $cantidad
+                && $movLocales > 0
+                && $confLocales >= $movLocales;
         });
         $dias = $completos->map(function ($p) {
             if (!$p->fecha_pedido || !$p->primera_confirmacion) return null;
@@ -401,7 +443,7 @@ class SeguimientoPedidoController extends Controller
             // CASA CENTRAL y MATRIZ son nodos del canal mayorista y no deben inflar el contador de locales.
             $esMayorista = function ($local) {
                 $nombre = strtoupper(trim((string) $local->local));
-                return in_array($nombre, ['CASA CENTRAL', 'MATRIZ'], true);
+                return in_array($nombre, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
             };
 
             $ot->locales_comerciales = $ot->locales->reject($esMayorista)->values();
