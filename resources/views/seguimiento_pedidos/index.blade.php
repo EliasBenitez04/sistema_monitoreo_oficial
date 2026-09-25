@@ -23,6 +23,15 @@
 <section class="content">
 <div class="container-fluid">
     @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+    @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
+    @if($errors->any())
+        <div class="alert alert-danger">
+            <strong>No se pudo importar:</strong>
+            <ul class="mb-0 pl-3">
+                @foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach
+            </ul>
+        </div>
+    @endif
 
     <div class="row">
         <div class="col-lg-3 col-6">
@@ -105,17 +114,19 @@
     </div>
     @endif
 
-    <div class="card card-outline card-primary collapsed-card">
+    <div class="card card-outline card-primary">
         <div class="card-header">
-            <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar OT por pedido</h3>
-            <div class="card-tools"><button type="button" class="btn btn-tool" data-card-widget="collapse"><i class="fas fa-plus"></i></button></div>
+            <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importar OT por pedido T / P</h3>
+            <span class="float-right text-muted small">Panel siempre visible</span>
         </div>
         <form method="POST" action="{{ route('seguimiento-pedidos.importar') }}" enctype="multipart/form-data">
             @csrf
             <div class="card-body">
                 <div class="alert alert-info mb-3">
                     El Excel debe contener <strong>NRO OT</strong>, <strong>NRO PEDIDO</strong> y <strong>FECHA PEDIDO</strong> (también se aceptan OT, PEDIDO y FECHA).
-                    Ejemplo: <strong>30703 / T1 / 01/09/2026</strong>. La fecha se guarda una sola vez por pedido y la confirmación se toma de la primera recepción real del local; remisiones posteriores no aumentan el tiempo del pedido original.
+                    Ejemplos: <strong>30703 / T1 / 01/09/2026</strong> para seguimiento a locales o
+                    <strong>30703 / P1 / 01/09/2026</strong> para seguimiento a producción.
+                    El mismo importador reconoce ambos tipos; cada módulo muestra solamente su prefijo.
                 </div>
                 <div class="custom-file">
                     <input type="file" name="archivo" class="custom-file-input" id="archivo-pedidos" accept=".xlsx,.xls,.csv" required>
