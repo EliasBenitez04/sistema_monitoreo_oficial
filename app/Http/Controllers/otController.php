@@ -229,6 +229,19 @@ class OtController extends Controller
             . ' | Omitidas: ' . $import->getOmitidas()
             . ' | Errores: ' . $import->getErrores();
 
+        $observaciones = collect($import->getObservaciones())
+            ->take(5)
+            ->map(function ($obs) {
+                return 'Fila ' . $obs['fila']
+                    . ' / OT ' . ($obs['nro_ot'] ?: '?')
+                    . ': ' . $obs['mensaje'];
+            })
+            ->implode(' || ');
+
+        if ($observaciones !== '') {
+            $mensaje .= ' || DETALLE: ' . $observaciones;
+        }
+
         if ($import->getOmitidas() > 0 || $import->getErrores() > 0) {
             alert()->warning('Importación OT con observaciones', $mensaje);
         } else {
