@@ -378,6 +378,229 @@ class ControlTerminacionController extends Controller
         ));
     }
 
+    public function flujoDiario(Request $request)
+    {
+        $fechaDesde = $request->input('fecha_desde', now()->format('Y-m-d'));
+        $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
+        $buscar = trim((string) $request->input('buscar', ''));
+
+        $aplicarBusquedaOt = function ($query) use ($buscar) {
+            if ($buscar === '') {
+                return;
+            }
+
+            $query->where(function ($q) use ($buscar) {
+                if (is_numeric($buscar)) {
+                    $q->where('o.nro_ot', (int) $buscar)
+                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                } else {
+                    $q->where('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                }
+            });
+        };
+
+        /*
+         * 1) ENTRADA A TERMINACIÓN
+         * TERMINACION - TERMINACION representa lo que ingresa físicamente al área.
+         */
+        $entradaQuery = DB::table('ot_trazabilidad as t')
+            ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
+            ->where('t.proceso', 'TERMINACION - TERMINACION')
+            ->whereBetween('t.fecha_proceso', [$fechaDesde, $fechaHasta]);
+
+        $aplicarBusquedaOt($entradaQuery);
+
+        $entradasTerminacion = $entradaQuery
+            ->groupBy(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                't.fecha_proceso'
+            )
+            ->select(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                't.fecha_proceso as fecha',
+                DB::raw('SUM(t.resultado) as cantidad')
+            )
+            ->orderBy('t.fecha_proceso')
+            ->orderBy('o.nro_ot')
+            ->get();
+
+        /*
+         * 2) PRODUCTO TERMINADO = ENTRADA A LOGÍSTICA
+         */
+        $ptQuery = DB::table('ot_trazabilidad as t')
+            ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
+            ->where('t.proceso', 'TERMINACION - PRODUCTO TERMINADO')
+            ->whereBetween('t.fecha_proceso', [$fechaDesde, $fechaHasta]);
+
+        $aplicarBusquedaOt($ptQuery);
+
+        $salidasProductoTerminado = $ptQuery
+            ->groupBy(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                't.fecha_proceso'
+            )
+            ->select(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                't.fecha_proceso as fecha',
+                DB::raw('SUM(t.resultado) as cantidad')
+            )
+            ->orderBy('t.fecha_proceso')
+            ->orderBy('o.nro_ot')
+            ->get();
+
+        /*
+         * 3) ENVÍOS DE LAS OTs QUE TUVIERON PT EN EL PERÍODO.
+         * Se siguen aunque la remisión haya ocurrido después del rango seleccionado.
+         * Solo distribución original CASA CENTRAL -> destino.
+         */
+        $idsOtPt = $salidasProductoTerminado
+            ->pluck('id_ot')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $fechaPtPorOt = $salidasProductoTerminado
+            ->groupBy('id_ot')
+            ->map(function ($items) {
+                return $items->min('fecha');
+            });
+
+        $envios = collect();
+
+        if ($idsOtPt->isNotEmpty() && Schema::hasTable('ot_logistica_remisiones')) {
+            $enviosQuery = DB::table('ot_logistica_remisiones as r')
+                ->join('ot as o', 'o.id_ot', '=', 'r.id_ot')
+                ->whereIn('r.id_ot', $idsOtPt->all())
+                ->where(function ($q) {
+                    $q->where('r.cod_sucursal_salida', 1)
+                        ->orWhere('r.sucursal_salida', 'ILIKE', 'CASA CENTRAL');
+                });
+
+            $aplicarBusquedaOt($enviosQuery);
+
+            $envios = $enviosQuery
+                ->select(
+                    'r.id',
+                    'r.id_ot',
+                    'o.nro_ot',
+                    'o.codigo as codigo_ot',
+                    'o.descripcion',
+                    'r.codigo as codigo_variante',
+                    'r.fecha_remision',
+                    'r.fecha_recepcion',
+                    'r.serie',
+                    'r.numero_remision',
+                    'r.cod_sucursal_destino',
+                    'r.sucursal_destino',
+                    'r.sucursal_logistica',
+                    'r.cantidad'
+                )
+                ->orderBy('o.nro_ot')
+                ->orderBy('r.fecha_remision')
+                ->orderBy('r.serie')
+                ->orderBy('r.numero_remision')
+                ->orderBy('r.codigo')
+                ->get()
+                ->filter(function ($item) use ($fechaPtPorOt) {
+                    $fechaPt = $fechaPtPorOt->get($item->id_ot);
+
+                    if (!$fechaPt || !$item->fecha_remision) {
+                        return true;
+                    }
+
+                    return \Carbon\Carbon::parse($item->fecha_remision)
+                        ->startOfDay()
+                        ->gte(\Carbon\Carbon::parse($fechaPt)->startOfDay());
+                })
+                ->map(function ($item) {
+                    $variante = $this->descomponerCodigoVariante(
+                        $item->codigo_variante ?: $item->codigo_ot
+                    );
+
+                    $item->codigo_base = $variante['codigo_base'];
+                    $item->color = $variante['color'];
+                    $item->talle = $variante['talle'];
+                    $item->destino = $item->sucursal_destino
+                        ?: ($item->sucursal_logistica ?: 'SIN DESTINO');
+                    $item->cantidad = (int) $item->cantidad;
+                    $item->cantidad_recepcionada = $item->fecha_recepcion
+                        ? $item->cantidad
+                        : 0;
+                    $item->cantidad_transito = $item->fecha_recepcion
+                        ? 0
+                        : $item->cantidad;
+
+                    return $item;
+                })
+                ->groupBy(function ($item) {
+                    return implode('|', [
+                        $item->id_ot,
+                        $item->serie,
+                        $item->numero_remision,
+                        $item->codigo_variante,
+                        $item->cod_sucursal_destino,
+                        $item->fecha_remision,
+                        $item->fecha_recepcion,
+                    ]);
+                })
+                ->map(function ($lineas) {
+                    $base = clone $lineas->first();
+                    $base->cantidad = (int) $lineas->sum('cantidad');
+                    $base->cantidad_recepcionada = (int) $lineas->sum('cantidad_recepcionada');
+                    $base->cantidad_transito = (int) $lineas->sum('cantidad_transito');
+                    return $base;
+                })
+                ->values();
+        }
+
+        $totalEntradaTerminacion = (int) $entradasTerminacion->sum('cantidad');
+        $totalProductoTerminado = (int) $salidasProductoTerminado->sum('cantidad');
+        $totalEnviado = (int) $envios->sum('cantidad');
+        $totalRecepcionado = (int) $envios->sum('cantidad_recepcionada');
+        $totalEnTransito = (int) $envios->sum('cantidad_transito');
+
+        $resumen = (object) [
+            'entrada_terminacion' => $totalEntradaTerminacion,
+            'ots_entrada' => $entradasTerminacion->pluck('id_ot')->unique()->count(),
+            'producto_terminado' => $totalProductoTerminado,
+            'ots_pt' => $salidasProductoTerminado->pluck('id_ot')->unique()->count(),
+            'enviado' => $totalEnviado,
+            'recepcionado' => $totalRecepcionado,
+            'transito' => $totalEnTransito,
+            'documentos' => $envios->map(function ($item) {
+                return $item->serie . '|' . $item->numero_remision;
+            })->unique()->count(),
+        ];
+
+        return view('control.flujo_diario', compact(
+            'fechaDesde',
+            'fechaHasta',
+            'buscar',
+            'entradasTerminacion',
+            'salidasProductoTerminado',
+            'envios',
+            'resumen'
+        ));
+    }
+
     public function reportePendientesEnvio(Request $request)
     {
         $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
@@ -643,6 +866,41 @@ class ControlTerminacionController extends Controller
             'totalEnTransito',
             'totalPendiente'
         ));
+    }
+
+    private function descomponerCodigoVariante($codigo): array
+    {
+        $valor = strtoupper(trim((string) $codigo));
+        $valor = ltrim($valor, "'’\`");
+        $valor = preg_replace('/\\s+/u', '', $valor);
+
+        $codigoBase = $valor;
+        $color = null;
+        $talle = null;
+
+        if (preg_match('/^(\\d{9})([A-Z]+)(\\d+)$/', $valor, $m)) {
+            $codigoBase = $m[1];
+            $color = $m[2];
+            $talle = $m[3];
+        } elseif (preg_match('/^(\\d{9})([A-Z0-9]+)$/', $valor, $m)) {
+            $codigoBase = $m[1];
+            $sufijo = $m[2];
+
+            if (preg_match('/^([A-Z]+)(\\d+)$/', $sufijo, $v)) {
+                $color = $v[1];
+                $talle = $v[2];
+            } else {
+                $color = $sufijo;
+            }
+        } elseif (preg_match('/^(\\d{9})/', $valor, $m)) {
+            $codigoBase = $m[1];
+        }
+
+        return [
+            'codigo_base' => $codigoBase ?: null,
+            'color' => $color,
+            'talle' => $talle,
+        ];
     }
 
     private function normalizarDestinoMovimiento($valor): string
