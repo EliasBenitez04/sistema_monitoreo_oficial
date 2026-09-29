@@ -5,17 +5,17 @@
     <div class="container-fluid">
         <div class="d-flex justify-content-between align-items-center flex-wrap">
             <div>
-                <h1><i class="fas fa-route mr-2"></i>Seguimiento de Pedidos</h1>
-                <p class="text-muted mb-0">Seguimiento desde Terminación hasta la recepción confirmada por los locales.</p>
+                <h1><i class="fas fa-route mr-2"></i>Seguimiento Pedido a Terminación</h1>
+                <p class="text-muted mb-0">Pedidos T: seguimiento desde Terminación hasta la recepción confirmada por los locales.</p>
             </div>
             <div>
-                <a href="{{ route('seguimiento-ingreso-terminacion.index') }}" class="btn btn-info shadow-sm mr-1">
-                    <i class="fas fa-sign-in-alt mr-1"></i> Ingreso Terminación
+                <a href="{{ route('pedidos.index') }}" class="btn btn-dark shadow-sm mr-1">
+                    <i class="fas fa-th-large mr-1"></i> PEDIDOS
                 </a>
-                <a href="{{ route('seguimiento-produccion.index') }}" class="btn btn-primary shadow-sm mr-1">
-                    <i class="fas fa-industry mr-1"></i> Pedido a Producción
+                <a href="{{ route('pedidos.importar') }}" class="btn btn-outline-primary shadow-sm mr-1">
+                    <i class="fas fa-file-import mr-1"></i> Importar datos
                 </a>
-                <a href="{{ route('seguimiento-pedidos.informe-gerencial') }}" class="btn btn-danger shadow-sm">
+                <a href="{{ route('seguimiento-terminacion.informe-gerencial') }}" class="btn btn-danger shadow-sm">
                     <i class="fas fa-briefcase mr-1"></i> Informe gerencial
                 </a>
             </div>
@@ -116,47 +116,6 @@
         </div>
     </div>
     @endif
-
-    <div class="mb-3" id="importar-pedidos">
-        <button class="btn btn-outline-primary shadow-sm"
-                type="button"
-                data-toggle="collapse"
-                data-target="#panelImportacionPedidos"
-                aria-expanded="{{ request('abrir_import') ? 'true' : 'false' }}"
-                aria-controls="panelImportacionPedidos">
-            <i class="fas fa-file-import mr-1"></i>
-            Importar pedidos T / P / IT
-            <i class="fas fa-chevron-down ml-2"></i>
-        </button>
-    </div>
-
-    <div class="collapse {{ request('abrir_import') ? 'show' : '' }}" id="panelImportacionPedidos">
-        <div class="card card-outline card-primary mb-4">
-            <div class="card-header">
-                <h3 class="card-title"><i class="fas fa-file-excel mr-2 text-success"></i>Importador único de pedidos</h3>
-                <span class="float-right text-muted small">T = locales · P = producción · IT = ingreso Terminación</span>
-            </div>
-            <form method="POST" action="{{ route('seguimiento-pedidos.importar') }}" enctype="multipart/form-data">
-                @csrf
-                <div class="card-body">
-                    <div class="alert alert-info mb-3">
-                        Columnas: <strong>NRO OT</strong>, <strong>PEDIDO</strong> y <strong>FECHA PEDIDO</strong>.
-                        Ejemplo local: <strong>30703 / T1 / 01/09/2026</strong>.
-                        Ejemplo producción: <strong>30703 / P1 / 01/09/2026</strong>.<br>
-                        Ejemplo ingreso Terminación: <strong>30703 / IT1 / 01/09/2026</strong>.
-                    </div>
-                    <div class="custom-file">
-                        <input type="file" name="archivo" class="custom-file-input" id="archivo-pedidos" accept=".xlsx,.xls,.csv" required>
-                        <label class="custom-file-label" for="archivo-pedidos">Seleccionar archivo...</label>
-                    </div>
-                </div>
-                <div class="card-footer d-flex justify-content-between align-items-center">
-                    <small class="text-muted">Un solo archivo puede contener pedidos T, P e IT.</small>
-                    <button class="btn btn-primary"><i class="fas fa-upload mr-1"></i> Importar pedidos</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <div class="card">
         <div class="card-header">
