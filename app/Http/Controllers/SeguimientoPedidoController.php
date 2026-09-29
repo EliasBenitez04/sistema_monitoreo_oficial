@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Imports\SeguimientoPedidoImport;
+use App\Exports\InformeGerencialTerminacionExport;
 use App\Models\SeguimientoPedido;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -357,6 +358,21 @@ class SeguimientoPedidoController extends Controller
         ];
 
         return view('seguimiento_pedidos.informe_gerencial', compact('pendientes', 'resumen'));
+    }
+
+
+    public function exportarInformeGerencialExcel(Request $request)
+    {
+        $vista = $this->informeGerencial($request);
+        $datos = method_exists($vista, 'getData') ? $vista->getData() : [];
+        $pendientes = collect($datos['pendientes'] ?? []);
+
+        $nombre = 'informe_gerencial_terminacion_' . now()->format('Y-m-d_His') . '.xlsx';
+
+        return Excel::download(
+            new InformeGerencialTerminacionExport($pendientes),
+            $nombre
+        );
     }
 
 
