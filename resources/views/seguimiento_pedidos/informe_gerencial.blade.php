@@ -1,6 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<section class="content-header"><div class="container-fluid"><div class="d-flex justify-content-between align-items-center"><div><h1><i class="fas fa-briefcase mr-2"></i>Informe Gerencial de Pedidos</h1><p class="text-muted mb-0">Pendientes que requieren seguimiento en Terminación y Logística.</p></div><a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left mr-1"></i> Seguimiento</a></div></div></section>
+<section class="content-header"><div class="container-fluid"><div class="d-flex justify-content-between align-items-center"><div><h1><i class="fas fa-briefcase mr-2"></i>Informe Gerencial de Terminación</h1><p class="text-muted mb-0">Pedidos T: pendientes que requieren seguimiento desde Terminación hasta la confirmación local.</p></div><div><a href="{{ route('pedidos.index') }}" class="btn btn-dark mr-1"><i class="fas fa-th-large mr-1"></i> PEDIDOS</a><a href="{{ route('seguimiento-terminacion.index') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left mr-1"></i> Terminación</a></div></div></div></section>
 <section class="content"><div class="container-fluid">
 <div class="row">
 <div class="col-lg-3 col-6"><div class="small-box bg-white border-left border-danger shadow-sm"><div class="inner"><h3>{{ $resumen->urgentes }}</h3><p>OT urgentes</p></div><div class="icon"><i class="fas fa-exclamation-triangle text-danger"></i></div></div></div>
