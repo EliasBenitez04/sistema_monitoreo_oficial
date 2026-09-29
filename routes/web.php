@@ -17,6 +17,7 @@ use App\Http\Controllers\RedistribucionSugeridaController;
 use App\Http\Controllers\RemisionesController;
 use App\Http\Controllers\SeguimientoPedidoController;
 use App\Http\Controllers\SeguimientoPedidoProduccionController;
+use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
 
 
 /*
@@ -855,6 +856,14 @@ Route::get('/seguimiento-produccion', [SeguimientoPedidoProduccionController::cl
 Route::get('/seguimiento-produccion/informe-gerencial', [SeguimientoPedidoProduccionController::class, 'informeGerencial'])->name('seguimiento-produccion.informe-gerencial');
 Route::post('/seguimiento-produccion/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-produccion.importar');
 Route::get('/seguimiento-produccion/{id}', [SeguimientoPedidoProduccionController::class, 'show'])->name('seguimiento-produccion.show');
+
+/*
+|--------------------------------------------------------------------------
+| SEGUIMIENTO DE PEDIDO A INGRESO TERMINACIÓN
+|--------------------------------------------------------------------------
+*/
+Route::get('/seguimiento-ingreso-terminacion', [SeguimientoPedidoIngresoTerminacionController::class, 'index'])->name('seguimiento-ingreso-terminacion.index');
+Route::get('/seguimiento-ingreso-terminacion/{id}', [SeguimientoPedidoIngresoTerminacionController::class, 'show'])->name('seguimiento-ingreso-terminacion.show');
 
 
 Route::get(
