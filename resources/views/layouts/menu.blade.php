@@ -144,46 +144,86 @@
 
 
 {{-- ===================== PEDIDOS ===================== --}}
-@can('pedido_compras index')
+@php
+    $menuPedidos = request()->routeIs(
+        'pedido_compras.*',
+        'pedidos.*',
+        'seguimiento-produccion.*',
+        'seguimiento-ingreso-terminacion.*',
+        'seguimiento-terminacion.*',
+        'seguimiento-pedidos.*'
+    );
+@endphp
+
+@canany(['pedido_compras index', 'ot dashboard'])
     <li class="nav-header">
         PEDIDOS
     </li>
 
-
-    <li class="nav-item {{ request()->routeIs('pedido_compras.*') ? 'menu-open' : '' }}">
-
-        <a href="#" class="nav-link {{ request()->routeIs('pedido_compras.*') ? 'active' : '' }}">
-
+    <li class="nav-item {{ $menuPedidos ? 'menu-open' : '' }}">
+        <a href="#" class="nav-link {{ $menuPedidos ? 'active' : '' }}">
             <i class="nav-icon fas fa-clipboard-list"></i>
-
             <p>
                 Pedidos
                 <i class="right fas fa-angle-left"></i>
             </p>
-
         </a>
 
-
         <ul class="nav nav-treeview">
+            @can('pedido_compras index')
+                <li class="nav-item">
+                    <a href="{{ route('pedido_compras.index') }}"
+                        class="nav-link {{ request()->routeIs('pedido_compras.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-shopping-cart"></i>
+                        <p>Realizar Pedido</p>
+                    </a>
+                </li>
+            @endcan
 
-            <li class="nav-item">
+            @can('ot dashboard')
+                <li class="nav-item">
+                    <a href="{{ route('pedidos.index') }}"
+                        class="nav-link {{ request()->routeIs('pedidos.index') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-th-large"></i>
+                        <p>Panel de Pedidos</p>
+                    </a>
+                </li>
 
-                <a href="{{ route('pedido_compras.index') }}"
-                    class="nav-link {{ request()->routeIs('pedido_compras.*') ? 'active' : '' }}">
+                <li class="nav-item">
+                    <a href="{{ route('pedidos.importar') }}"
+                        class="nav-link {{ request()->routeIs('pedidos.importar') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-file-import"></i>
+                        <p>Importar Datos</p>
+                    </a>
+                </li>
 
-                    <i class="nav-icon fas fa-angle-right"></i>
+                <li class="nav-item">
+                    <a href="{{ route('seguimiento-produccion.index') }}"
+                        class="nav-link {{ request()->routeIs('seguimiento-produccion.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-industry"></i>
+                        <p>Producción</p>
+                    </a>
+                </li>
 
-                    <p>Realizar Pedido</p>
+                <li class="nav-item">
+                    <a href="{{ route('seguimiento-ingreso-terminacion.index') }}"
+                        class="nav-link {{ request()->routeIs('seguimiento-ingreso-terminacion.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-sign-in-alt"></i>
+                        <p>Ingreso Terminación</p>
+                    </a>
+                </li>
 
-                </a>
-
-            </li>
-
+                <li class="nav-item">
+                    <a href="{{ route('seguimiento-terminacion.index') }}"
+                        class="nav-link {{ request()->routeIs('seguimiento-terminacion.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-route"></i>
+                        <p>Terminación</p>
+                    </a>
+                </li>
+            @endcan
         </ul>
-
     </li>
-@endcan
-
+@endcanany
 
 
 {{-- ===================== IA ===================== --}}
@@ -226,10 +266,10 @@
 
 
     <li
-        class="nav-item {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'reporte.logistica-semanal*', 'dashboard.ot-atrasadas', 'seguimiento-pedidos.*') ? 'menu-open' : '' }}">
+        class="nav-item {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'reporte.logistica-semanal*', 'dashboard.ot-atrasadas') ? 'menu-open' : '' }}">
 
         <a href="#"
-            class="nav-link {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas', 'seguimiento-pedidos.*') ? 'active' : '' }}">
+            class="nav-link {{ request()->routeIs('ot.*', 'dashboard.ot', 'dashboard.ot-logistica', 'dashboard.ot-atrasadas') ? 'active' : '' }}">
 
             <i class="nav-icon fas fa-tasks"></i>
 
@@ -318,15 +358,6 @@
 
             </li>
 
-
-
-            <li class="nav-item">
-                <a href="{{ route('seguimiento-pedidos.index') }}"
-                    class="nav-link {{ request()->routeIs('seguimiento-pedidos.*') ? 'active' : '' }}">
-                    <i class="nav-icon fas fa-route"></i>
-                    <p>Seguimiento Pedidos</p>
-                </a>
-            </li>
 
 
             {{-- <li class="nav-item">
