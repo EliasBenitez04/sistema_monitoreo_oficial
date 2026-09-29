@@ -10,11 +10,14 @@
             <p class="trk-subtitle mb-0">Pedidos <strong>P1, P2...</strong> completos cuando todas sus OT alcanzan <strong>TERMINACION - INGRESO TERMINACION</strong>.</p>
         </div>
         <div class="mt-2 mt-md-0">
+            <a href="{{ route('pedidos.index') }}" class="btn btn-dark shadow-sm mr-1">
+                <i class="fas fa-th-large mr-1"></i> PEDIDOS
+            </a>
             <a href="{{ route('seguimiento-produccion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
                 <i class="fas fa-chart-line mr-1"></i> Informe gerencial
             </a>
-            <a href="{{ route('seguimiento-pedidos.index', ['abrir_import' => 1]) }}#importar-pedidos" class="btn btn-primary shadow-sm mr-1">
-                <i class="fas fa-file-import mr-1"></i> Importar T / P / IT
+            <a href="{{ route('pedidos.importar') }}" class="btn btn-primary shadow-sm mr-1">
+                <i class="fas fa-file-import mr-1"></i> Importar datos
             </a>
             <a href="{{ route('seguimiento-ingreso-terminacion.index') }}" class="btn btn-outline-info mr-1">
                 <i class="fas fa-sign-in-alt mr-1"></i> Ingreso Terminación
