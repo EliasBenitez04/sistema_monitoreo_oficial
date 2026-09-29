@@ -121,8 +121,8 @@
                     <i class="fas fa-times-circle mr-1"></i>Solicitudes de cancelación para Terminación
                 </strong>
                 <div class="rp-sub">
-                    Período PT: {{ CarbonCarbon::parse($fechaDesde)->format('d/m/Y') }}
-                    al {{ CarbonCarbon::parse($fechaHasta)->format('d/m/Y') }}
+                    Período PT: {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}
+                    al {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}
                 </div>
             </div>
             <span class="badge badge-danger p-2">{{ $reporteCancelar->count() }} OTs · {{ number_format($resumen->prendas_cancelar,0,',','.') }} prendas</span>
@@ -152,7 +152,7 @@
                             <strong>{{ $item->codigo }}</strong><br>
                             <small class="text-muted">{{ $item->descripcion }}</small>
                         </td>
-                        <td>{{ $item->ultima_fecha_pt ? CarbonCarbon::parse($item->ultima_fecha_pt)->format('d/m/Y') : '—' }}</td>
+                        <td>{{ $item->ultima_fecha_pt ? \Carbon\Carbon::parse($item->ultima_fecha_pt)->format('d/m/Y') : '—' }}</td>
                         <td class="text-right"><strong>{{ number_format($item->cantidad_orden,0,',','.') }}</strong></td>
                         <td class="text-right">{{ number_format($item->cantidad_pt_efectiva,0,',','.') }}</td>
                         <td class="text-right"><span class="rp-cancel">{{ number_format($item->pendiente_cancelar,0,',','.') }}</span></td>
