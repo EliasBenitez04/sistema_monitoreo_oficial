@@ -13,7 +13,10 @@
                 <i class="fas fa-chart-line mr-1"></i> Informe gerencial
             </a>
             <a href="{{ route('seguimiento-pedidos.index', ['abrir_import' => 1]) }}#importar-pedidos" class="btn btn-primary shadow-sm mr-1">
-                <i class="fas fa-file-import mr-1"></i> Importar T / P
+                <i class="fas fa-file-import mr-1"></i> Importar T / P / IT
+            </a>
+            <a href="{{ route('seguimiento-ingreso-terminacion.index') }}" class="btn btn-outline-info mr-1">
+                <i class="fas fa-sign-in-alt mr-1"></i> Ingreso Terminación
             </a>
             <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-route mr-1"></i> Seguimiento a locales
