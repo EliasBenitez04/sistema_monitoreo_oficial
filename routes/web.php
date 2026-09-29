@@ -858,6 +858,7 @@ Route::get('/seguimiento-pedidos/{id}', [SeguimientoPedidoController::class, 'sh
 
 Route::get('/seguimiento-terminacion', [SeguimientoPedidoController::class, 'index'])->name('seguimiento-terminacion.index');
 Route::get('/seguimiento-terminacion/informe-gerencial', [SeguimientoPedidoController::class, 'informeGerencial'])->name('seguimiento-terminacion.informe-gerencial');
+Route::get('/seguimiento-terminacion/informe-gerencial/excel', [SeguimientoPedidoController::class, 'exportarInformeGerencialExcel'])->name('seguimiento-terminacion.informe-gerencial.excel');
 Route::get('/seguimiento-terminacion/{id}', [SeguimientoPedidoController::class, 'show'])->name('seguimiento-terminacion.show');
 
 /*
