@@ -8,7 +8,7 @@
             <h1><i class="fas fa-route mr-2"></i>Pedido {{ $pedido->nro_pedido }}</h1>
             <p class="text-muted mb-0">Trazabilidad desde TERMINACIÓN - TERMINACIÓN hasta la recepción del local.</p>
         </div>
-        <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left mr-1"></i> Volver</a>
+        <div><a href="{{ route('pedidos.index') }}" class="btn btn-dark mr-1"><i class="fas fa-th-large mr-1"></i> PEDIDOS</a><a href="{{ route('seguimiento-terminacion.index') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left mr-1"></i> Volver</a></div>
     </div>
 </div>
 </section>
