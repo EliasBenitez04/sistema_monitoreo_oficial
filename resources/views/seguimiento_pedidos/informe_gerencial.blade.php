@@ -9,7 +9,7 @@
 <div class="col-lg-3 col-6"><div class="small-box bg-white border-left border-info shadow-sm"><div class="inner"><h3>{{ $resumen->en_logistica }}</h3><p>OT en Logística</p></div><div class="icon"><i class="fas fa-truck-loading text-info"></i></div></div></div>
 </div>
 <div class="alert alert-light border shadow-sm"><strong>{{ number_format($resumen->prendas,0,',','.') }} prendas pendientes</strong> en {{ $resumen->ots }} OT. <span class="text-danger ml-2"><i class="fas fa-circle mr-1"></i>URGENTE</span> = 2 días o más desde la fecha del pedido y todavía pendiente.</div>
-<div class="card card-outline card-danger"><div class="card-header"><h3 class="card-title"><i class="fas fa-bullseye mr-2"></i>Prioridades para decisión</h3><span class="float-right text-muted small">Ordenado por urgencia y antigüedad</span></div>
+<div class="card card-outline card-danger"><div class="card-header d-flex justify-content-between align-items-center flex-wrap"><div><h3 class="card-title float-none mb-0"><i class="fas fa-bullseye mr-2"></i>Prioridades para decisión</h3><small class="text-muted">Ordenado por urgencia y antigüedad</small></div><a href="{{ route('seguimiento-terminacion.informe-gerencial.excel') }}" class="btn btn-success btn-sm shadow-sm"><i class="fas fa-file-excel mr-1"></i> Exportar Excel</a></div>
 <div class="table-responsive"><table class="table table-hover table-sm mb-0 text-center informe-gerencial"><thead><tr><th>Prioridad</th><th>Pedido</th><th>Fecha pedido</th><th>OT</th><th>Cantidad</th><th class="text-left">Descripción</th><th>Etapa actual</th><th>Fecha proceso actual</th><th>Días desde pedido</th></tr></thead><tbody>
 @forelse($pendientes as $fila)
 
