@@ -128,6 +128,150 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         ));
     }
 
+    public function informeGerencial(Request $request)
+    {
+        $hoy = Carbon::today();
+
+        $pedidos = SeguimientoPedido::query()
+            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
+            ->select('id', 'nro_pedido', 'fecha_pedido')
+            ->orderBy('fecha_pedido')
+            ->get();
+
+        $idsPedido = $pedidos->pluck('id')->all();
+        $filas = collect();
+
+        if (!empty($idsPedido)) {
+            $filas = DB::table('seguimiento_pedido_detalle as spd')
+                ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
+                ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+                ->whereIn('spd.seguimiento_pedido_id', $idsPedido)
+                ->select(
+                    'spd.seguimiento_pedido_id',
+                    'sp.nro_pedido',
+                    'sp.fecha_pedido',
+                    'o.id_ot',
+                    'o.nro_ot',
+                    'o.codigo',
+                    'o.descripcion',
+                    'o.cantidad_orden'
+                )
+                ->get();
+        }
+
+        $idsOt = $filas->pluck('id_ot')->unique()->values()->all();
+        $trazas = collect();
+
+        if (!empty($idsOt)) {
+            $trazas = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt)
+                ->select('id_trazabilidad', 'id_ot', 'proceso', 'resultado', 'fecha_proceso')
+                ->orderBy('fecha_proceso')
+                ->orderBy('id_trazabilidad')
+                ->get()
+                ->groupBy('id_ot');
+        }
+
+        $filas = $filas->map(function ($ot) use ($trazas, $hoy) {
+            $historial = collect($trazas->get($ot->id_ot, collect()));
+
+            $cierre = $historial
+                ->filter(function ($t) {
+                    return strtoupper(trim((string) $t->proceso)) === self::PROCESO_CIERRE;
+                })
+                ->sortBy('fecha_proceso')
+                ->first();
+
+            $ultimoProceso = $historial
+                ->sortBy(function ($t) {
+                    return sprintf('%s-%010d', (string) $t->fecha_proceso, (int) $t->id_trazabilidad);
+                })
+                ->last();
+
+            $completo = $cierre !== null;
+            $fechaPedido = $ot->fecha_pedido
+                ? Carbon::parse($ot->fecha_pedido)->startOfDay()
+                : null;
+
+            $ot->completo = $completo;
+            $ot->fecha_cierre = $cierre->fecha_proceso ?? null;
+            $ot->proceso_actual = $ultimoProceso->proceso ?? 'SIN PROCESO';
+            $ot->fecha_proceso_actual = $ultimoProceso->fecha_proceso ?? null;
+            $ot->cantidad_proceso_actual = (int) ($ultimoProceso->resultado ?? 0);
+            $ot->dias_pendiente = (!$completo && $fechaPedido)
+                ? max(0, $fechaPedido->diffInDays($hoy, false))
+                : 0;
+
+            return $ot;
+        });
+
+        $pendientes = $filas
+            ->where('completo', false)
+            ->sort(function ($a, $b) {
+                $procesoA = strtoupper(trim((string) $a->proceso_actual));
+                $procesoB = strtoupper(trim((string) $b->proceso_actual));
+
+                $cmp = strcmp($procesoA, $procesoB);
+                if ($cmp !== 0) {
+                    return $cmp;
+                }
+
+                return ((int) $b->dias_pendiente) <=> ((int) $a->dias_pendiente);
+            })
+            ->values();
+
+        $completas = $filas->where('completo', true)->values();
+
+        $totalOt = $filas->count();
+        $totalCompletas = $completas->count();
+        $totalPendientes = $pendientes->count();
+        $avance = $totalOt > 0 ? round(($totalCompletas / $totalOt) * 100, 1) : 0;
+
+        $pedidosConPendiente = $pendientes
+            ->pluck('seguimiento_pedido_id')
+            ->unique()
+            ->count();
+
+        $resumen = (object) [
+            'pedidos' => $pedidos->count(),
+            'pedidos_completos' => max(0, $pedidos->count() - $pedidosConPendiente),
+            'pedidos_con_pendiente' => $pedidosConPendiente,
+            'ots' => $totalOt,
+            'ots_completas' => $totalCompletas,
+            'ots_pendientes' => $totalPendientes,
+            'prendas_pendientes' => (int) $pendientes->sum('cantidad_orden'),
+            'avance' => $avance,
+        ];
+
+        $porProcesos = $pendientes
+            ->groupBy(function ($fila) {
+                $proceso = trim((string) $fila->proceso_actual);
+                return $proceso !== '' ? $proceso : 'SIN PROCESO';
+            })
+            ->map(function ($grupo, $proceso) use ($totalPendientes) {
+                $otsProceso = $grupo->count();
+
+                return (object) [
+                    'proceso' => $proceso,
+                    'ots' => $otsProceso,
+                    'prendas' => (int) $grupo->sum('cantidad_orden'),
+                    'pedidos' => $grupo->pluck('seguimiento_pedido_id')->unique()->count(),
+                    'porcentaje' => $totalPendientes > 0
+                        ? round(($otsProceso / $totalPendientes) * 100, 1)
+                        : 0,
+                ];
+            })
+            ->sortByDesc('ots')
+            ->values();
+
+        return view('seguimiento_pedidos_ingreso_terminacion.informe_gerencial', compact(
+            'pendientes',
+            'resumen',
+            'porProcesos'
+        ));
+    }
+
+
     public function show($id)
     {
         $pedido = SeguimientoPedido::query()
