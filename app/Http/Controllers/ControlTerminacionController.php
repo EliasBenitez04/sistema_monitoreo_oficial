@@ -603,11 +603,50 @@ class ControlTerminacionController extends Controller
 
     public function reportePendientesEnvio(Request $request)
     {
+        $datos = $this->construirReportePendientesEnvio($request);
+
+        return view('control.reporte_pendientes_envio', $datos);
+    }
+
+    public function exportarReportePendientesEnvioExcel(Request $request)
+    {
+        $datos = $this->construirReportePendientesEnvio($request);
+
+        $nombre = 'reporte_cancelacion_terminacion_'
+            . $datos['fechaDesde'] . '_'
+            . $datos['fechaHasta'] . '.xlsx';
+
+        return Excel::download(
+            new \App\Exports\ReporteCancelacionTerminacionExport($datos['reporteCancelar']),
+            $nombre
+        );
+    }
+
+    private function construirReportePendientesEnvio(Request $request): array
+    {
         $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
         $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
         $buscar = trim((string) $request->input('buscar', ''));
 
-        $ots = DB::table('ot_trazabilidad as pt')
+        /*
+         * REGLA DEL REPORTE
+         *
+         * 1. El rango selecciona las OTs que tuvieron
+         *    TERMINACION - PRODUCTO TERMINADO dentro del período.
+         *
+         * 2. Una vez seleccionada la OT, el cálculo usa TODO su historial
+         *    de Producto Terminado. Así una salida parcial del período no
+         *    genera un falso faltante si después se completó.
+         *
+         * 3. Se separan dos conceptos:
+         *    - PENDIENTE CANCELAR = cantidad orden - PT acumulado efectivo.
+         *      Es el faltante de la OT que Terminación debe cerrar/cancelar.
+         *    - PENDIENTE REMITIR = plan logístico - remisiones originales.
+         *      La prenda existe; es un pendiente documental/logístico y NO
+         *      debe pedirse como cancelación.
+         */
+
+        $otsPeriodo = DB::table('ot_trazabilidad as pt')
             ->join('ot as o', 'o.id_ot', '=', 'pt.id_ot')
             ->where('pt.proceso', 'TERMINACION - PRODUCTO TERMINADO')
             ->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta])
@@ -623,55 +662,212 @@ class ControlTerminacionController extends Controller
                     }
                 });
             })
-            ->groupBy('o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion', 'o.cantidad_orden')
+            ->groupBy(
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                'o.estado'
+            )
             ->select(
-                'o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion', 'o.cantidad_orden',
-                DB::raw('SUM(pt.resultado) as cantidad_pt'),
-                DB::raw('MIN(pt.fecha_proceso) as fecha_pt')
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                'o.estado',
+                DB::raw('MIN(pt.fecha_proceso) as primera_fecha_pt_periodo'),
+                DB::raw('MAX(pt.fecha_proceso) as ultima_fecha_pt_periodo'),
+                DB::raw('SUM(pt.resultado) as pt_del_periodo')
             )
             ->get();
 
-        $ids = $ots->pluck('id_ot')->all();
+        $ids = $otsPeriodo->pluck('id_ot')->filter()->unique()->values()->all();
+
+        $ptAcumulado = collect();
+        $planesLogistica = collect();
         $remisiones = collect();
 
-        if (!empty($ids) && Schema::hasTable('ot_logistica_remisiones')) {
-            $remisiones = DB::table('ot_logistica_remisiones')
+        if (!empty($ids)) {
+            $ptAcumulado = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $ids)
-                ->where(function ($q) {
-                    $q->where('cod_sucursal_salida', 1)
-                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'");
-                })
+                ->where('proceso', 'TERMINACION - PRODUCTO TERMINADO')
                 ->groupBy('id_ot')
                 ->select(
                     'id_ot',
-                    DB::raw('SUM(cantidad) as enviado'),
-                    DB::raw('MIN(COALESCE(fecha_remision, fecha_creacion)) as primer_envio'),
-                    DB::raw('MAX(COALESCE(fecha_remision, fecha_creacion)) as ultimo_envio')
+                    DB::raw('SUM(resultado) as cantidad_pt_total'),
+                    DB::raw('MIN(fecha_proceso) as primera_fecha_pt_total'),
+                    DB::raw('MAX(fecha_proceso) as ultima_fecha_pt_total')
                 )
-                ->get()->keyBy('id_ot');
+                ->get()
+                ->keyBy('id_ot');
+
+            /*
+             * Mismo PLAN que usa el Dashboard Logística:
+             * suma de ot_logistica_detalle vinculada a
+             * LOGISTICA - LOGISTICA Y DISTRIBUCION.
+             */
+            if (Schema::hasTable('ot_logistica_detalle')) {
+                $planesLogistica = DB::table('ot_logistica_detalle as d')
+                    ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
+                    ->whereIn('d.id_ot', $ids)
+                    ->where('t.proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
+                    ->groupBy('d.id_ot')
+                    ->select(
+                        'd.id_ot',
+                        DB::raw('SUM(d.cantidad) as plan_logistica'),
+                        DB::raw('COUNT(DISTINCT d.sucursal) as destinos'),
+                        DB::raw('MIN(t.fecha_proceso) as primera_fecha_logistica'),
+                        DB::raw('MAX(t.fecha_proceso) as ultima_fecha_logistica')
+                    )
+                    ->get()
+                    ->keyBy('id_ot');
+            }
+
+            if (Schema::hasTable('ot_logistica_remisiones')) {
+                $remisiones = DB::table('ot_logistica_remisiones')
+                    ->whereIn('id_ot', $ids)
+                    ->where(function ($q) {
+                        $q->where('cod_sucursal_salida', 1)
+                            ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'")
+                            ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'");
+                    })
+                    ->groupBy('id_ot')
+                    ->select(
+                        'id_ot',
+                        DB::raw('SUM(cantidad) as remitido'),
+                        DB::raw('MIN(COALESCE(fecha_remision, fecha_creacion)) as primer_envio'),
+                        DB::raw('MAX(COALESCE(fecha_remision, fecha_creacion)) as ultimo_envio')
+                    )
+                    ->get()
+                    ->keyBy('id_ot');
+            }
         }
 
-        $reporte = $ots->map(function ($ot) use ($remisiones) {
+        $reporteCompleto = $otsPeriodo->map(function ($ot) use (
+            $ptAcumulado,
+            $planesLogistica,
+            $remisiones
+        ) {
+            $pt = $ptAcumulado->get($ot->id_ot);
+            $plan = $planesLogistica->get($ot->id_ot);
             $mov = $remisiones->get($ot->id_ot);
-            $ot->cantidad_pt = (int) $ot->cantidad_pt;
-            $ot->enviado = min($ot->cantidad_pt, (int) ($mov->enviado ?? 0));
-            $ot->pendiente_envio = max(0, $ot->cantidad_pt - $ot->enviado);
+
+            $orden = max(0, (int) $ot->cantidad_orden);
+            $ptTotalRaw = max(0, (int) ($pt->cantidad_pt_total ?? 0));
+            $ptEfectivo = min($orden, $ptTotalRaw);
+            $planRaw = max(0, (int) ($plan->plan_logistica ?? 0));
+            $planEfectivo = min($ptEfectivo, $planRaw);
+            $remitidoRaw = max(0, (int) ($mov->remitido ?? 0));
+            $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
+
+            $ot->cantidad_orden = $orden;
+            $ot->cantidad_pt_total = $ptTotalRaw;
+            $ot->cantidad_pt_efectiva = $ptEfectivo;
+            $ot->exceso_pt = max(0, $ptTotalRaw - $orden);
+
+            // Este es el dato que necesita Terminación para cerrar/cancelar.
+            $ot->pendiente_cancelar = max(0, $orden - $ptEfectivo);
+
+            $ot->plan_logistica = $planRaw;
+            $ot->destinos = (int) ($plan->destinos ?? 0);
+            $ot->primera_fecha_logistica = $plan->primera_fecha_logistica ?? null;
+            $ot->ultima_fecha_logistica = $plan->ultima_fecha_logistica ?? null;
+
+            // Existe físicamente en PT, pero todavía no tiene destino logístico.
+            $ot->pendiente_distribuir = max(0, $ptEfectivo - $planRaw);
+
+            $ot->remitido = $remitidoEfectivo;
             $ot->primer_envio = $mov->primer_envio ?? null;
             $ot->ultimo_envio = $mov->ultimo_envio ?? null;
-            $ot->dias_desde_pt = $ot->pendiente_envio > 0
-                ? max(0, \Carbon\Carbon::parse($ot->fecha_pt)->startOfDay()->diffInDays(now()->startOfDay(), false))
-                : 0;
-            $ot->dias_desde_ultimo_envio = $ot->pendiente_envio > 0 && $ot->ultimo_envio
-                ? max(0, \Carbon\Carbon::parse($ot->ultimo_envio)->startOfDay()->diffInDays(now()->startOfDay(), false))
-                : null;
-            return $ot;
-        })->filter(function ($ot) {
-            return $ot->pendiente_envio > 0;
-        })->sortByDesc('dias_desde_ultimo_envio')->values();
 
-        return view('control.reporte_pendientes_envio', compact(
-            'fechaDesde', 'fechaHasta', 'buscar', 'reporte'
-        ));
+            // Tiene destino/plan, pero todavía no fue documentado/remitido.
+            $ot->pendiente_remitir = max(0, $planEfectivo - $remitidoEfectivo);
+
+            $ot->primera_fecha_pt = $pt->primera_fecha_pt_total
+                ?? $ot->primera_fecha_pt_periodo;
+            $ot->ultima_fecha_pt = $pt->ultima_fecha_pt_total
+                ?? $ot->ultima_fecha_pt_periodo;
+
+            $ot->dias_desde_pt = $ot->ultima_fecha_pt
+                ? max(
+                    0,
+                    \Carbon\Carbon::parse($ot->ultima_fecha_pt)
+                        ->startOfDay()
+                        ->diffInDays(now()->startOfDay(), false)
+                )
+                : 0;
+
+            if ($ot->pendiente_cancelar > 0) {
+                $ot->estado_cierre = 'PENDIENTE CANCELAR';
+                $ot->accion = 'CANCELAR ' . $ot->pendiente_cancelar
+                    . ($ot->pendiente_cancelar === 1 ? ' PRENDA' : ' PRENDAS');
+            } elseif ($ot->pendiente_distribuir > 0) {
+                $ot->estado_cierre = 'PENDIENTE DISTRIBUIR';
+                $ot->accion = 'NO CANCELAR - DISTRIBUIR';
+            } elseif ($ot->pendiente_remitir > 0) {
+                $ot->estado_cierre = 'PENDIENTE REMITIR';
+                $ot->accion = 'NO CANCELAR - REMITIR';
+            } else {
+                $ot->estado_cierre = 'CERRADA';
+                $ot->accion = 'SIN ACCION';
+            }
+
+            return $ot;
+        });
+
+        /*
+         * Tabla principal: únicamente lo que debe recibir Terminación
+         * como solicitud de cierre/cancelación.
+         */
+        $reporteCancelar = $reporteCompleto
+            ->filter(function ($ot) {
+                return $ot->pendiente_cancelar > 0;
+            })
+            ->sort(function ($a, $b) {
+                if ($a->pendiente_cancelar !== $b->pendiente_cancelar) {
+                    return $b->pendiente_cancelar <=> $a->pendiente_cancelar;
+                }
+
+                return ((int) $b->nro_ot) <=> ((int) $a->nro_ot);
+            })
+            ->values();
+
+        /*
+         * Contexto logístico separado. Estas prendas existen y NO deben
+         * confundirse con rechazo/faltante para cancelar.
+         */
+        $reporteLogistica = $reporteCompleto
+            ->filter(function ($ot) {
+                return $ot->pendiente_cancelar <= 0
+                    && ($ot->pendiente_distribuir > 0 || $ot->pendiente_remitir > 0);
+            })
+            ->sortByDesc(function ($ot) {
+                return $ot->pendiente_distribuir + $ot->pendiente_remitir;
+            })
+            ->values();
+
+        $resumen = (object) [
+            'ots_periodo' => $reporteCompleto->count(),
+            'ots_cancelar' => $reporteCancelar->count(),
+            'prendas_cancelar' => (int) $reporteCancelar->sum('pendiente_cancelar'),
+            'ots_logistica' => $reporteLogistica->count(),
+            'pendiente_distribuir' => (int) $reporteCompleto->sum('pendiente_distribuir'),
+            'pendiente_remitir' => (int) $reporteCompleto->sum('pendiente_remitir'),
+            'pt_acumulado' => (int) $reporteCompleto->sum('cantidad_pt_efectiva'),
+            'cantidad_orden' => (int) $reporteCompleto->sum('cantidad_orden'),
+        ];
+
+        return compact(
+            'fechaDesde',
+            'fechaHasta',
+            'buscar',
+            'reporteCompleto',
+            'reporteCancelar',
+            'reporteLogistica',
+            'resumen'
+        );
     }
 
     public function detalle(Request $request, $idOt)
