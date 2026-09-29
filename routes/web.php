@@ -885,3 +885,8 @@ Route::get(
     '/control/terminacion/reporte-pendientes-envio',
     [ControlTerminacionController::class, 'reportePendientesEnvio']
 )->name('control.terminacion.reporte-pendientes-envio');
+
+Route::get(
+    '/control/terminacion/reporte-pendientes-envio/excel',
+    [ControlTerminacionController::class, 'exportarReportePendientesEnvioExcel']
+)->name('control.terminacion.reporte-pendientes-envio.excel');
