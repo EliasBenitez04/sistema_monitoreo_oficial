@@ -14,7 +14,7 @@
             <h1 class="trk-title mb-1">Pedido {{ $pedido->nro_pedido }}</h1>
             <p class="trk-subtitle mb-0">Completo cuando todas sus OT alcanzan <strong>TERMINACION - INGRESO TERMINACION</strong>.</p>
         </div>
-        <a href="{{ route('seguimiento-produccion.index') }}" class="btn btn-outline-secondary mt-2 mt-md-0"><i class="fas fa-arrow-left mr-1"></i>Volver</a>
+        <div class="mt-2 mt-md-0"><a href="{{ route('pedidos.index') }}" class="btn btn-dark mr-1"><i class="fas fa-th-large mr-1"></i>PEDIDOS</a><a href="{{ route('seguimiento-produccion.index') }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left mr-1"></i>Volver</a></div>
     </div>
 </div>
 </section>
