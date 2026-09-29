@@ -14,6 +14,9 @@
             <p class="text-muted mb-0">Pedidos IT pendientes de alcanzar <strong>TERMINACION - TERMINACION</strong>, agrupados por proceso actual.</p>
         </div>
         <div class="mt-2 mt-md-0">
+            <a href="{{ route('pedidos.index') }}" class="btn btn-dark mr-1">
+                <i class="fas fa-th-large mr-1"></i> PEDIDOS
+            </a>
             <a href="{{ route('seguimiento-ingreso-terminacion.index') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-arrow-left mr-1"></i> Seguimiento Ingreso Terminación
             </a>
