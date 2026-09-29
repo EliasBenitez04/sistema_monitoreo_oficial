@@ -18,6 +18,7 @@ use App\Http\Controllers\RemisionesController;
 use App\Http\Controllers\SeguimientoPedidoController;
 use App\Http\Controllers\SeguimientoPedidoProduccionController;
 use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
+use App\Http\Controllers\PedidosController;
 
 
 /*
@@ -839,6 +840,14 @@ Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionCon
 
 /*
 |--------------------------------------------------------------------------
+| SECTOR PEDIDOS
+|--------------------------------------------------------------------------
+*/
+Route::get('/pedidos', [PedidosController::class, 'index'])->name('pedidos.index');
+Route::get('/pedidos/importar-datos', [PedidosController::class, 'importar'])->name('pedidos.importar');
+
+/*
+|--------------------------------------------------------------------------
 | SEGUIMIENTO DE PEDIDOS
 |--------------------------------------------------------------------------
 */
@@ -846,6 +855,10 @@ Route::get('/seguimiento-pedidos', [SeguimientoPedidoController::class, 'index']
 Route::get('/seguimiento-pedidos-informe-gerencial', [SeguimientoPedidoController::class, 'informeGerencial'])->name('seguimiento-pedidos.informe-gerencial');
 Route::post('/seguimiento-pedidos/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-pedidos.importar');
 Route::get('/seguimiento-pedidos/{id}', [SeguimientoPedidoController::class, 'show'])->name('seguimiento-pedidos.show');
+
+Route::get('/seguimiento-terminacion', [SeguimientoPedidoController::class, 'index'])->name('seguimiento-terminacion.index');
+Route::get('/seguimiento-terminacion/informe-gerencial', [SeguimientoPedidoController::class, 'informeGerencial'])->name('seguimiento-terminacion.informe-gerencial');
+Route::get('/seguimiento-terminacion/{id}', [SeguimientoPedidoController::class, 'show'])->name('seguimiento-terminacion.show');
 
 /*
 |--------------------------------------------------------------------------
@@ -863,6 +876,7 @@ Route::get('/seguimiento-produccion/{id}', [SeguimientoPedidoProduccionControlle
 |--------------------------------------------------------------------------
 */
 Route::get('/seguimiento-ingreso-terminacion', [SeguimientoPedidoIngresoTerminacionController::class, 'index'])->name('seguimiento-ingreso-terminacion.index');
+Route::get('/seguimiento-ingreso-terminacion/informe-gerencial', [SeguimientoPedidoIngresoTerminacionController::class, 'informeGerencial'])->name('seguimiento-ingreso-terminacion.informe-gerencial');
 Route::get('/seguimiento-ingreso-terminacion/{id}', [SeguimientoPedidoIngresoTerminacionController::class, 'show'])->name('seguimiento-ingreso-terminacion.show');
 
 
