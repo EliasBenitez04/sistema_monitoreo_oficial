@@ -35,12 +35,9 @@ class ReporteFaltanteDestinoExport implements
             'OT',
             'Código',
             'Descripción',
-            'Cantidad orden',
-            'Destino asignado efectivo',
-            'Destino según detalle',
-            'Diferencia de fuentes',
-            'Falta completar destino',
             'Producto Terminado',
+            'Total distribuido OT',
+            'Falta completar destino',
             'Último PT',
             'Última asignación logística',
             'Solicitud',
@@ -53,12 +50,9 @@ class ReporteFaltanteDestinoExport implements
             $item->nro_ot,
             $item->codigo,
             $item->descripcion,
-            (int) $item->cantidad_orden,
-            (int) $item->destino_asignado,
-            (int) $item->destino_detalle,
-            (int) $item->diferencia_fuentes,
-            (int) $item->faltante_destino,
             (int) $item->producto_terminado,
+            (int) $item->total_distribuido,
+            (int) $item->faltante_destino,
             $item->ultima_fecha_pt
                 ? date('d/m/Y', strtotime($item->ultima_fecha_pt))
                 : '-',
@@ -74,7 +68,7 @@ class ReporteFaltanteDestinoExport implements
         $sheet->freezePane('A2');
         $sheet->setAutoFilter($sheet->calculateWorksheetDimension());
 
-        $sheet->getStyle('A1:L1')->applyFromArray([
+        $sheet->getStyle('A1:I1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['ARGB' => 'FFFFFFFF'],
@@ -92,7 +86,7 @@ class ReporteFaltanteDestinoExport implements
         $ultimaFila = $sheet->getHighestRow();
 
         if ($ultimaFila >= 2) {
-            $sheet->getStyle('A2:L' . $ultimaFila)
+            $sheet->getStyle('A2:I' . $ultimaFila)
                 ->getAlignment()
                 ->setVertical('center');
 
@@ -100,18 +94,18 @@ class ReporteFaltanteDestinoExport implements
                 ->getAlignment()
                 ->setHorizontal('center');
 
-            $sheet->getStyle('D2:K' . $ultimaFila)
+            $sheet->getStyle('D2:H' . $ultimaFila)
                 ->getAlignment()
                 ->setHorizontal('center');
 
             for ($fila = 2; $fila <= $ultimaFila; $fila++) {
-                $sheet->getStyle('H' . $fila)
+                $sheet->getStyle('F' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFB91C1C');
 
-                $sheet->getStyle('L' . $fila)
+                $sheet->getStyle('I' . $fila)
                     ->getFont()
                     ->setBold(true);
             }
