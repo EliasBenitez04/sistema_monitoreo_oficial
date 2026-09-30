@@ -12,6 +12,85 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ControlTerminacionController extends Controller
 {
+    /**
+     * Replica literalmente el cálculo que usa dashboard/ot.blade.php
+     * para Producto Terminado, Total Distribuido OT y Faltante.
+     *
+     * Se centraliza acá para que Control Terminación y su reporte no
+     * puedan mostrar una cifra distinta al Dashboard OT.
+     */
+    private function resumenDistribucionComoDashboardOt(array $idsOt): \Illuminate\Support\Collection
+    {
+        if (empty($idsOt)) {
+            return collect();
+        }
+
+        return \App\Models\Ot::with([
+                'trazabilidades',
+                'logisticaDetalle',
+            ])
+            ->whereIn('id_ot', $idsOt)
+            ->get()
+            ->mapWithKeys(function ($ot) {
+                $trazabilidadPt = $ot->trazabilidades
+                    ->where(
+                        'proceso',
+                        'TERMINACION - PRODUCTO TERMINADO'
+                    )
+                    ->sortBy('fecha_proceso')
+                    ->last();
+
+                $productoTerminado = max(
+                    0,
+                    (int) ($trazabilidadPt->resultado ?? 0)
+                );
+
+                $trazabilidadesLogistica = $ot->trazabilidades
+                    ->where(
+                        'proceso',
+                        'LOGISTICA - LOGISTICA Y DISTRIBUCION'
+                    )
+                    ->sortBy('fecha_proceso');
+
+                $totalDistribuido = 0;
+                $sucursales = collect();
+
+                foreach ($trazabilidadesLogistica as $trazabilidad) {
+                    $detalles = $ot->logisticaDetalle
+                        ->where(
+                            'id_trazabilidad',
+                            $trazabilidad->id_trazabilidad
+                        );
+
+                    $totalDistribuido += (int) $detalles->sum('cantidad');
+
+                    foreach ($detalles as $detalle) {
+                        $sucursal = trim((string) $detalle->sucursal);
+
+                        if ($sucursal !== '') {
+                            $sucursales->push($sucursal);
+                        }
+                    }
+                }
+
+                $ultimaLogistica = $trazabilidadesLogistica->last();
+
+                return [
+                    (int) $ot->id_ot => (object) [
+                        'producto_terminado' => $productoTerminado,
+                        'total_distribuido' => max(0, $totalDistribuido),
+                        'faltante' => max(
+                            0,
+                            $productoTerminado - $totalDistribuido
+                        ),
+                        'destinos' => $sucursales->unique()->count(),
+                        'ultima_fecha_pt' => $trazabilidadPt->fecha_proceso ?? null,
+                        'ultima_fecha_logistica' => $ultimaLogistica->fecha_proceso ?? null,
+                    ],
+                ];
+            });
+    }
+
     public function index(Request $request)
     {
         $fechaDesde = $request->input('fecha_desde', now()->format('Y-m-d'));
@@ -110,6 +189,10 @@ class ControlTerminacionController extends Controller
         $ptReferenciaPorOt = collect();
         $destinosPorOt = collect();
         $remisionesPorOt = collect();
+
+        $resumenDashboardPorOt = $this->resumenDistribucionComoDashboardOt(
+            $idsOt->all()
+        );
 
         if ($idsOt->isNotEmpty()) {
             $trazasLogistica = DB::table('ot_trazabilidad')
@@ -214,9 +297,9 @@ class ControlTerminacionController extends Controller
             $item->cantidad_entregada_logistica = $item->cantidad_terminada;
 
             $log = $logisticaPorOt->get($item->id_ot);
-            $ptReferencia = $ptReferenciaPorOt->get($item->id_ot);
             $destino = $destinosPorOt->get($item->id_ot);
             $rem = $remisionesPorOt->get($item->id_ot);
+            $resumenDashboard = $resumenDashboardPorOt->get($item->id_ot);
             $tope = max(0, (int) $item->cantidad_orden);
 
             $item->cantidad_logistica = max(
@@ -225,39 +308,33 @@ class ControlTerminacionController extends Controller
             );
 
             /*
-             * MISMO CÁLCULO DEL DASHBOARD OT:
-             * Producto Terminado = resultado del ÚLTIMO PT.
-             * Total Distribuido = SUM(ot_logistica_detalle.cantidad)
-             *                    de todas las trazabilidades LOGISTICA.
-             * Faltante = PT - Distribuido.
+             * Estas tres cifras salen de la MISMA rutina que replica el
+             * Dashboard OT. No se recalculan con otra fuente.
              */
             $item->producto_terminado_referencia = max(
                 0,
-                (int) ($ptReferencia->resultado ?? $item->cantidad_terminada)
+                (int) ($resumenDashboard->producto_terminado
+                    ?? $item->cantidad_terminada)
             );
 
             $item->cantidad_destino_detalle = max(
                 0,
-                (int) ($destino->cantidad_destino_asignado ?? 0)
+                (int) ($resumenDashboard->total_distribuido ?? 0)
             );
 
-            $item->cantidad_destino_asignado = min(
-                $item->producto_terminado_referencia,
-                $item->cantidad_destino_detalle
-            );
+            $item->cantidad_destino_asignado =
+                $item->cantidad_destino_detalle;
 
-            $item->cantidad_destinos = (int) ($destino->cantidad_destinos ?? 0);
+            $item->cantidad_destinos = (int) (
+                $resumenDashboard->destinos ?? 0
+            );
 
             $item->pendiente_completar_destino = max(
                 0,
-                $item->producto_terminado_referencia
-                    - $item->cantidad_destino_detalle
+                (int) ($resumenDashboard->faltante ?? 0)
             );
 
-            $item->diferencia_fuente_destino = abs(
-                $item->cantidad_logistica - $item->cantidad_destino_detalle
-            );
-
+            $item->diferencia_fuente_destino = 0;
             $item->detalle_destino_incompleto = false;
             $item->primera_fecha_logistica = $log->primera_fecha_logistica ?? null;
             $item->ultima_fecha_logistica = $log->ultima_fecha_logistica ?? null;
@@ -808,115 +885,41 @@ class ControlTerminacionController extends Controller
             ->values()
             ->all();
 
-        $ptReferenciaPorOt = collect();
-        $trazasLogistica = collect();
-        $distribucionPorOt = collect();
-
-        if (!empty($ids)) {
-            /*
-             * Último PT por OT, exactamente como hace dashboard/ot.blade.php:
-             * sortBy(fecha_proceso)->last().
-             */
-            $ptReferenciaPorOt = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $ids)
-                ->where('proceso', 'TERMINACION - PRODUCTO TERMINADO')
-                ->select(
-                    'id_trazabilidad',
-                    'id_ot',
-                    'resultado',
-                    'fecha_proceso'
-                )
-                ->orderBy('id_ot')
-                ->orderBy('fecha_proceso')
-                ->orderBy('id_trazabilidad')
-                ->get()
-                ->groupBy('id_ot')
-                ->map(function ($items) {
-                    return $items->last();
-                });
-
-            $trazasLogistica = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $ids)
-                ->where('proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
-                ->select(
-                    'id_trazabilidad',
-                    'id_ot',
-                    'fecha_proceso'
-                )
-                ->orderBy('id_ot')
-                ->orderBy('fecha_proceso')
-                ->orderBy('id_trazabilidad')
-                ->get();
-
-            if (
-                Schema::hasTable('ot_logistica_detalle')
-                && $trazasLogistica->isNotEmpty()
-            ) {
-                $idsTrazabilidadLogistica = $trazasLogistica
-                    ->pluck('id_trazabilidad')
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all();
-
-                $distribucionPorOt = DB::table('ot_logistica_detalle')
-                    ->whereIn('id_ot', $ids)
-                    ->whereIn(
-                        'id_trazabilidad',
-                        $idsTrazabilidadLogistica
-                    )
-                    ->groupBy('id_ot')
-                    ->select(
-                        'id_ot',
-                        DB::raw('SUM(cantidad) as total_distribuido'),
-                        DB::raw('COUNT(DISTINCT sucursal) as destinos')
-                    )
-                    ->get()
-                    ->keyBy('id_ot');
-            }
-        }
-
-        $ultimaFechaLogisticaPorOt = $trazasLogistica
-            ->groupBy('id_ot')
-            ->map(function ($items) {
-                return optional($items->last())->fecha_proceso;
-            });
+        $resumenDashboardPorOt = $this->resumenDistribucionComoDashboardOt(
+            $ids
+        );
 
         $reporteCompleto = $otsPeriodo
-            ->map(function ($ot) use (
-                $ptReferenciaPorOt,
-                $distribucionPorOt,
-                $ultimaFechaLogisticaPorOt
-            ) {
-                $pt = $ptReferenciaPorOt->get($ot->id_ot);
-                $distribucion = $distribucionPorOt->get($ot->id_ot);
+            ->map(function ($ot) use ($resumenDashboardPorOt) {
+                $resumenDashboard = $resumenDashboardPorOt->get($ot->id_ot);
 
-                $productoTerminado = max(
+                $ot->producto_terminado = max(
                     0,
-                    (int) ($pt->resultado ?? 0)
+                    (int) ($resumenDashboard->producto_terminado ?? 0)
                 );
 
-                $totalDistribuido = max(
+                $ot->total_distribuido = max(
                     0,
-                    (int) ($distribucion->total_distribuido ?? 0)
+                    (int) ($resumenDashboard->total_distribuido ?? 0)
                 );
 
-                $ot->producto_terminado = $productoTerminado;
-                $ot->total_distribuido = $totalDistribuido;
-                $ot->destino_asignado = $totalDistribuido;
-                $ot->destino_detalle = $totalDistribuido;
-                $ot->destinos = (int) ($distribucion->destinos ?? 0);
+                $ot->destino_asignado = $ot->total_distribuido;
+                $ot->destino_detalle = $ot->total_distribuido;
+                $ot->destinos = (int) (
+                    $resumenDashboard->destinos ?? 0
+                );
 
                 $ot->faltante_destino = max(
                     0,
-                    $productoTerminado - $totalDistribuido
+                    (int) ($resumenDashboard->faltante ?? 0)
                 );
 
-                $ot->ultima_fecha_pt = $pt->fecha_proceso
+                $ot->ultima_fecha_pt =
+                    $resumenDashboard->ultima_fecha_pt
                     ?? $ot->ultima_fecha_pt_periodo;
 
                 $ot->ultima_fecha_logistica =
-                    $ultimaFechaLogisticaPorOt->get($ot->id_ot);
+                    $resumenDashboard->ultima_fecha_logistica ?? null;
 
                 $ot->solicitud = $ot->faltante_destino > 0
                     ? 'SOLICITAR ' . $ot->faltante_destino
