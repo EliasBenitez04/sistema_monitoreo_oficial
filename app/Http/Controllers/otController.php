@@ -892,6 +892,78 @@ class OtController extends Controller
 
         /*
         |--------------------------------------------------------------------------
+        | BASES PARA NAVEGACIÓN DE TARJETAS
+        |--------------------------------------------------------------------------
+        |
+        | Severidad conserva el filtro de proceso, pero ignora el nivel actual.
+        | Procesos conserva el filtro de nivel, pero ignora el proceso actual.
+        | Así las tarjetas siguen mostrando opciones reales para cambiar de filtro.
+        */
+        $coincideBusquedaYDias = function ($item) use ($buscar, $diasDesde, $diasHasta) {
+            if ($diasDesde !== null && $item['dias_sin_movimiento'] < $diasDesde) {
+                return false;
+            }
+
+            if ($diasHasta !== null && $item['dias_sin_movimiento'] > $diasHasta) {
+                return false;
+            }
+
+            if ($buscar !== '') {
+                $ot = $item['ot'];
+                $texto = mb_strtoupper(
+                    trim(
+                        (string) $ot->nro_ot . ' '
+                        . (string) $ot->codigo . ' '
+                        . (string) $ot->descripcion
+                    ),
+                    'UTF-8'
+                );
+
+                if (mb_strpos($texto, mb_strtoupper($buscar, 'UTF-8')) === false) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
+        $baseSeveridad = $baseAtrasadas
+            ->filter(function ($item) use (
+                $coincideBusquedaYDias,
+                $procesoFiltro
+            ) {
+                if (!$coincideBusquedaYDias($item)) {
+                    return false;
+                }
+
+                if ($procesoFiltro !== '') {
+                    return $item['ultimo_proceso_normalizado']
+                        === $this->normalizarProceso($procesoFiltro);
+                }
+
+                return true;
+            })
+            ->values();
+
+        $baseProcesos = $baseAtrasadas
+            ->filter(function ($item) use (
+                $coincideBusquedaYDias,
+                $nivelFiltro
+            ) {
+                if (!$coincideBusquedaYDias($item)) {
+                    return false;
+                }
+
+                if ($nivelFiltro !== '') {
+                    return $item['nivel'] === $nivelFiltro;
+                }
+
+                return true;
+            })
+            ->values();
+
+        /*
+        |--------------------------------------------------------------------------
         | FILTROS GERENCIALES
         |--------------------------------------------------------------------------
         */
@@ -997,11 +1069,13 @@ class OtController extends Controller
             return max(0, (int) $item['ot']->cantidad_orden);
         });
 
-        $criticas = $otsAtrasadas->where('nivel', 'critica')->count();
-        $graves = $otsAtrasadas->where('nivel', 'grave')->count();
-        $riesgo = $otsAtrasadas->where('nivel', 'riesgo')->count();
+        $criticas = $baseSeveridad->where('nivel', 'critica')->count();
+        $graves = $baseSeveridad->where('nivel', 'grave')->count();
+        $riesgo = $baseSeveridad->where('nivel', 'riesgo')->count();
 
-        $otsPorProceso = $otsAtrasadas
+        $totalBaseProcesos = $baseProcesos->count();
+
+        $otsPorProceso = $baseProcesos
             ->groupBy(function ($item) {
                 return $item['ultimo_proceso_normalizado'] ?: 'SIN PROCESO';
             })
@@ -1011,8 +1085,8 @@ class OtController extends Controller
             ->sortDesc();
 
         $detalleProcesos = $otsPorProceso
-            ->map(function ($cantidad, $proceso) use ($totalAtrasadas, $otsAtrasadas) {
-                $itemsProceso = $otsAtrasadas->filter(function ($item) use ($proceso) {
+            ->map(function ($cantidad, $proceso) use ($totalBaseProcesos, $baseProcesos) {
+                $itemsProceso = $baseProcesos->filter(function ($item) use ($proceso) {
                     return ($item['ultimo_proceso_normalizado'] ?: 'SIN PROCESO') === $proceso;
                 });
 
@@ -1025,8 +1099,8 @@ class OtController extends Controller
                     'promedio_dias' => $cantidad > 0
                         ? round($itemsProceso->avg('dias_sin_movimiento'), 1)
                         : 0,
-                    'porcentaje' => $totalAtrasadas > 0
-                        ? round(($cantidad / $totalAtrasadas) * 100, 1)
+                    'porcentaje' => $totalBaseProcesos > 0
+                        ? round(($cantidad / $totalBaseProcesos) * 100, 1)
                         : 0,
                 ];
             })
