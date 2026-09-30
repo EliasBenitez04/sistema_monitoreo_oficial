@@ -139,6 +139,7 @@
                         <th>Código / Descripción</th>
                         <th class="text-right">Orden</th>
                         <th class="text-right">Destino asignado</th>
+                        <th class="text-right">Detalle sucursales</th>
                         <th class="text-right">Falta</th>
                         <th class="text-right">Producto Terminado</th>
                         <th>Último PT</th>
@@ -162,9 +163,27 @@
                         </td>
 
                         <td class="text-right">
-                            {{ number_format($item->destino_asignado,0,',','.') }}
+                            <strong>{{ number_format($item->destino_asignado,0,',','.') }}</strong>
+                            <br><small class="text-muted">Trazabilidad logística</small>
+                        </td>
+
+                        <td class="text-right">
+                            {{ number_format($item->destino_detalle,0,',','.') }}
                             @if($item->destinos > 0)
                                 <br><small class="text-muted">{{ $item->destinos }} destinos</small>
+                            @endif
+
+                            @if($item->detalle_destino_incompleto)
+                                <br>
+                                <small class="text-warning font-weight-bold">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    faltan {{ number_format($item->diferencia_fuentes,0,',','.') }} en el detalle
+                                </small>
+                            @elseif($item->diferencia_fuentes > 0)
+                                <br>
+                                <small class="text-info font-weight-bold">
+                                    diferencia {{ number_format($item->diferencia_fuentes,0,',','.') }}
+                                </small>
                             @endif
                         </td>
 
@@ -196,7 +215,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center py-5 text-success">
+                        <td colspan="10" class="text-center py-5 text-success">
                             <i class="fas fa-check-circle mr-1"></i>
                             Todas las OTs del rango tienen el destino completo.
                         </td>
@@ -213,6 +232,9 @@
                             </td>
                             <td class="text-right">
                                 {{ number_format($reportePendiente->sum('destino_asignado'),0,',','.') }}
+                            </td>
+                            <td class="text-right">
+                                {{ number_format($reportePendiente->sum('destino_detalle'),0,',','.') }}
                             </td>
                             <td class="text-right text-danger">
                                 {{ number_format($reportePendiente->sum('faltante_destino'),0,',','.') }}
