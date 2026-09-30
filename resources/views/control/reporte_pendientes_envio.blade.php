@@ -137,11 +137,9 @@
                     <tr>
                         <th>OT</th>
                         <th>Código / Descripción</th>
-                        <th class="text-right">Orden</th>
-                        <th class="text-right">Destino asignado</th>
-                        <th class="text-right">Detalle sucursales</th>
-                        <th class="text-right">Falta</th>
                         <th class="text-right">Producto Terminado</th>
+                        <th class="text-right">Total distribuido OT</th>
+                        <th class="text-right">Falta</th>
                         <th>Último PT</th>
                         <th>Última asignación</th>
                         <th>Solicitud</th>
@@ -159,31 +157,13 @@
                         </td>
 
                         <td class="text-right">
-                            <strong>{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
+                            <strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong>
                         </td>
 
                         <td class="text-right">
-                            <strong>{{ number_format($item->destino_asignado,0,',','.') }}</strong>
-                            <br><small class="text-muted">Trazabilidad logística</small>
-                        </td>
-
-                        <td class="text-right">
-                            {{ number_format($item->destino_detalle,0,',','.') }}
+                            <strong>{{ number_format($item->total_distribuido,0,',','.') }}</strong>
                             @if($item->destinos > 0)
                                 <br><small class="text-muted">{{ $item->destinos }} destinos</small>
-                            @endif
-
-                            @if($item->detalle_destino_incompleto)
-                                <br>
-                                <small class="text-warning font-weight-bold">
-                                    <i class="fas fa-exclamation-triangle mr-1"></i>
-                                    faltan {{ number_format($item->diferencia_fuentes,0,',','.') }} en el detalle
-                                </small>
-                            @elseif($item->diferencia_fuentes > 0)
-                                <br>
-                                <small class="text-info font-weight-bold">
-                                    diferencia {{ number_format($item->diferencia_fuentes,0,',','.') }}
-                                </small>
                             @endif
                         </td>
 
@@ -191,10 +171,6 @@
                             <span class="fd-missing">
                                 {{ number_format($item->faltante_destino,0,',','.') }}
                             </span>
-                        </td>
-
-                        <td class="text-right">
-                            {{ number_format($item->producto_terminado,0,',','.') }}
                         </td>
 
                         <td>
@@ -215,7 +191,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="10" class="text-center py-5 text-success">
+                        <td colspan="8" class="text-center py-5 text-success">
                             <i class="fas fa-check-circle mr-1"></i>
                             Todas las OTs del rango tienen el destino completo.
                         </td>
@@ -228,18 +204,15 @@
                         <tr class="font-weight-bold bg-light">
                             <td colspan="2">TOTAL</td>
                             <td class="text-right">
-                                {{ number_format($reportePendiente->sum('cantidad_orden'),0,',','.') }}
+                                {{ number_format($reportePendiente->sum('producto_terminado'),0,',','.') }}
                             </td>
                             <td class="text-right">
-                                {{ number_format($reportePendiente->sum('destino_asignado'),0,',','.') }}
-                            </td>
-                            <td class="text-right">
-                                {{ number_format($reportePendiente->sum('destino_detalle'),0,',','.') }}
+                                {{ number_format($reportePendiente->sum('total_distribuido'),0,',','.') }}
                             </td>
                             <td class="text-right text-danger">
                                 {{ number_format($reportePendiente->sum('faltante_destino'),0,',','.') }}
                             </td>
-                            <td colspan="4"></td>
+                            <td colspan="3"></td>
                         </tr>
                     </tfoot>
                 @endif
