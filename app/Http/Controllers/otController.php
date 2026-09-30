@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Exports\OtLogisticaExport;
 use App\Exports\ReporteSemanalLogisticaExport;
 use App\Models\OtTrazabilidad;
+use App\Http\Requests\OtAtrasadasRequest;
 
 class OtController extends Controller
 {
@@ -726,500 +727,365 @@ class OtController extends Controller
         }
     }
 
-    public function otAtrasadas(Request $request)
+    public function otAtrasadas(OtAtrasadasRequest $request)
     {
-        /*
-     * ============================================================
-     * VALIDAR FILTRO DE FECHAS
-     * ============================================================
-     */
-
-        $request->validate([
-            'fecha_desde' => 'nullable|date',
-            'fecha_hasta' => 'nullable|date|after_or_equal:fecha_desde',
-        ]);
-
         $diasAlerta = self::DIAS_PARA_ALERTA;
-
+        $hoy = Carbon::today();
 
         /*
-     * ============================================================
-     * FECHAS DEL FILTRO
-     * ============================================================
-     */
-
+        |--------------------------------------------------------------------------
+        | FILTROS
+        |--------------------------------------------------------------------------
+        |
+        | El rango de fechas corresponde a la FECHA DEL ÚLTIMO MOVIMIENTO.
+        | Esto se deja explícito también en la vista para evitar interpretar
+        | el rango como fecha de creación de la OT.
+        */
         $fechaDesde = $request->filled('fecha_desde')
-            ? Carbon::parse($request->fecha_desde)->startOfDay()
+            ? Carbon::parse($request->input('fecha_desde'))->startOfDay()
             : null;
 
         $fechaHasta = $request->filled('fecha_hasta')
-            ? Carbon::parse($request->fecha_hasta)->endOfDay()
+            ? Carbon::parse($request->input('fecha_hasta'))->endOfDay()
             : null;
 
+        $buscar = trim((string) $request->input('buscar', ''));
+        $procesoFiltro = trim((string) $request->input('proceso', ''));
+        $nivelFiltro = trim((string) $request->input('nivel', ''));
+        $diasDesde = $request->filled('dias_desde')
+            ? (int) $request->input('dias_desde')
+            : null;
+        $diasHasta = $request->filled('dias_hasta')
+            ? (int) $request->input('dias_hasta')
+            : null;
+        $orden = (string) $request->input('orden', 'atraso_desc');
 
         /*
-     * ============================================================
-     * OBTENER OT CON TRAZABILIDAD
-     * ============================================================
-     */
-
+        |--------------------------------------------------------------------------
+        | BASE DE OT
+        |--------------------------------------------------------------------------
+        |
+        | Se carga la trazabilidad en una sola consulta relacionada para evitar
+        | N+1. Las OT POSTERGADAS no participan de ningún KPI.
+        */
         $ots = Ot::with('trazabilidades')
             ->whereHas('trazabilidades')
-            ->get();
+            ->get()
+            ->filter(function ($ot) {
+                return strtoupper(trim((string) $ot->estado)) !== 'POSTERGADO';
+            })
+            ->values();
 
-
-        /*
-     * ============================================================
-     * EXCLUIR OT POSTERGADAS
-     * ============================================================
-     *
-     * IMPORTANTE:
-     *
-     * La exclusión se hace ANTES de recorrer las OT.
-     *
-     * De esta manera una OT POSTERGADO nunca participa en:
-     *
-     * - OT atrasadas
-     * - Total
-     * - Promedio
-     * - Mayor atraso
-     * - Procesos
-     * - Porcentajes
-     * - Filtros
-     *
-     */
-
-        $ots = $ots->filter(function ($ot) {
-
-            $estadoOT = strtoupper(
-                trim((string) $ot->estado)
-            );
-
-            return $estadoOT !== 'POSTERGADO';
-        })->values();
-
-
-        /*
-     * ============================================================
-     * COLECCIÓN DE OT ATRASADAS
-     * ============================================================
-     */
-
-        $otsAtrasadas = collect();
-
-
-        /*
-     * ============================================================
-     * RECORRER TODAS LAS OT
-     * ============================================================
-     */
+        $baseAtrasadas = collect();
 
         foreach ($ots as $ot) {
+            $trazabilidades = collect($ot->trazabilidades);
 
-            /*
-         * ========================================================
-         * SEGURIDAD EXTRA
-         * ========================================================
-         *
-         * Aunque ya fueron excluidas arriba, dejamos esta
-         * validación como segunda barrera.
-         *
-         */
-
-            $estadoOT = strtoupper(
-                trim((string) $ot->estado)
-            );
-
-            if ($estadoOT === 'POSTERGADO') {
+            if ($trazabilidades->isEmpty()) {
                 continue;
             }
 
-
             /*
-         * ========================================================
-         * ÚLTIMO MOVIMIENTO REAL
-         * ========================================================
-         *
-         * Se busca la trazabilidad con la fecha más reciente.
-         *
-         * Si existen varios movimientos con la misma fecha,
-         * se utiliza el orden del proceso como desempate.
-         */
-
-            $ultimoMovimiento = $ot->trazabilidades
+             * Última ACTIVIDAD real: manda la fecha y el orden del proceso solo
+             * desempata cuando existen movimientos en la misma fecha.
+             */
+            $ultimoMovimiento = $trazabilidades
                 ->sortByDesc(function ($traza) {
+                    $fecha = Carbon::parse($traza->fecha_proceso)->timestamp;
+                    $ordenProceso = $this->ordenProceso($traza->proceso);
 
-                    $fecha = Carbon::parse(
-                        $traza->fecha_proceso
-                    )->timestamp;
-
-                    $orden = $this->ordenProceso(
-                        $traza->proceso
-                    );
-
-                    return ($fecha * 1000) + $orden;
+                    return sprintf('%012d-%05d', $fecha, $ordenProceso);
                 })
                 ->first();
-
-
-            /*
-         * ========================================================
-         * SEGURIDAD
-         * ========================================================
-         */
 
             if (!$ultimoMovimiento) {
                 continue;
             }
 
-
-            /*
-         * ========================================================
-         * FECHA DEL ÚLTIMO MOVIMIENTO
-         * ========================================================
-         */
-
             $fechaUltimoMovimiento = Carbon::parse(
                 $ultimoMovimiento->fecha_proceso
-            );
+            )->startOfDay();
 
-
-            /*
-         * ========================================================
-         * FILTRO POR RANGO DE FECHAS
-         * ========================================================
-         *
-         * Si se indica fecha_desde:
-         *
-         * fecha último movimiento >= fecha_desde
-         *
-         * Si se indica fecha_hasta:
-         *
-         * fecha último movimiento <= fecha_hasta
-         */
-
-            if (
-                $fechaDesde &&
-                $fechaUltimoMovimiento->lt($fechaDesde)
-            ) {
+            if ($fechaDesde && $fechaUltimoMovimiento->lt($fechaDesde)) {
                 continue;
             }
 
-            if (
-                $fechaHasta &&
-                $fechaUltimoMovimiento->gt($fechaHasta)
-            ) {
+            if ($fechaHasta && $fechaUltimoMovimiento->gt($fechaHasta)) {
                 continue;
             }
-
-
-            /*
-         * ========================================================
-         * NORMALIZAR ÚLTIMO PROCESO
-         * ========================================================
-         *
-         * Ejemplo:
-         *
-         * TERMINACION - PRODUCTO TERMINADO
-         *                 ↓
-         * PRODUCTO TERMINADO
-         *
-         * LOGISTICA - LOGISTICA Y DISTRIBUCION
-         *                 ↓
-         * LOGISTICA Y DISTRIBUCION
-         */
 
             $ultimoProcesoNormalizado = $this->normalizarProceso(
                 $ultimoMovimiento->proceso
             );
 
-
             /*
-         * ========================================================
-         * EXCLUIR OT FINALIZADAS
-         * ========================================================
-         *
-         * Estas OT no deben aparecer como atrasadas aunque
-         * tengan muchos días sin movimiento.
-         */
-
-            if (
-                in_array(
-                    $ultimoProcesoNormalizado,
-                    [
-                        'PRODUCTO TERMINADO',
-                        'LOGISTICA Y DISTRIBUCION',
-                    ],
-                    true
-                )
-            ) {
+             * Una OT al 100% no es una OT atrasada.
+             */
+            if (in_array($ultimoProcesoNormalizado, $this->procesosFinales(), true)) {
                 continue;
             }
 
-
-            /*
-         * ========================================================
-         * DÍAS SIN MOVIMIENTO
-         * ========================================================
-         */
-
-            $diasSinMovimiento = round(
-                $fechaUltimoMovimiento
-                    ->diffInMinutes(Carbon::now()) / 60 / 24,
-                2
+            $diasSinMovimiento = max(
+                0,
+                $fechaUltimoMovimiento->diffInDays($hoy, false)
             );
-
-
-            /*
-         * ========================================================
-         * VERIFICAR SI ESTÁ ATRASADA
-         * ========================================================
-         */
 
             if ($diasSinMovimiento < $diasAlerta) {
                 continue;
             }
 
-
-            /*
-         * ========================================================
-         * CONSTRUIR TODOS LOS PROCESOS
-         * ========================================================
-         *
-         * Mantiene el orden definido por FLUJO_PROCESOS.
-         */
-
             [$procesos, $resumen] = $this->construirReporte(
-                $ot->trazabilidades
+                $trazabilidades
             );
 
-
-            /*
-         * ========================================================
-         * CALCULAR AVANCE REAL
-         * ========================================================
-         */
-
             $ultimoProcesoFlujo = $procesos->last();
-
             $avance = 0;
 
             if ($ultimoProcesoFlujo) {
-
-                /*
-             * Si el último proceso del flujo es
-             * PEDIDO SUSPENDIDO, buscamos el último
-             * proceso real anterior.
-             */
-
                 if ($ultimoProcesoFlujo['es_suspendido']) {
-
                     $ultimoProcesoReal = $procesos
                         ->reverse()
-                        ->first(
-                            fn($p) => !$p['es_suspendido']
-                        );
+                        ->first(function ($proceso) {
+                            return !$proceso['es_suspendido'];
+                        });
 
-                    $avance =
-                        $ultimoProcesoReal['avance_acumulado']
-                        ?? 0;
+                    $avance = $ultimoProcesoReal['avance_acumulado'] ?? 0;
                 } else {
-
-                    $avance =
-                        $ultimoProcesoFlujo['avance_acumulado']
-                        ?? 0;
+                    $avance = $ultimoProcesoFlujo['avance_acumulado'] ?? 0;
                 }
             }
 
+            $nivel = $this->clasificarNivelAtraso($diasSinMovimiento);
 
-            /*
-         * ========================================================
-         * AGREGAR OT A LAS ATRASADAS
-         * ========================================================
-         */
-
-            $otsAtrasadas->push([
-
+            $baseAtrasadas->push([
                 'ot' => $ot,
-
                 'procesos' => $procesos,
-
                 'resumen' => $resumen,
-
-                'ultimo_movimiento' =>
-                $ultimoMovimiento,
-
-                'ultimo_proceso_normalizado' =>
-                $ultimoProcesoNormalizado,
-
-                'fecha_ultimo_movimiento' =>
-                $fechaUltimoMovimiento,
-
-                'dias_sin_movimiento' =>
-                $diasSinMovimiento,
-
-                'avance' =>
-                $avance,
-
-                'cantidad_procesos' =>
-                $procesos->count(),
-
+                'ultimo_movimiento' => $ultimoMovimiento,
+                'ultimo_proceso_normalizado' => $ultimoProcesoNormalizado,
+                'fecha_ultimo_movimiento' => $fechaUltimoMovimiento,
+                'dias_sin_movimiento' => $diasSinMovimiento,
+                'nivel' => $nivel,
+                'avance' => $avance,
+                'cantidad_procesos' => $procesos->count(),
             ]);
         }
 
-
         /*
-     * ================================================================
-     * ORDENAR LAS OT MÁS ATRASADAS PRIMERO
-     * ================================================================
-     */
-
-        $otsAtrasadas = $otsAtrasadas
-            ->sortByDesc('dias_sin_movimiento')
+        |--------------------------------------------------------------------------
+        | OPCIONES DE PROCESO
+        |--------------------------------------------------------------------------
+        |
+        | Se calculan antes del filtro de proceso para que el selector no pierda
+        | las opciones al elegir una.
+        */
+        $procesosDisponibles = $baseAtrasadas
+            ->groupBy('ultimo_proceso_normalizado')
+            ->map(function ($items, $proceso) {
+                return (object) [
+                    'proceso' => $proceso ?: 'SIN PROCESO',
+                    'cantidad' => $items->count(),
+                ];
+            })
+            ->sortBy('proceso')
             ->values();
 
-
         /*
-     * ================================================================
-     * SEGURIDAD FINAL
-     * ================================================================
-     *
-     * Esta última limpieza garantiza que ninguna OT POSTERGADO
-     * llegue a los KPIs aunque en algún momento se agregue otra
-     * lógica antes de esta sección.
-     */
+        |--------------------------------------------------------------------------
+        | FILTROS GERENCIALES
+        |--------------------------------------------------------------------------
+        */
+        $otsAtrasadas = $baseAtrasadas
+            ->filter(function ($item) use (
+                $buscar,
+                $procesoFiltro,
+                $nivelFiltro,
+                $diasDesde,
+                $diasHasta
+            ) {
+                if ($procesoFiltro !== '') {
+                    $procesoSeleccionado = $this->normalizarProceso($procesoFiltro);
 
-        $otsAtrasadas = $otsAtrasadas
-            ->filter(function ($item) {
+                    if ($item['ultimo_proceso_normalizado'] !== $procesoSeleccionado) {
+                        return false;
+                    }
+                }
 
-                $estadoOT = strtoupper(
-                    trim((string) $item['ot']->estado)
-                );
+                if ($nivelFiltro !== '' && $item['nivel'] !== $nivelFiltro) {
+                    return false;
+                }
 
-                return $estadoOT !== 'POSTERGADO';
+                if ($diasDesde !== null && $item['dias_sin_movimiento'] < $diasDesde) {
+                    return false;
+                }
+
+                if ($diasHasta !== null && $item['dias_sin_movimiento'] > $diasHasta) {
+                    return false;
+                }
+
+                if ($buscar !== '') {
+                    $ot = $item['ot'];
+                    $texto = mb_strtoupper(
+                        trim(
+                            (string) $ot->nro_ot . ' '
+                            . (string) $ot->codigo . ' '
+                            . (string) $ot->descripcion
+                        ),
+                        'UTF-8'
+                    );
+
+                    $termino = mb_strtoupper($buscar, 'UTF-8');
+
+                    if (mb_strpos($texto, $termino) === false) {
+                        return false;
+                    }
+                }
+
+                return true;
             })
             ->values();
 
+        switch ($orden) {
+            case 'atraso_asc':
+                $otsAtrasadas = $otsAtrasadas
+                    ->sortBy('dias_sin_movimiento')
+                    ->values();
+                break;
+
+            case 'ot_asc':
+                $otsAtrasadas = $otsAtrasadas
+                    ->sortBy(function ($item) {
+                        return (int) $item['ot']->nro_ot;
+                    })
+                    ->values();
+                break;
+
+            case 'proceso_asc':
+                $otsAtrasadas = $otsAtrasadas
+                    ->sortBy(function ($item) {
+                        return $item['ultimo_proceso_normalizado']
+                            . '-'
+                            . str_pad((string) $item['ot']->nro_ot, 10, '0', STR_PAD_LEFT);
+                    })
+                    ->values();
+                break;
+
+            case 'atraso_desc':
+            default:
+                $otsAtrasadas = $otsAtrasadas
+                    ->sortByDesc('dias_sin_movimiento')
+                    ->values();
+                break;
+        }
 
         /*
-     * ================================================================
-     * KPI - TOTAL OT ATRASADAS
-     * ================================================================
-     */
-
+        |--------------------------------------------------------------------------
+        | KPI
+        |--------------------------------------------------------------------------
+        */
         $totalAtrasadas = $otsAtrasadas->count();
 
-
-        /*
-     * ================================================================
-     * KPI - PROMEDIO DÍAS DE ATRASO
-     * ================================================================
-     */
-
         $promedioDiasAtraso = $totalAtrasadas > 0
-            ? round(
-                $otsAtrasadas->avg('dias_sin_movimiento'),
-                2
-            )
+            ? round($otsAtrasadas->avg('dias_sin_movimiento'), 1)
             : 0;
-
-
-        /*
-     * ================================================================
-     * KPI - MAYOR ATRASO
-     * ================================================================
-     */
 
         $mayorAtraso = $totalAtrasadas > 0
-            ? $otsAtrasadas->max('dias_sin_movimiento')
+            ? (int) $otsAtrasadas->max('dias_sin_movimiento')
             : 0;
 
+        $prendasAfectadas = (int) $otsAtrasadas->sum(function ($item) {
+            return max(0, (int) $item['ot']->cantidad_orden);
+        });
 
-        /*
-     * ================================================================
-     * OT ATRASADAS POR PROCESO
-     * ================================================================
-     *
-     * Se utiliza el ÚLTIMO PROCESO de cada OT.
-     *
-     * Ejemplo:
-     *
-     * OT 100 -> CORTE
-     * OT 101 -> CORTE
-     * OT 102 -> COSTURA
-     * OT 103 -> CORTE
-     *
-     * Resultado:
-     *
-     * CORTE      = 3
-     * COSTURA    = 1
-     */
+        $criticas = $otsAtrasadas->where('nivel', 'critica')->count();
+        $graves = $otsAtrasadas->where('nivel', 'grave')->count();
+        $riesgo = $otsAtrasadas->where('nivel', 'riesgo')->count();
 
         $otsPorProceso = $otsAtrasadas
             ->groupBy(function ($item) {
-
-                return $item['ultimo_proceso_normalizado']
-                    ?: 'SIN PROCESO';
+                return $item['ultimo_proceso_normalizado'] ?: 'SIN PROCESO';
             })
             ->map(function ($items) {
-
                 return $items->count();
             })
             ->sortDesc();
 
-
-        /*
-     * ================================================================
-     * PORCENTAJE POR PROCESO
-     * ================================================================
-     */
-
         $detalleProcesos = $otsPorProceso
-            ->map(function ($cantidad, $proceso) use ($totalAtrasadas) {
-
-                $porcentaje = $totalAtrasadas > 0
-                    ? round(
-                        ($cantidad / $totalAtrasadas) * 100,
-                        2
-                    )
-                    : 0;
+            ->map(function ($cantidad, $proceso) use ($totalAtrasadas, $otsAtrasadas) {
+                $itemsProceso = $otsAtrasadas->filter(function ($item) use ($proceso) {
+                    return ($item['ultimo_proceso_normalizado'] ?: 'SIN PROCESO') === $proceso;
+                });
 
                 return [
-
-                    'proceso' =>
-                    $proceso,
-
-                    'cantidad' =>
-                    $cantidad,
-
-                    'porcentaje' =>
-                    $porcentaje,
-
+                    'proceso' => $proceso,
+                    'cantidad' => $cantidad,
+                    'prendas' => (int) $itemsProceso->sum(function ($item) {
+                        return max(0, (int) $item['ot']->cantidad_orden);
+                    }),
+                    'promedio_dias' => $cantidad > 0
+                        ? round($itemsProceso->avg('dias_sin_movimiento'), 1)
+                        : 0,
+                    'porcentaje' => $totalAtrasadas > 0
+                        ? round(($cantidad / $totalAtrasadas) * 100, 1)
+                        : 0,
                 ];
             })
             ->values();
 
+        $procesoMasAfectado = $detalleProcesos->first();
 
-        /*
-     * ================================================================
-     * RETORNAR VISTA
-     * ================================================================
-     */
+        $filtrosActivos = collect([
+            $fechaDesde,
+            $fechaHasta,
+            $buscar !== '' ? $buscar : null,
+            $procesoFiltro !== '' ? $procesoFiltro : null,
+            $nivelFiltro !== '' ? $nivelFiltro : null,
+            $diasDesde,
+            $diasHasta,
+            $orden !== 'atraso_desc' ? $orden : null,
+        ])->filter(function ($valor) {
+            return $valor !== null && $valor !== '';
+        })->count();
 
-        return view(
-            'dashboard.ot-atrasadas',
-            compact(
-                'otsAtrasadas',
-                'totalAtrasadas',
-                'promedioDiasAtraso',
-                'mayorAtraso',
-                'diasAlerta',
-                'otsPorProceso',
-                'detalleProcesos',
-                'fechaDesde',
-                'fechaHasta'
-            )
-        );
+        return view('dashboard.ot-atrasadas', compact(
+            'otsAtrasadas',
+            'totalAtrasadas',
+            'promedioDiasAtraso',
+            'mayorAtraso',
+            'prendasAfectadas',
+            'diasAlerta',
+            'otsPorProceso',
+            'detalleProcesos',
+            'procesosDisponibles',
+            'procesoMasAfectado',
+            'criticas',
+            'graves',
+            'riesgo',
+            'fechaDesde',
+            'fechaHasta',
+            'buscar',
+            'procesoFiltro',
+            'nivelFiltro',
+            'diasDesde',
+            'diasHasta',
+            'orden',
+            'filtrosActivos'
+        ));
+    }
+
+    private function clasificarNivelAtraso($dias): string
+    {
+        $dias = (int) $dias;
+
+        if ($dias >= 90) {
+            return 'critica';
+        }
+
+        if ($dias >= 60) {
+            return 'grave';
+        }
+
+        return 'riesgo';
     }
 
     private function procesosFinales(): array
@@ -1227,6 +1093,7 @@ class OtController extends Controller
         return [
             'PRODUCTO TERMINADO',
             'LOGISTICA Y DISTRIBUCION',
+            'REVISION',
         ];
     }
 
