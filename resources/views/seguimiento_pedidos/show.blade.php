@@ -48,7 +48,7 @@
             </div>
             <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">1er envío logística</small>
+                    <small class="text-muted d-block text-uppercase">1ª remisión</small>
                     <strong>{{ $resumen->primer_envio_logistica ? date('d/m/Y', strtotime($resumen->primer_envio_logistica)) : '-' }}</strong>
                 </div>
             </div>
@@ -105,6 +105,7 @@
                         <th>Fecha pedido</th>
                         <th>Entrada a Terminación</th>
                         <th>Entrada a Logística</th>
+                        <th>Remisión</th>
                         <th>Confirmación del local</th>
                         <th>Tiempo desde pedido</th>
                         <th>Estado KPI</th>
@@ -118,7 +119,13 @@
                         <td>{{ $otKpi->fecha_ingreso ? date('d/m/Y', strtotime($otKpi->fecha_ingreso)) : '-' }}</td>
                         <td>
                             {{ $otKpi->kpi_fecha_logistica ? date('d/m/Y', strtotime($otKpi->kpi_fecha_logistica)) : '-' }}
-
+                        </td>
+                        <td>
+                            @if($otKpi->kpi_fecha_envio)
+                                <strong>{{ date('d/m/Y', strtotime($otKpi->kpi_fecha_envio)) }}</strong>
+                            @else
+                                -
+                            @endif
                         </td>
                         <td>{{ $otKpi->kpi_fecha_recepcion ? date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) : '-' }}</td>
                         <td>
@@ -131,8 +138,10 @@
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
                                 <span class="badge badge-success">CONFIRMADO</span>
-                            @elseif($otKpi->kpi_estado === 'DESPACHADO SIN CONFIRMAR')
-                                <span class="badge badge-warning">DESPACHADO SIN CONFIRMAR</span>
+                            @elseif($otKpi->kpi_estado === 'REMISIONADO')
+                                <span class="badge badge-warning">
+                                    <i class="fas fa-file-invoice mr-1"></i>REMISIONADO
+                                </span>
                             @else
                                 <span class="badge badge-secondary">{{ $otKpi->kpi_estado }}</span>
                             @endif
