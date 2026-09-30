@@ -464,36 +464,168 @@ class SeguimientoPedidoController extends Controller
                 ->groupBy('id_ot');
 
             if (Schema::hasTable('ot_logistica_remisiones')) {
-                $movimientosRemision = DB::table('ot_logistica_remisiones')
+                /*
+                 * La REMISIÓN es evidencia suficiente de despacho aunque todavía
+                 * no exista id_logistica_detalle. El seguimiento T no debe quedar
+                 * bloqueado esperando la asignación del plan logístico.
+                 */
+                $movimientos = DB::table('ot_logistica_remisiones')
                     ->whereIn('id_ot', $idsOt)
                     ->select(
-                        'id_ot', 'fecha_remision', 'fecha_recepcion',
-                        'sucursal_salida', 'sucursal_destino', 'sucursal_logistica',
-                        'cod_sucursal_salida', 'cod_sucursal_destino',
-                        'serie', 'numero_remision', 'cantidad'
-                    )
-                    ->orderBy('fecha_remision')
-                    ->orderBy('id')
-                    ->get()
-                    ->groupBy('id_ot');
-
-                $remisiones = DB::table('ot_logistica_remisiones')
-                    ->whereIn('id_ot', $idsOt)
-                    ->select(
+                        'id',
                         'id_ot',
-                        'sucursal_logistica',
+                        'codigo',
+                        'fecha_remision',
+                        'fecha_recepcion',
+                        'sucursal_salida',
                         'sucursal_destino',
+                        'sucursal_logistica',
+                        'cod_sucursal_salida',
                         'cod_sucursal_destino',
-                        DB::raw('SUM(cantidad) as enviado'),
-                        DB::raw('SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as recibido'),
-                        DB::raw('MIN(fecha_remision) as primera_remision'),
-                        DB::raw('MAX(fecha_remision) as ultima_remision'),
-                        DB::raw('MIN(fecha_recepcion) as primera_recepcion'),
-                        DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
+                        'serie',
+                        'numero_remision',
+                        'cantidad'
                     )
-                    ->groupBy('id_ot', 'sucursal_logistica', 'sucursal_destino', 'cod_sucursal_destino')
-                    ->get()
-                    ->groupBy('id_ot');
+                    ->get();
+
+                /*
+                 * Compatibilidad con remisiones históricas importadas antes de
+                 * que existiera la Logística: si quedaron con id_ot = NULL,
+                 * se usan en memoria cuando el código base identifica de forma
+                 * inequívoca una OT del pedido actual.
+                 *
+                 * No se actualiza la BD desde un GET; el próximo reimport reparará
+                 * persistentemente el id_ot con la misma lógica del importador.
+                 */
+                $otsPorCodigoPedido = $ots
+                    ->groupBy(function ($ot) {
+                        return $this->normalizarCodigoBaseSeguimiento($ot->codigo);
+                    });
+
+                $codigosPedido = $otsPorCodigoPedido
+                    ->keys()
+                    ->filter()
+                    ->values();
+
+                if ($codigosPedido->isNotEmpty()) {
+                    $huerfanasQuery = DB::table('ot_logistica_remisiones')
+                        ->whereNull('id_ot')
+                        ->whereNotNull('fecha_remision');
+
+                    if ($pedido->fecha_pedido) {
+                        $huerfanasQuery->where(
+                            'fecha_remision',
+                            '>=',
+                            $pedido->fecha_pedido->format('Y-m-d')
+                        );
+                    }
+
+                    $huerfanasQuery->where(function ($q) use ($codigosPedido) {
+                        foreach ($codigosPedido as $codigoBase) {
+                            $q->orWhere('codigo', 'ILIKE', $codigoBase . '%')
+                                ->orWhere('codigo', 'ILIKE', "'" . $codigoBase . '%');
+                        }
+                    });
+
+                    $huerfanas = $huerfanasQuery
+                        ->select(
+                            'id',
+                            'id_ot',
+                            'codigo',
+                            'fecha_remision',
+                            'fecha_recepcion',
+                            'sucursal_salida',
+                            'sucursal_destino',
+                            'sucursal_logistica',
+                            'cod_sucursal_salida',
+                            'cod_sucursal_destino',
+                            'serie',
+                            'numero_remision',
+                            'cantidad'
+                        )
+                        ->get();
+
+                    foreach ($huerfanas as $movimiento) {
+                        $codigoBase = $this->normalizarCodigoBaseSeguimiento($movimiento->codigo);
+                        $candidatas = collect($otsPorCodigoPedido->get($codigoBase, collect()));
+                        $idsCandidatos = $candidatas
+                            ->pluck('id_ot')
+                            ->filter()
+                            ->unique()
+                            ->values();
+
+                        if ($idsCandidatos->count() !== 1) {
+                            continue;
+                        }
+
+                        $movimiento->id_ot = (int) $idsCandidatos->first();
+                        $movimientos->push($movimiento);
+                    }
+                }
+
+                $movimientos = $movimientos
+                    ->filter(function ($movimiento) use ($idsOt) {
+                        return in_array((int) $movimiento->id_ot, array_map('intval', $idsOt), true);
+                    })
+                    ->sortBy(function ($movimiento) {
+                        return sprintf(
+                            '%s-%010d',
+                            (string) ($movimiento->fecha_remision ?? ''),
+                            (int) ($movimiento->id ?? 0)
+                        );
+                    })
+                    ->values();
+
+                $movimientosRemision = $movimientos->groupBy('id_ot');
+
+                /*
+                 * Se resume desde la colección unificada para que también
+                 * participen las remisiones sin detalle logístico.
+                 */
+                $remisiones = $movimientos
+                    ->groupBy('id_ot')
+                    ->map(function ($movimientosOt) {
+                        return collect($movimientosOt)
+                            ->groupBy(function ($r) {
+                                $destino = trim((string) (($r->sucursal_logistica ?? null)
+                                    ?: ($r->sucursal_destino ?? null)));
+
+                                return strtoupper($destino)
+                                    . '|'
+                                    . (string) ($r->cod_sucursal_destino ?? '');
+                            })
+                            ->map(function ($grupo) {
+                                $primero = $grupo->first();
+                                $fechasRemision = $grupo->pluck('fecha_remision')->filter();
+                                $fechasRecepcion = $grupo->pluck('fecha_recepcion')->filter();
+
+                                return (object) [
+                                    'id_ot' => (int) $primero->id_ot,
+                                    'sucursal_logistica' => $primero->sucursal_logistica,
+                                    'sucursal_destino' => $primero->sucursal_destino,
+                                    'cod_sucursal_destino' => $primero->cod_sucursal_destino,
+                                    'enviado' => (int) $grupo->sum('cantidad'),
+                                    'recibido' => (int) $grupo
+                                        ->filter(function ($r) {
+                                            return !empty($r->fecha_recepcion);
+                                        })
+                                        ->sum('cantidad'),
+                                    'primera_remision' => $fechasRemision->isNotEmpty()
+                                        ? $fechasRemision->min()
+                                        : null,
+                                    'ultima_remision' => $fechasRemision->isNotEmpty()
+                                        ? $fechasRemision->max()
+                                        : null,
+                                    'primera_recepcion' => $fechasRecepcion->isNotEmpty()
+                                        ? $fechasRecepcion->min()
+                                        : null,
+                                    'ultima_recepcion' => $fechasRecepcion->isNotEmpty()
+                                        ? $fechasRecepcion->max()
+                                        : null,
+                                ];
+                            })
+                            ->values();
+                    });
             }
         }
 
