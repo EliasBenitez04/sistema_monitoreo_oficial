@@ -175,12 +175,41 @@ class ControlTerminacionController extends Controller
             $rem = $remisionesPorOt->get($item->id_ot);
             $tope = max(0, (int) $item->cantidad_orden);
 
-            $item->cantidad_logistica = (int) ($log->cantidad_logistica ?? 0);
+            $item->cantidad_logistica = max(
+                0,
+                (int) ($log->cantidad_logistica ?? 0)
+            );
+
+            /*
+             * FUENTE DE VERDAD DEL TOTAL ASIGNADO:
+             * ot_trazabilidad.resultado de LOGISTICA - LOGISTICA Y DISTRIBUCION.
+             *
+             * ot_logistica_detalle se usa como desglose por sucursal/destino.
+             * Puede quedar incompleto respecto al total de trazabilidad; cuando
+             * eso ocurre no debemos inflar el faltante de Terminación.
+             */
+            $item->cantidad_destino_detalle = max(
+                0,
+                (int) ($destino->cantidad_destino_asignado ?? 0)
+            );
+
             $item->cantidad_destino_asignado = min(
                 $tope,
-                max(0, (int) ($destino->cantidad_destino_asignado ?? 0))
+                max(
+                    $item->cantidad_logistica,
+                    $item->cantidad_destino_detalle
+                )
             );
+
+            $item->diferencia_fuente_destino = abs(
+                $item->cantidad_logistica - $item->cantidad_destino_detalle
+            );
+
+            $item->detalle_destino_incompleto =
+                $item->cantidad_logistica > $item->cantidad_destino_detalle;
+
             $item->cantidad_destinos = (int) ($destino->cantidad_destinos ?? 0);
+
             $item->pendiente_completar_destino = max(
                 0,
                 $tope - $item->cantidad_destino_asignado
@@ -739,6 +768,7 @@ class ControlTerminacionController extends Controller
             ->all();
 
         $ptAcumulado = collect();
+        $logisticaPorOt = collect();
         $planesLogistica = collect();
 
         if (!empty($ids)) {
@@ -750,6 +780,18 @@ class ControlTerminacionController extends Controller
                     'id_ot',
                     DB::raw('SUM(resultado) as cantidad_pt_total'),
                     DB::raw('MAX(fecha_proceso) as ultima_fecha_pt_total')
+                )
+                ->get()
+                ->keyBy('id_ot');
+
+            $logisticaPorOt = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $ids)
+                ->where('proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
+                ->groupBy('id_ot')
+                ->select(
+                    'id_ot',
+                    DB::raw('SUM(resultado) as cantidad_logistica'),
+                    DB::raw('MAX(fecha_proceso) as ultima_fecha_logistica')
                 )
                 ->get()
                 ->keyBy('id_ot');
@@ -780,17 +822,59 @@ class ControlTerminacionController extends Controller
         }
 
         $reporteCompleto = $otsPeriodo
-            ->map(function ($ot) use ($ptAcumulado, $planesLogistica) {
+            ->map(function ($ot) use (
+                $ptAcumulado,
+                $logisticaPorOt,
+                $planesLogistica
+            ) {
                 $pt = $ptAcumulado->get($ot->id_ot);
+                $logistica = $logisticaPorOt->get($ot->id_ot);
                 $plan = $planesLogistica->get($ot->id_ot);
 
                 $orden = max(0, (int) $ot->cantidad_orden);
                 $ptTotal = max(0, (int) ($pt->cantidad_pt_total ?? 0));
-                $destinoRaw = max(0, (int) ($plan->destino_asignado ?? 0));
+                $logisticaTotal = max(
+                    0,
+                    (int) ($logistica->cantidad_logistica ?? 0)
+                );
+                $destinoDetalle = max(
+                    0,
+                    (int) ($plan->destino_asignado ?? 0)
+                );
 
                 $ot->cantidad_orden = $orden;
                 $ot->producto_terminado = min($orden, $ptTotal);
-                $ot->destino_asignado = min($orden, $destinoRaw);
+
+                $ot->destino_trazabilidad = min(
+                    $orden,
+                    $logisticaTotal
+                );
+
+                $ot->destino_detalle = min(
+                    $orden,
+                    $destinoDetalle
+                );
+
+                /*
+                 * Total asignado efectivo:
+                 * se toma el mayor valor entre trazabilidad y desglose,
+                 * siempre limitado a la cantidad de la OT.
+                 */
+                $ot->destino_asignado = min(
+                    $orden,
+                    max(
+                        $ot->destino_trazabilidad,
+                        $ot->destino_detalle
+                    )
+                );
+
+                $ot->diferencia_fuentes = abs(
+                    $ot->destino_trazabilidad - $ot->destino_detalle
+                );
+
+                $ot->detalle_destino_incompleto =
+                    $ot->destino_trazabilidad > $ot->destino_detalle;
+
                 $ot->destinos = (int) ($plan->destinos ?? 0);
 
                 $ot->faltante_destino = max(
@@ -802,7 +886,9 @@ class ControlTerminacionController extends Controller
                     ?? $ot->ultima_fecha_pt_periodo;
 
                 $ot->ultima_fecha_logistica =
-                    $plan->ultima_fecha_logistica ?? null;
+                    $logistica->ultima_fecha_logistica
+                    ?? $plan->ultima_fecha_logistica
+                    ?? null;
 
                 $ot->solicitud = $ot->faltante_destino > 0
                     ? 'SOLICITAR ' . $ot->faltante_destino
