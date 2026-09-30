@@ -107,6 +107,7 @@ class ControlTerminacionController extends Controller
         // fecha de PRODUCTO TERMINADO; sus movimientos posteriores se siguen completos,
         // aunque hayan ocurrido fuera del rango seleccionado.
         $logisticaPorOt = collect();
+        $destinosPorOt = collect();
         $remisionesPorOt = collect();
 
         if ($idsOt->isNotEmpty()) {
@@ -121,6 +122,26 @@ class ControlTerminacionController extends Controller
                     DB::raw('MAX(fecha_proceso) as ultima_fecha_logistica')
                 )
                 ->get()->keyBy('id_ot');
+
+            /*
+             * Para el KPI "Falta completar destino" la fuente válida es
+             * ot_logistica_detalle: allí está la cantidad realmente asignada
+             * a sucursales/destinos. No se usan remisiones para este cálculo.
+             */
+            if (Schema::hasTable('ot_logistica_detalle')) {
+                $destinosPorOt = DB::table('ot_logistica_detalle as d')
+                    ->join('ot_trazabilidad as t', 't.id_trazabilidad', '=', 'd.id_trazabilidad')
+                    ->whereIn('d.id_ot', $idsOt->all())
+                    ->where('t.proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
+                    ->groupBy('d.id_ot')
+                    ->select(
+                        'd.id_ot',
+                        DB::raw('SUM(d.cantidad) as cantidad_destino_asignado'),
+                        DB::raw('COUNT(DISTINCT d.sucursal) as cantidad_destinos')
+                    )
+                    ->get()
+                    ->keyBy('id_ot');
+            }
 
             if (Schema::hasTable('ot_logistica_remisiones')) {
                 $remisionesPorOt = DB::table('ot_logistica_remisiones')
@@ -150,10 +171,20 @@ class ControlTerminacionController extends Controller
             $item->cantidad_entregada_logistica = $item->cantidad_terminada;
 
             $log = $logisticaPorOt->get($item->id_ot);
+            $destino = $destinosPorOt->get($item->id_ot);
             $rem = $remisionesPorOt->get($item->id_ot);
             $tope = max(0, (int) $item->cantidad_orden);
 
             $item->cantidad_logistica = (int) ($log->cantidad_logistica ?? 0);
+            $item->cantidad_destino_asignado = min(
+                $tope,
+                max(0, (int) ($destino->cantidad_destino_asignado ?? 0))
+            );
+            $item->cantidad_destinos = (int) ($destino->cantidad_destinos ?? 0);
+            $item->pendiente_completar_destino = max(
+                0,
+                $tope - $item->cantidad_destino_asignado
+            );
             $item->primera_fecha_logistica = $log->primera_fecha_logistica ?? null;
             $item->ultima_fecha_logistica = $log->ultima_fecha_logistica ?? null;
             $item->movimiento_fisico = (int) ($rem->movimiento_fisico ?? 0);
@@ -273,12 +304,24 @@ class ControlTerminacionController extends Controller
          * Recepción Local = unidades efectivamente confirmadas por fecha_recepcion.
          */
         $totalRecepcionLocal = (int) $produccionTerminada->sum('recibido_efectivo');
-        $totalPendienteEnvio = (int) $produccionTerminada->sum(function ($item) {
-            return max(0, (int) $item->cantidad_terminada - (int) $item->remitido_efectivo);
-        });
-        $otsPendientesEnvio = $produccionTerminada->filter(function ($item) {
-            return (int) $item->cantidad_terminada > (int) $item->remitido_efectivo;
-        })->count();
+
+        /*
+         * ESTE KPI NO MIDE REMISIONES.
+         *
+         * Falta completar destino =
+         * cantidad ordenada - cantidad ya distribuida en ot_logistica_detalle.
+         *
+         * Ejemplo: OT 360 / destino asignado 358 => faltan 2.
+         */
+        $totalPendienteEnvio = (int) $produccionTerminada->sum(
+            'pendiente_completar_destino'
+        );
+
+        $otsPendientesEnvio = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->pendiente_completar_destino > 0;
+            })
+            ->count();
 
         // Mismo valor por definición del flujo.
         $totalEntregadoLogistica = $totalTerminado;
