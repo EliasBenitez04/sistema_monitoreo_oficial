@@ -20,9 +20,25 @@ class OtAtrasadasRequest extends FormRequest
             'proceso' => ['nullable', 'string', 'max:120'],
             'nivel' => ['nullable', 'in:critica,grave,riesgo'],
             'dias_desde' => ['nullable', 'integer', 'min:30', 'max:9999'],
-            'dias_hasta' => ['nullable', 'integer', 'min:30', 'max:9999', 'gte:dias_desde'],
+            'dias_hasta' => ['nullable', 'integer', 'min:30', 'max:9999'],
             'orden' => ['nullable', 'in:atraso_desc,atraso_asc,ot_asc,proceso_asc'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if (
+                $this->filled('dias_desde')
+                && $this->filled('dias_hasta')
+                && (int) $this->input('dias_hasta') < (int) $this->input('dias_desde')
+            ) {
+                $validator->errors()->add(
+                    'dias_hasta',
+                    'Días máx. debe ser mayor o igual a Días mín.'
+                );
+            }
+        });
     }
 
     public function attributes(): array
