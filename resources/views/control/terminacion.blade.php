@@ -228,12 +228,22 @@
                             </td>
                             <td class="text-right">
                                 <strong>{{ number_format($item->cantidad_destino_asignado,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
+
                                 @if($item->pendiente_completar_destino > 0)
-                                    <br><small class="text-danger">
+                                    <br>
+                                    <small class="text-danger">
                                         <strong>{{ number_format($item->pendiente_completar_destino,0,',','.') }}</strong> faltan
                                     </small>
                                 @else
                                     <br><small class="text-success">Destino completo</small>
+                                @endif
+
+                                @if(!empty($item->detalle_destino_incompleto))
+                                    <br>
+                                    <small class="text-warning font-weight-bold">
+                                        Detalle {{ number_format($item->cantidad_destino_detalle,0,',','.') }}
+                                        · dif. {{ number_format($item->diferencia_fuente_destino,0,',','.') }}
+                                    </small>
                                 @endif
                             </td>
                             <td class="text-right">
