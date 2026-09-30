@@ -119,9 +119,9 @@
                 </strong>
                 <div class="fd-sub">
                     Período PT:
-                    {{ CarbonCarbon::parse($fechaDesde)->format('d/m/Y') }}
+                    {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}
                     al
-                    {{ CarbonCarbon::parse($fechaHasta)->format('d/m/Y') }}
+                    {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}
                 </div>
             </div>
 
@@ -180,13 +180,13 @@
 
                         <td>
                             {{ $item->ultima_fecha_pt
-                                ? CarbonCarbon::parse($item->ultima_fecha_pt)->format('d/m/Y')
+                                ? \Carbon\Carbon::parse($item->ultima_fecha_pt)->format('d/m/Y')
                                 : '—' }}
                         </td>
 
                         <td>
                             {{ $item->ultima_fecha_logistica
-                                ? CarbonCarbon::parse($item->ultima_fecha_logistica)->format('d/m/Y')
+                                ? \Carbon\Carbon::parse($item->ultima_fecha_logistica)->format('d/m/Y')
                                 : '—' }}
                         </td>
 
