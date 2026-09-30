@@ -665,7 +665,10 @@ class SeguimientoPedidoController extends Controller
                 $m->destino_mostrar = $destino !== '' ? $destino : ('Sucursal ' . ($m->cod_sucursal_destino ?? '-'));
                 $m->cantidad = (int) $m->cantidad;
                 $origenNorm = strtoupper($m->origen_mostrar);
-                $m->tipo_movimiento = in_array($origenNorm, ['CASA CENTRAL', 'MATRIZ'], true)
+                $esCentral = (int) ($m->cod_sucursal_salida ?? 0) === 1
+                    || in_array($origenNorm, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+
+                $m->tipo_movimiento = $esCentral
                     ? 'DESPACHO CENTRAL'
                     : 'REDISTRIBUCION';
                 return $m;
@@ -707,22 +710,32 @@ class SeguimientoPedidoController extends Controller
                 $ot->etapa_actual = 'TERMINACION';
                 $ot->etapa_numero = 1;
                 $ot->estado_seguimiento = 'EN TERMINACION';
-            } elseif ($ot->distribuido <= 0) {
-                $ot->etapa_actual = 'PRODUCTO TERMINADO';
-                $ot->etapa_numero = 2;
-                $ot->estado_seguimiento = 'TERMINADO';
-            } elseif ($ot->movimientos_fisicos <= 0) {
+            } elseif ($ot->movimientos_fisicos > 0) {
+                /*
+                 * Una remisión real tiene más peso que la falta de
+                 * LOGISTICA - LOGISTICA Y DISTRIBUCION. Si ya existe documento
+                 * de salida, la OT debe avanzar a REMISION aunque el plan todavía
+                 * no haya sido asociado.
+                 */
+                if ($ot->recibido < $ot->enviado) {
+                    $ot->etapa_actual = 'REMISION';
+                    $ot->etapa_numero = 4;
+                    $ot->estado_seguimiento = $ot->recibido > 0
+                        ? 'RECEPCION PARCIAL'
+                        : 'REMISIONADO';
+                } else {
+                    $ot->etapa_actual = 'RECEPCION LOCAL';
+                    $ot->etapa_numero = 5;
+                    $ot->estado_seguimiento = 'COMPLETO';
+                }
+            } elseif ($ot->distribuido > 0) {
                 $ot->etapa_actual = 'LOGISTICA';
                 $ot->etapa_numero = 3;
                 $ot->estado_seguimiento = 'EN LOGISTICA';
-            } elseif ($ot->recibido < $ot->enviado) {
-                $ot->etapa_actual = 'REMISION';
-                $ot->etapa_numero = 4;
-                $ot->estado_seguimiento = $ot->recibido > 0 ? 'RECEPCION PARCIAL' : 'EN TRANSITO';
             } else {
-                $ot->etapa_actual = 'RECEPCION LOCAL';
-                $ot->etapa_numero = 5;
-                $ot->estado_seguimiento = 'COMPLETO';
+                $ot->etapa_actual = 'PRODUCTO TERMINADO';
+                $ot->etapa_numero = 2;
+                $ot->estado_seguimiento = 'TERMINADO';
             }
 
             $ot->porcentaje_seguimiento = $ot->etapa_numero > 0
@@ -757,10 +770,16 @@ class SeguimientoPedidoController extends Controller
             // Las redistribuciones entre locales quedan fuera del KPI.
             $despachosCentral = $movsOt->filter(function ($mov) {
                 $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
-                $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
+                $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null)
+                    ?: ($mov->sucursal_destino ?? null))));
 
-                return in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true)
-                    && !in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true);
+                $origenCentral = (int) ($mov->cod_sucursal_salida ?? 0) === 1
+                    || in_array($origen, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+
+                $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
+                    || in_array($destino, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', ''], true);
+
+                return $origenCentral && !$destinoCentral;
             });
 
             if ($fechaPedido) {
@@ -810,10 +829,17 @@ class SeguimientoPedidoController extends Controller
             if (!$primerDespacho) {
                 $tuvoDespachoAnterior = $fechaPedido && $movsOt->contains(function ($mov) use ($fechaPedido) {
                     $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
-                    $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null) ?: ($mov->sucursal_destino ?? null))));
+                    $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null)
+                        ?: ($mov->sucursal_destino ?? null))));
 
-                    return in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true)
-                        && !in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true)
+                    $origenCentral = (int) ($mov->cod_sucursal_salida ?? 0) === 1
+                        || in_array($origen, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+
+                    $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
+                        || in_array($destino, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', ''], true);
+
+                    return $origenCentral
+                        && !$destinoCentral
                         && !empty($mov->fecha_remision)
                         && Carbon::parse($mov->fecha_remision)->startOfDay()->lt($fechaPedido);
                 });
@@ -838,7 +864,7 @@ class SeguimientoPedidoController extends Controller
                 $ot->kpi_fecha_recepcion = $recepcionValida;
 
                 if (!$recepcionValida) {
-                    $ot->kpi_estado = 'DESPACHADO SIN CONFIRMAR';
+                    $ot->kpi_estado = 'REMISIONADO';
                 } else {
                     $ot->kpi_estado = 'CONFIRMADO';
 
@@ -912,4 +938,30 @@ class SeguimientoPedidoController extends Controller
 
         return view('seguimiento_pedidos.show', compact('pedido', 'ots', 'resumen'));
     }
+
+    /**
+     * Normaliza códigos de variantes de remisión al código base de la OT.
+     * Compatible con los códigos actuales: 050617789GRRN -> 050617789.
+     */
+    private function normalizarCodigoBaseSeguimiento($valor): string
+    {
+        $codigo = strtoupper(trim((string) $valor));
+        $codigo = ltrim($codigo, "'’`");
+        $codigo = preg_replace('/\\s+/u', '', $codigo);
+
+        if ($codigo === '') {
+            return '';
+        }
+
+        if (preg_match('/^(\\d{1,9})$/', $codigo)) {
+            return str_pad($codigo, 9, '0', STR_PAD_LEFT);
+        }
+
+        if (preg_match('/^(\\d{9})/', $codigo, $coincidencia)) {
+            return $coincidencia[1];
+        }
+
+        return $codigo;
+    }
+
 }
