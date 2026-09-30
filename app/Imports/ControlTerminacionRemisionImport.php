@@ -764,8 +764,24 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             return null;
         }
 
-        if ($candidatos->count() === 1) {
-            return $candidatos->first();
+        /*
+         * Un mismo id_ot puede aparecer varias veces porque una OT puede tener
+         * más de un movimiento PRODUCTO TERMINADO. Si todas las filas
+         * candidatas pertenecen a la misma OT, la asociación es inequívoca y
+         * no debe depender de que exista Logística.
+         */
+        $idsOtUnicos = $candidatos
+            ->pluck('id_ot')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($idsOtUnicos->count() === 1) {
+            return $candidatos
+                ->sortByDesc(function ($item) {
+                    return (string) ($item->fecha_producto_terminado ?? '');
+                })
+                ->first();
         }
 
         $fecha = null;
