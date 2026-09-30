@@ -752,21 +752,17 @@ class ControlTerminacionController extends Controller
         $buscar = trim((string) $request->input('buscar', ''));
 
         /*
-         * OBJETIVO DEL REPORTE
+         * MISMA REGLA DEL DASHBOARD OT
          * ------------------------------------------------------------
-         * Mostrar únicamente la cantidad que falta para completar el
-         * destino de cada OT.
+         * 1. El rango selecciona OTs que tuvieron PRODUCTO TERMINADO.
+         * 2. Producto Terminado de referencia = ÚLTIMO movimiento
+         *    TERMINACION - PRODUCTO TERMINADO de la OT.
+         * 3. Total distribuido = SUM(ot_logistica_detalle.cantidad)
+         *    de TODOS los movimientos LOGISTICA - LOGISTICA Y DISTRIBUCION.
+         * 4. Faltante real = Producto Terminado - Total distribuido.
          *
-         * FUENTE:
-         * - cantidad objetivo: ot.cantidad_orden
-         * - cantidad con destino: SUM(ot_logistica_detalle.cantidad)
-         *
-         * NO intervienen las remisiones en este cálculo.
-         *
-         * Ejemplo:
-         * OT = 360
-         * destino asignado = 358
-         * falta para completar destino = 2
+         * Ejemplo OT 30518:
+         * PT 360 - distribuido 358 = faltan 2.
          */
 
         $otsPeriodo = DB::table('ot_trazabilidad as pt')
@@ -812,128 +808,115 @@ class ControlTerminacionController extends Controller
             ->values()
             ->all();
 
-        $ptAcumulado = collect();
-        $logisticaPorOt = collect();
-        $planesLogistica = collect();
+        $ptReferenciaPorOt = collect();
+        $trazasLogistica = collect();
+        $distribucionPorOt = collect();
 
         if (!empty($ids)) {
-            $ptAcumulado = DB::table('ot_trazabilidad')
+            /*
+             * Último PT por OT, exactamente como hace dashboard/ot.blade.php:
+             * sortBy(fecha_proceso)->last().
+             */
+            $ptReferenciaPorOt = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $ids)
                 ->where('proceso', 'TERMINACION - PRODUCTO TERMINADO')
-                ->groupBy('id_ot')
                 ->select(
+                    'id_trazabilidad',
                     'id_ot',
-                    DB::raw('SUM(resultado) as cantidad_pt_total'),
-                    DB::raw('MAX(fecha_proceso) as ultima_fecha_pt_total')
+                    'resultado',
+                    'fecha_proceso'
                 )
+                ->orderBy('id_ot')
+                ->orderBy('fecha_proceso')
+                ->orderBy('id_trazabilidad')
                 ->get()
-                ->keyBy('id_ot');
+                ->groupBy('id_ot')
+                ->map(function ($items) {
+                    return $items->last();
+                });
 
-            $logisticaPorOt = DB::table('ot_trazabilidad')
+            $trazasLogistica = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $ids)
                 ->where('proceso', 'LOGISTICA - LOGISTICA Y DISTRIBUCION')
-                ->groupBy('id_ot')
                 ->select(
+                    'id_trazabilidad',
                     'id_ot',
-                    DB::raw('SUM(resultado) as cantidad_logistica'),
-                    DB::raw('MAX(fecha_proceso) as ultima_fecha_logistica')
+                    'fecha_proceso'
                 )
-                ->get()
-                ->keyBy('id_ot');
+                ->orderBy('id_ot')
+                ->orderBy('fecha_proceso')
+                ->orderBy('id_trazabilidad')
+                ->get();
 
-            if (Schema::hasTable('ot_logistica_detalle')) {
-                $planesLogistica = DB::table('ot_logistica_detalle as d')
-                    ->join(
-                        'ot_trazabilidad as t',
-                        't.id_trazabilidad',
-                        '=',
-                        'd.id_trazabilidad'
+            if (
+                Schema::hasTable('ot_logistica_detalle')
+                && $trazasLogistica->isNotEmpty()
+            ) {
+                $idsTrazabilidadLogistica = $trazasLogistica
+                    ->pluck('id_trazabilidad')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $distribucionPorOt = DB::table('ot_logistica_detalle')
+                    ->whereIn('id_ot', $ids)
+                    ->whereIn(
+                        'id_trazabilidad',
+                        $idsTrazabilidadLogistica
                     )
-                    ->whereIn('d.id_ot', $ids)
-                    ->where(
-                        't.proceso',
-                        'LOGISTICA - LOGISTICA Y DISTRIBUCION'
-                    )
-                    ->groupBy('d.id_ot')
+                    ->groupBy('id_ot')
                     ->select(
-                        'd.id_ot',
-                        DB::raw('SUM(d.cantidad) as destino_asignado'),
-                        DB::raw('COUNT(DISTINCT d.sucursal) as destinos'),
-                        DB::raw('MAX(t.fecha_proceso) as ultima_fecha_logistica')
+                        'id_ot',
+                        DB::raw('SUM(cantidad) as total_distribuido'),
+                        DB::raw('COUNT(DISTINCT sucursal) as destinos')
                     )
                     ->get()
                     ->keyBy('id_ot');
             }
         }
 
+        $ultimaFechaLogisticaPorOt = $trazasLogistica
+            ->groupBy('id_ot')
+            ->map(function ($items) {
+                return optional($items->last())->fecha_proceso;
+            });
+
         $reporteCompleto = $otsPeriodo
             ->map(function ($ot) use (
-                $ptAcumulado,
-                $logisticaPorOt,
-                $planesLogistica
+                $ptReferenciaPorOt,
+                $distribucionPorOt,
+                $ultimaFechaLogisticaPorOt
             ) {
-                $pt = $ptAcumulado->get($ot->id_ot);
-                $logistica = $logisticaPorOt->get($ot->id_ot);
-                $plan = $planesLogistica->get($ot->id_ot);
+                $pt = $ptReferenciaPorOt->get($ot->id_ot);
+                $distribucion = $distribucionPorOt->get($ot->id_ot);
 
-                $orden = max(0, (int) $ot->cantidad_orden);
-                $ptTotal = max(0, (int) ($pt->cantidad_pt_total ?? 0));
-                $logisticaTotal = max(
+                $productoTerminado = max(
                     0,
-                    (int) ($logistica->cantidad_logistica ?? 0)
+                    (int) ($pt->resultado ?? 0)
                 );
-                $destinoDetalle = max(
+
+                $totalDistribuido = max(
                     0,
-                    (int) ($plan->destino_asignado ?? 0)
+                    (int) ($distribucion->total_distribuido ?? 0)
                 );
 
-                $ot->cantidad_orden = $orden;
-                $ot->producto_terminado = min($orden, $ptTotal);
-
-                $ot->destino_trazabilidad = min(
-                    $orden,
-                    $logisticaTotal
-                );
-
-                $ot->destino_detalle = min(
-                    $orden,
-                    $destinoDetalle
-                );
-
-                /*
-                 * Total asignado efectivo:
-                 * se toma el mayor valor entre trazabilidad y desglose,
-                 * siempre limitado a la cantidad de la OT.
-                 */
-                $ot->destino_asignado = min(
-                    $orden,
-                    max(
-                        $ot->destino_trazabilidad,
-                        $ot->destino_detalle
-                    )
-                );
-
-                $ot->diferencia_fuentes = abs(
-                    $ot->destino_trazabilidad - $ot->destino_detalle
-                );
-
-                $ot->detalle_destino_incompleto =
-                    $ot->destino_trazabilidad > $ot->destino_detalle;
-
-                $ot->destinos = (int) ($plan->destinos ?? 0);
+                $ot->producto_terminado = $productoTerminado;
+                $ot->total_distribuido = $totalDistribuido;
+                $ot->destino_asignado = $totalDistribuido;
+                $ot->destino_detalle = $totalDistribuido;
+                $ot->destinos = (int) ($distribucion->destinos ?? 0);
 
                 $ot->faltante_destino = max(
                     0,
-                    $orden - $ot->destino_asignado
+                    $productoTerminado - $totalDistribuido
                 );
 
-                $ot->ultima_fecha_pt = $pt->ultima_fecha_pt_total
+                $ot->ultima_fecha_pt = $pt->fecha_proceso
                     ?? $ot->ultima_fecha_pt_periodo;
 
                 $ot->ultima_fecha_logistica =
-                    $logistica->ultima_fecha_logistica
-                    ?? $plan->ultima_fecha_logistica
-                    ?? null;
+                    $ultimaFechaLogisticaPorOt->get($ot->id_ot);
 
                 $ot->solicitud = $ot->faltante_destino > 0
                     ? 'SOLICITAR ' . $ot->faltante_destino
@@ -946,9 +929,6 @@ class ControlTerminacionController extends Controller
             })
             ->values();
 
-        /*
-         * La tabla principal contiene SOLO las OT con diferencia.
-         */
         $reportePendiente = $reporteCompleto
             ->filter(function ($ot) {
                 return $ot->faltante_destino > 0;
@@ -967,10 +947,10 @@ class ControlTerminacionController extends Controller
             'ots_pendientes' => $reportePendiente->count(),
             'prendas_pendientes' => (int) $reportePendiente
                 ->sum('faltante_destino'),
-            'cantidad_orden' => (int) $reporteCompleto
-                ->sum('cantidad_orden'),
-            'destino_asignado' => (int) $reporteCompleto
-                ->sum('destino_asignado'),
+            'producto_terminado' => (int) $reporteCompleto
+                ->sum('producto_terminado'),
+            'total_distribuido' => (int) $reporteCompleto
+                ->sum('total_distribuido'),
         ];
 
         return compact(
