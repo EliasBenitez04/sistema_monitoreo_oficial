@@ -137,7 +137,7 @@
             </div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card ct-card ct-kpi h-100 {{ $totalPendienteTerminar>0?'border-warning':'' }}"><div class="card-body">
+            <div class="card ct-card ct-kpi h-100 {{ $totalPendienteEnvio>0?'border-warning':'' }}"><div class="card-body">
                 <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Falta completar destino</div>
                 <div class="value">{{ number_format($totalPendienteEnvio,0,',','.') }}</div>
                 <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con diferencia entre orden y destino asignado</div>
@@ -192,7 +192,7 @@
                         <th>Terminación</th>
                         <th>Producto Terminado</th>
                         <th>Situación actual</th>
-                        <th class="text-right">Distribución</th>
+                        <th class="text-right">Destino asignado</th>
                         <th class="text-right">Remitido</th>
                         <th class="text-right">Recibido</th>
                         <th>Última remisión</th>
@@ -227,8 +227,14 @@
                                 <span class="badge badge-{{ $etapaClase }} px-2 py-2">{{ $item->etapa_actual }}</span>
                             </td>
                             <td class="text-right">
-                                <strong>{{ number_format($item->cantidad_logistica,0,',','.') }}</strong>
-                                <br><small class="text-muted">{{ $item->primera_fecha_logistica ? 'Desde '.\Carbon\Carbon::parse($item->primera_fecha_logistica)->format('d/m/Y') : 'Aún sin distribución' }}</small>
+                                <strong>{{ number_format($item->cantidad_destino_asignado,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
+                                @if($item->pendiente_completar_destino > 0)
+                                    <br><small class="text-danger">
+                                        <strong>{{ number_format($item->pendiente_completar_destino,0,',','.') }}</strong> faltan
+                                    </small>
+                                @else
+                                    <br><small class="text-success">Destino completo</small>
+                                @endif
                             </td>
                             <td class="text-right">
                                 <strong>{{ number_format($item->remitido_efectivo,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
