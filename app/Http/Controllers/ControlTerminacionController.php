@@ -226,59 +226,62 @@ class ControlTerminacionController extends Controller
         }
 
         foreach ($produccionTerminada as $item) {
-            $entrada = $entradaPorOt->get($item->id_ot);
+            $resumen = $resumenDashboardPorOt->get($item->id_ot);
 
-            $item->cantidad_terminada = (int) $item->cantidad_terminada;
-            $item->cantidad_ingreso_terminacion = (int) ($entrada->cantidad_ingreso_terminacion ?? 0);
-            $item->primera_fecha_ingreso = $entrada->primera_fecha_ingreso ?? null;
-            $item->ultima_fecha_ingreso = $entrada->ultima_fecha_ingreso ?? null;
-
-            // Producto Terminado ya es la entrega/entrada a Logística.
-            $item->cantidad_entregada_logistica = $item->cantidad_terminada;
-
-            $log = $logisticaPorOt->get($item->id_ot);
-            $destino = $destinosPorOt->get($item->id_ot);
-            $resumenDashboard = $resumenDashboardPorOt->get($item->id_ot);
-            $tope = max(0, (int) $item->cantidad_orden);
-
-            $item->cantidad_logistica = max(
-                0,
-                (int) ($log->cantidad_logistica ?? 0)
-            );
+            if (!$resumen) {
+                continue;
+            }
 
             /*
-             * Estas tres cifras salen de la MISMA rutina que replica el
-             * Dashboard OT. No se recalculan con otra fuente.
+             * Todas las cantidades operativas provienen ahora del servicio
+             * central de conciliación. El rango solo selecciona las OTs por PT;
+             * una vez seleccionada, se muestra su estado completo acumulado.
              */
-            $item->producto_terminado_referencia = max(
-                0,
-                (int) ($resumenDashboard->producto_terminado
-                    ?? $item->cantidad_terminada)
-            );
+            $item->cantidad_ingreso_terminacion =
+                (int) $resumen->ingreso_terminacion;
+            $item->cantidad_terminada =
+                (int) $resumen->producto_terminado;
+            $item->cantidad_entregada_logistica =
+                $item->cantidad_terminada;
 
-            $item->cantidad_destino_detalle = max(
-                0,
-                (int) ($resumenDashboard->total_distribuido ?? 0)
-            );
+            $item->producto_terminado_referencia =
+                (int) $resumen->producto_terminado;
 
-            $item->cantidad_destino_asignado = max(
-                0,
-                (int) ($resumenDashboard->asignado_efectivo ?? 0)
-            );
+            $item->cantidad_logistica =
+                (int) $resumen->planificado;
 
-            $item->cantidad_destinos = (int) (
-                $resumenDashboard->destinos ?? 0
-            );
+            $item->cantidad_destino_detalle =
+                (int) $resumen->planificado;
 
-            $item->pendiente_completar_destino = max(
-                0,
-                (int) ($resumenDashboard->faltante ?? 0)
-            );
+            $item->cantidad_destino_asignado =
+                (int) $resumen->asignado_efectivo;
 
-            $item->hueco_detalle_logistico = max(
-                0,
-                (int) ($resumenDashboard->hueco_detalle ?? 0)
-            );
+            $item->cantidad_destinos =
+                (int) $resumen->destinos;
+
+            $item->falta_terminacion =
+                (int) $resumen->falta_terminacion;
+
+            $item->sin_destino =
+                (int) $resumen->sin_destino;
+
+            $item->sin_destino_plan =
+                (int) $resumen->sin_destino_plan;
+
+            $item->pendiente_remitir_plan =
+                (int) $resumen->pendiente_remitir;
+
+            $item->pendiente_real_salida =
+                (int) $resumen->pendiente_real_salida;
+
+            $item->en_transito =
+                (int) $resumen->en_transito;
+
+            $item->pendiente_completar_destino =
+                $item->sin_destino;
+
+            $item->hueco_detalle_logistico =
+                (int) $resumen->hueco_plan_vs_real;
 
             $item->diferencia_fuente_destino =
                 $item->hueco_detalle_logistico;
@@ -286,85 +289,123 @@ class ControlTerminacionController extends Controller
             $item->detalle_destino_incompleto =
                 $item->hueco_detalle_logistico > 0;
 
-            $item->primera_fecha_logistica = $log->primera_fecha_logistica ?? null;
-            $item->ultima_fecha_logistica = $log->ultima_fecha_logistica ?? null;
+            $item->movimiento_fisico =
+                (int) $resumen->remitido_original;
 
-            $item->movimiento_fisico = max(
+            $item->movimiento_recibido =
+                (int) $resumen->recibido_original;
+
+            $item->remitido_efectivo =
+                $item->movimiento_fisico;
+
+            $item->recibido_efectivo =
+                $item->movimiento_recibido;
+
+            $item->movimientos_adicionales = max(
                 0,
-                (int) ($resumenDashboard->remitido_original ?? 0)
+                (int) $resumen->remitido_original_raw
+                    - (int) $resumen->producto_terminado
             );
 
-            $item->movimiento_recibido = max(
-                0,
-                (int) ($resumenDashboard->recibido_original ?? 0)
-            );
+            $item->primera_fecha_ingreso =
+                $resumen->primera_fecha_ingreso;
+            $item->ultima_fecha_ingreso =
+                $resumen->ultima_fecha_ingreso;
 
-            $item->remitido_efectivo = $item->movimiento_fisico;
-            $item->recibido_efectivo = $item->movimiento_recibido;
-            $item->movimientos_adicionales = 0;
+            $item->primera_fecha_logistica =
+                $resumen->primera_fecha_plan;
+            $item->ultima_fecha_logistica =
+                $resumen->ultima_fecha_plan;
 
             $item->primera_remision =
-                $resumenDashboard->primera_remision ?? null;
+                $resumen->primera_remision;
             $item->ultima_remision =
-                $resumenDashboard->ultima_remision ?? null;
+                $resumen->ultima_remision;
             $item->ultima_recepcion =
-                $resumenDashboard->ultima_recepcion ?? null;
+                $resumen->ultima_recepcion;
 
-            if ($item->cantidad_terminada < max(1, $item->cantidad_ingreso_terminacion)) {
-                $item->etapa_actual = 'TERMINACION';
-                $item->etapa_numero = 1;
-            } elseif ($item->cantidad_logistica <= 0) {
-                $item->etapa_actual = 'PRODUCTO TERMINADO';
-                $item->etapa_numero = 2;
-            } elseif ($item->movimiento_fisico <= 0) {
-                $item->etapa_actual = 'LOGISTICA';
-                $item->etapa_numero = 3;
-            } elseif ($item->recibido_efectivo < $item->remitido_efectivo) {
-                $item->etapa_actual = 'REMISION';
-                $item->etapa_numero = 4;
-            } else {
-                $item->etapa_actual = 'RECEPCION LOCAL';
-                $item->etapa_numero = 5;
+            $item->estado_conciliacion =
+                $resumen->estado_conciliacion;
+
+            switch ($item->estado_conciliacion) {
+                case 'FALTA TERMINACION':
+                    $item->etapa_actual = 'TERMINACION';
+                    $item->etapa_numero = 1;
+                    break;
+
+                case 'SIN DESTINO':
+                    $item->etapa_actual = 'SIN DESTINO';
+                    $item->etapa_numero = 2;
+                    break;
+
+                case 'PENDIENTE REMITIR':
+                case 'PENDIENTE SALIDA':
+                    $item->etapa_actual = 'LOGISTICA';
+                    $item->etapa_numero = 3;
+                    break;
+
+                case 'EN TRANSITO':
+                    $item->etapa_actual = 'REMISION';
+                    $item->etapa_numero = 4;
+                    break;
+
+                case 'CONFIRMADO':
+                    $item->etapa_actual = 'RECEPCION LOCAL';
+                    $item->etapa_numero = 5;
+                    break;
+
+                default:
+                    $item->etapa_actual = 'PRODUCTO TERMINADO';
+                    $item->etapa_numero = 2;
+                    break;
             }
-            $item->porcentaje_flujo = (int) round(($item->etapa_numero / 5) * 100);
 
-            $item->pendiente_terminar = max(
-                0,
-                $item->cantidad_ingreso_terminacion - $item->cantidad_terminada
+            $item->porcentaje_flujo = (int) round(
+                ($item->etapa_numero / 5) * 100
             );
 
-            $item->exceso_producto_terminado = max(
-                0,
-                $item->cantidad_terminada - $item->cantidad_ingreso_terminacion
-            );
+            /*
+             * Estado propio de Terminación: mantiene los filtros actuales,
+             * pero usa objetivo/PT reconciliados.
+             */
+            $item->pendiente_terminar =
+                (int) $resumen->falta_terminacion;
+
+            $item->exceso_producto_terminado =
+                (int) $resumen->exceso_producto_terminado;
 
             $item->dias_en_terminacion = null;
 
             if ($item->primera_fecha_ingreso) {
-                $fechaIngreso = \Carbon\Carbon::parse($item->primera_fecha_ingreso)->startOfDay();
+                $fechaIngreso = \Carbon\Carbon::parse(
+                    $item->primera_fecha_ingreso
+                )->startOfDay();
 
                 if ($item->pendiente_terminar > 0) {
                     $item->dias_en_terminacion = max(
                         0,
                         $fechaIngreso->diffInDays($hoy, false)
                     );
-                } else {
+                } elseif ($resumen->ultima_fecha_pt) {
                     $fechaSalida = \Carbon\Carbon::parse(
-                        $item->ultima_fecha_producto_terminado
+                        $resumen->ultima_fecha_pt
                     )->startOfDay();
 
                     $item->dias_en_terminacion = max(
                         0,
-                        $fechaIngreso->diffInDays($fechaSalida, false)
+                        $fechaIngreso->diffInDays(
+                            $fechaSalida,
+                            false
+                        )
                     );
                 }
             }
 
             if ($item->cantidad_ingreso_terminacion <= 0) {
                 $item->estado_control = 'SIN INGRESO';
-            } elseif ($item->cantidad_terminada < $item->cantidad_ingreso_terminacion) {
+            } elseif ($item->falta_terminacion > 0) {
                 $item->estado_control = 'PARCIAL';
-            } elseif ($item->cantidad_terminada > $item->cantidad_ingreso_terminacion) {
+            } elseif ($item->exceso_producto_terminado > 0) {
                 $item->estado_control = 'EXCEDENTE';
             } else {
                 $item->estado_control = 'COMPLETO';
