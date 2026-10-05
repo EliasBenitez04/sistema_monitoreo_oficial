@@ -771,26 +771,18 @@ class ControlTerminacionController extends Controller
             'fecha_desde',
             now()->startOfMonth()->format('Y-m-d')
         );
+
         $fechaHasta = $request->input(
             'fecha_hasta',
             now()->format('Y-m-d')
         );
+
         $buscar = trim((string) $request->input('buscar', ''));
 
         /*
-         * MISMA REGLA DEL DASHBOARD OT
-         * ------------------------------------------------------------
-         * 1. El rango selecciona OTs que tuvieron PRODUCTO TERMINADO.
-         * 2. Producto Terminado de referencia = ÚLTIMO movimiento
-         *    TERMINACION - PRODUCTO TERMINADO de la OT.
-         * 3. Total distribuido = SUM(ot_logistica_detalle.cantidad)
-         *    de TODOS los movimientos LOGISTICA - LOGISTICA Y DISTRIBUCION.
-         * 4. Faltante real = Producto Terminado - Total distribuido.
-         *
-         * Ejemplo OT 30518:
-         * PT 360 - distribuido 358 = faltan 2.
+         * El rango selecciona OTs que tuvieron Producto Terminado en el período.
+         * La conciliación posterior toma el estado completo acumulado de cada OT.
          */
-
         $otsPeriodo = DB::table('ot_trazabilidad as pt')
             ->join('ot as o', 'o.id_ot', '=', 'pt.id_ot')
             ->where('pt.proceso', 'TERMINACION - PRODUCTO TERMINADO')
@@ -799,11 +791,26 @@ class ControlTerminacionController extends Controller
                 $q->where(function ($sub) use ($buscar) {
                     if (is_numeric($buscar)) {
                         $sub->where('o.nro_ot', (int) $buscar)
-                            ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
-                            ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                            ->orWhere(
+                                'o.codigo',
+                                'ILIKE',
+                                '%' . $buscar . '%'
+                            )
+                            ->orWhere(
+                                'o.descripcion',
+                                'ILIKE',
+                                '%' . $buscar . '%'
+                            );
                     } else {
-                        $sub->where('o.codigo', 'ILIKE', '%' . $buscar . '%')
-                            ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                        $sub->where(
+                            'o.codigo',
+                            'ILIKE',
+                            '%' . $buscar . '%'
+                        )->orWhere(
+                            'o.descripcion',
+                            'ILIKE',
+                            '%' . $buscar . '%'
+                        );
                     }
                 });
             })
@@ -821,9 +828,7 @@ class ControlTerminacionController extends Controller
                 'o.codigo',
                 'o.descripcion',
                 'o.cantidad_orden',
-                'o.estado',
-                DB::raw('MIN(pt.fecha_proceso) as primera_fecha_pt_periodo'),
-                DB::raw('MAX(pt.fecha_proceso) as ultima_fecha_pt_periodo')
+                'o.estado'
             )
             ->get();
 
@@ -834,97 +839,134 @@ class ControlTerminacionController extends Controller
             ->values()
             ->all();
 
-        $resumenDashboardPorOt = $this->resumenDistribucionComoDashboardOt(
+        $conciliacionPorOt = $this->resumenDistribucionComoDashboardOt(
             $ids
         );
 
         $reporteCompleto = $otsPeriodo
-            ->map(function ($ot) use ($resumenDashboardPorOt) {
-                $resumenDashboard = $resumenDashboardPorOt->get($ot->id_ot);
+            ->map(function ($ot) use ($conciliacionPorOt) {
+                $c = $conciliacionPorOt->get($ot->id_ot);
 
-                $ot->producto_terminado = max(
-                    0,
-                    (int) ($resumenDashboard->producto_terminado ?? 0)
-                );
+                if (!$c) {
+                    return null;
+                }
 
-                $ot->detalle_logistico = max(
-                    0,
-                    (int) ($resumenDashboard->total_distribuido ?? 0)
-                );
+                $ot->objetivo = (int) $c->objetivo;
+                $ot->producto_terminado =
+                    (int) $c->producto_terminado;
+                $ot->planificado =
+                    (int) $c->planificado;
+                $ot->remitido_original =
+                    (int) $c->remitido_original;
+                $ot->recibido_original =
+                    (int) $c->recibido_original;
 
-                $ot->remitido_original = max(
-                    0,
-                    (int) ($resumenDashboard->remitido_original ?? 0)
-                );
+                $ot->falta_terminacion =
+                    (int) $c->falta_terminacion;
+                $ot->sin_destino =
+                    (int) $c->sin_destino;
+                $ot->sin_destino_plan =
+                    (int) $c->sin_destino_plan;
+                $ot->pendiente_remitir =
+                    (int) $c->pendiente_remitir;
+                $ot->en_transito =
+                    (int) $c->en_transito;
 
-                $ot->asignado_efectivo = max(
-                    0,
-                    (int) ($resumenDashboard->asignado_efectivo ?? 0)
-                );
+                $ot->estado_conciliacion =
+                    $c->estado_conciliacion;
 
-                // Compatibilidad con la vista/export existente.
-                $ot->total_distribuido = $ot->asignado_efectivo;
-                $ot->destino_asignado = $ot->asignado_efectivo;
-                $ot->destino_detalle = $ot->detalle_logistico;
+                $ot->hueco_plan_vs_real =
+                    (int) $c->hueco_plan_vs_real;
 
-                $ot->hueco_detalle = max(
-                    0,
-                    (int) ($resumenDashboard->hueco_detalle ?? 0)
-                );
-
-                $ot->destinos = (int) (
-                    $resumenDashboard->destinos ?? 0
-                );
-
-                $ot->faltante_destino = max(
-                    0,
-                    (int) ($resumenDashboard->faltante ?? 0)
-                );
+                $ot->destinos = (int) $c->destinos;
 
                 $ot->ultima_fecha_pt =
-                    $resumenDashboard->ultima_fecha_pt
-                    ?? $ot->ultima_fecha_pt_periodo;
-
+                    $c->ultima_fecha_pt;
                 $ot->ultima_fecha_logistica =
-                    $resumenDashboard->ultima_fecha_logistica ?? null;
+                    $c->ultima_fecha_plan;
+                $ot->ultima_remision =
+                    $c->ultima_remision;
+                $ot->ultima_recepcion =
+                    $c->ultima_recepcion;
 
-                $ot->solicitud = $ot->faltante_destino > 0
-                    ? 'SOLICITAR ' . $ot->faltante_destino
-                        . ($ot->faltante_destino === 1
-                            ? ' PRENDA'
-                            : ' PRENDAS')
-                    : 'COMPLETO';
+                $ot->requiere_atencion =
+                    $ot->falta_terminacion > 0
+                    || $ot->sin_destino > 0
+                    || $ot->pendiente_remitir > 0
+                    || $ot->en_transito > 0;
+
+                if ($ot->falta_terminacion > 0) {
+                    $ot->solicitud = 'TERMINACION: COMPLETAR '
+                        . $ot->falta_terminacion;
+                } elseif ($ot->sin_destino > 0) {
+                    $ot->solicitud = 'LOGISTICA: ASIGNAR DESTINO '
+                        . $ot->sin_destino;
+                } elseif ($ot->pendiente_remitir > 0) {
+                    $ot->solicitud = 'LOGISTICA: REMITIR '
+                        . $ot->pendiente_remitir;
+                } elseif ($ot->en_transito > 0) {
+                    $ot->solicitud = 'LOCAL: CONFIRMAR '
+                        . $ot->en_transito;
+                } else {
+                    $ot->solicitud = 'COMPLETO';
+                }
 
                 return $ot;
             })
+            ->filter()
             ->values();
 
         $reportePendiente = $reporteCompleto
             ->filter(function ($ot) {
-                return $ot->faltante_destino > 0;
+                return $ot->requiere_atencion;
             })
             ->sort(function ($a, $b) {
-                if ($a->faltante_destino !== $b->faltante_destino) {
-                    return $b->faltante_destino <=> $a->faltante_destino;
+                $prioridad = [
+                    'FALTA TERMINACION' => 1,
+                    'SIN DESTINO' => 2,
+                    'PENDIENTE REMITIR' => 3,
+                    'PENDIENTE SALIDA' => 3,
+                    'EN TRANSITO' => 4,
+                    'CONFIRMADO' => 5,
+                ];
+
+                $pa = $prioridad[$a->estado_conciliacion] ?? 99;
+                $pb = $prioridad[$b->estado_conciliacion] ?? 99;
+
+                if ($pa !== $pb) {
+                    return $pa <=> $pb;
                 }
 
-                return ((int) $b->nro_ot) <=> ((int) $a->nro_ot);
+                return ((int) $b->nro_ot)
+                    <=> ((int) $a->nro_ot);
             })
             ->values();
 
         $resumen = (object) [
             'ots_periodo' => $reporteCompleto->count(),
             'ots_pendientes' => $reportePendiente->count(),
-            'prendas_pendientes' => (int) $reportePendiente
-                ->sum('faltante_destino'),
+
+            'objetivo' => (int) $reporteCompleto
+                ->sum('objetivo'),
             'producto_terminado' => (int) $reporteCompleto
                 ->sum('producto_terminado'),
-            'asignado_efectivo' => (int) $reporteCompleto
-                ->sum('asignado_efectivo'),
-            'detalle_logistico' => (int) $reporteCompleto
-                ->sum('detalle_logistico'),
-            'hueco_detalle' => (int) $reporteCompleto
-                ->sum('hueco_detalle'),
+            'planificado' => (int) $reporteCompleto
+                ->sum('planificado'),
+            'remitido' => (int) $reporteCompleto
+                ->sum('remitido_original'),
+            'recibido' => (int) $reporteCompleto
+                ->sum('recibido_original'),
+
+            'falta_terminacion' => (int) $reporteCompleto
+                ->sum('falta_terminacion'),
+            'sin_destino' => (int) $reporteCompleto
+                ->sum('sin_destino'),
+            'pendiente_remitir' => (int) $reporteCompleto
+                ->sum('pendiente_remitir'),
+            'en_transito' => (int) $reporteCompleto
+                ->sum('en_transito'),
+            'hueco_plan_vs_real' => (int) $reporteCompleto
+                ->sum('hueco_plan_vs_real'),
         ];
 
         return compact(
