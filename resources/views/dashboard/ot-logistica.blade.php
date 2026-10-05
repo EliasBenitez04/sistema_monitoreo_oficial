@@ -131,7 +131,7 @@
             <div class="col-lg-8">
                 <strong>Situación del período</strong>
                 <div class="lg-flow mt-2">
-                    PT <strong>{{ number_format($resumenEjecutivo->plan + $resumenEjecutivo->sin_destino_plan,0,',','.') }}</strong>
+                    PT <strong>{{ number_format($resumenEjecutivo->pt,0,',','.') }}</strong>
                     <i class="fas fa-angle-right mx-2"></i>
                     Plan <strong>{{ number_format($resumenEjecutivo->plan,0,',','.') }}</strong>
                     <i class="fas fa-angle-right mx-2"></i>
