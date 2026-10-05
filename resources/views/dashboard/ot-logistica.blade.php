@@ -107,7 +107,7 @@
                 <div class="card-body">
                     <div class="label">Falta Terminación</div>
                     <div class="value">{{ number_format($resumenEjecutivo->falta_terminacion,0,',','.') }}</div>
-                    <div class="meta">Objetivo OT que todavía no llegó a Producto Terminado</div>
+                    <div class="meta">Ingreso real a Terminación que todavía no llegó a Producto Terminado</div>
                 </div>
             </div>
         </div>
