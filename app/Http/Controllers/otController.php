@@ -15,11 +15,16 @@ use App\Exports\OtLogisticaExport;
 use App\Exports\ReporteSemanalLogisticaExport;
 use App\Models\OtTrazabilidad;
 use App\Http\Requests\OtAtrasadasRequest;
+use App\Services\LogisticaConciliacionService;
 
 class OtController extends Controller
 {
-    public function __construct()
-    {
+    private LogisticaConciliacionService $conciliacionService;
+
+    public function __construct(
+        LogisticaConciliacionService $conciliacionService
+    ) {
+        $this->conciliacionService = $conciliacionService;
         $this->middleware('auth');
         $this->middleware('permission:ot index')->only('index');
         $this->middleware('permission:ot create')->only('create', 'store');
