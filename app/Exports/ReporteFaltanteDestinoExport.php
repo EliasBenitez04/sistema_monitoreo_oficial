@@ -35,15 +35,17 @@ class ReporteFaltanteDestinoExport implements
             'OT',
             'Código',
             'Descripción',
+            'Objetivo OT',
             'Producto Terminado',
-            'Asignado efectivo',
-            'Detalle logístico',
-            'Remitido original',
-            'Hueco de detalle',
-            'Falta real',
-            'Último PT',
-            'Última asignación logística',
-            'Solicitud',
+            'Plan logístico',
+            'Remitido real',
+            'Recibido',
+            'Falta Terminación',
+            'Sin destino',
+            'Pendiente remitir',
+            'En tránsito',
+            'Estado',
+            'Acción requerida',
         ];
     }
 
@@ -53,18 +55,16 @@ class ReporteFaltanteDestinoExport implements
             $item->nro_ot,
             $item->codigo,
             $item->descripcion,
+            (int) $item->objetivo,
             (int) $item->producto_terminado,
-            (int) $item->asignado_efectivo,
-            (int) $item->detalle_logistico,
+            (int) $item->planificado,
             (int) $item->remitido_original,
-            (int) $item->hueco_detalle,
-            (int) $item->faltante_destino,
-            $item->ultima_fecha_pt
-                ? date('d/m/Y', strtotime($item->ultima_fecha_pt))
-                : '-',
-            $item->ultima_fecha_logistica
-                ? date('d/m/Y', strtotime($item->ultima_fecha_logistica))
-                : '-',
+            (int) $item->recibido_original,
+            (int) $item->falta_terminacion,
+            (int) $item->sin_destino,
+            (int) $item->pendiente_remitir,
+            (int) $item->en_transito,
+            $item->estado_conciliacion,
             $item->solicitud,
         ];
     }
@@ -74,14 +74,14 @@ class ReporteFaltanteDestinoExport implements
         $sheet->freezePane('A2');
         $sheet->setAutoFilter($sheet->calculateWorksheetDimension());
 
-        $sheet->getStyle('A1:L1')->applyFromArray([
+        $sheet->getStyle('A1:N1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['ARGB' => 'FFFFFFFF'],
             ],
             'fill' => [
                 'fillType' => 'solid',
-                'startColor' => ['ARGB' => 'FFB45309'],
+                'startColor' => ['ARGB' => 'FF1F4E78'],
             ],
             'alignment' => [
                 'horizontal' => 'center',
@@ -92,7 +92,7 @@ class ReporteFaltanteDestinoExport implements
         $ultimaFila = $sheet->getHighestRow();
 
         if ($ultimaFila >= 2) {
-            $sheet->getStyle('A2:L' . $ultimaFila)
+            $sheet->getStyle('A2:N' . $ultimaFila)
                 ->getAlignment()
                 ->setVertical('center');
 
@@ -100,20 +100,36 @@ class ReporteFaltanteDestinoExport implements
                 ->getAlignment()
                 ->setHorizontal('center');
 
-            $sheet->getStyle('D2:K' . $ultimaFila)
+            $sheet->getStyle('D2:M' . $ultimaFila)
                 ->getAlignment()
                 ->setHorizontal('center');
 
             for ($fila = 2; $fila <= $ultimaFila; $fila++) {
-                // Columna I = Falta real.
                 $sheet->getStyle('I' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFB91C1C');
 
-                // Columna L = Solicitud.
+                $sheet->getStyle('J' . $fila)
+                    ->getFont()
+                    ->setBold(true)
+                    ->getColor()
+                    ->setARGB('FFC2410C');
+
+                $sheet->getStyle('K' . $fila)
+                    ->getFont()
+                    ->setBold(true)
+                    ->getColor()
+                    ->setARGB('FF0E7490');
+
                 $sheet->getStyle('L' . $fila)
+                    ->getFont()
+                    ->setBold(true)
+                    ->getColor()
+                    ->setARGB('FF1D4ED8');
+
+                $sheet->getStyle('N' . $fila)
                     ->getFont()
                     ->setBold(true);
             }
