@@ -205,7 +205,12 @@ class LogisticaConciliacionService
                     $ptEfectivo - $asignadoEfectivo
                 );
 
-                $pendienteRemitir = max(
+                /*
+                 * El objetivo de Logística es TODO Producto Terminado.
+                 * El detalle por sucursal puede quedar corto (ej. 277 de 280),
+                 * pero eso no reduce lo que debe salir.
+                 */
+                $pendienteRemitirPlan = max(
                     0,
                     $planDisponible - $remitidoEfectivo
                 );
@@ -214,6 +219,9 @@ class LogisticaConciliacionService
                     0,
                     $ptEfectivo - $remitidoEfectivo
                 );
+
+                // "Pendiente remitir" operativo = todo PT todavía sin salida.
+                $pendienteRemitir = $pendienteRealSalida;
 
                 $enTransito = max(
                     0,
@@ -254,9 +262,19 @@ class LogisticaConciliacionService
                             $ptRaw - $ingresoRaw
                         ),
 
+                        /*
+                         * Plan logística = objetivo de salida desde PT.
+                         * El reparto cargado por sucursal queda separado.
+                         */
                         'planificado_raw' => $planRaw,
-                        'planificado' => $planRaw,
+                        'planificado' => $ptEfectivo,
+                        'plan_objetivo' => $ptEfectivo,
+                        'plan_detallado' => $planRaw,
                         'plan_disponible' => $planDisponible,
+                        'sin_asignar_plan' => max(
+                            0,
+                            $ptEfectivo - $planDisponible
+                        ),
                         'destinos' => (int) ($plan->destinos ?? 0),
 
                         'remitido_original_raw' => $remitidoRaw,
@@ -269,6 +287,7 @@ class LogisticaConciliacionService
                         'sin_destino_plan' => $sinDestinoPlan,
                         'sin_destino' => $sinDestino,
                         'pendiente_remitir' => $pendienteRemitir,
+                        'pendiente_remitir_plan' => $pendienteRemitirPlan,
                         'pendiente_real_salida' => $pendienteRealSalida,
                         'en_transito' => $enTransito,
                         'pendiente_confirmar' => $enTransito,
@@ -328,6 +347,10 @@ class LogisticaConciliacionService
                 ->sum('producto_terminado'),
             'planificado' => (int) $conciliaciones
                 ->sum('planificado'),
+            'plan_detallado' => (int) $conciliaciones
+                ->sum('plan_detallado'),
+            'sin_asignar_plan' => (int) $conciliaciones
+                ->sum('sin_asignar_plan'),
             'remitido' => (int) $conciliaciones
                 ->sum('remitido_original'),
             'recibido' => (int) $conciliaciones
