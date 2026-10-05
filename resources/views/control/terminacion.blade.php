@@ -141,6 +141,14 @@
                 <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Falta completar destino</div>
                 <div class="value">{{ number_format($totalPendienteEnvio,0,',','.') }}</div>
                 <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con PT aún sin destino o remisión original</div>
+                @if($totalHuecoDetalleLogistico > 0)
+                    <div class="small text-info mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        {{ number_format($totalHuecoDetalleLogistico,0,',','.') }} prendas de
+                        {{ number_format($otsHuecoDetalleLogistico,0,',','.') }} OTs ya tienen remisión,
+                        pero aún no vínculo completo en detalle. No se cuentan como faltante.
+                    </div>
+                @endif
                 <a href="{{ route('control.terminacion.reporte-pendientes-envio', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>$buscar]) }}"
                    class="btn btn-sm btn-outline-warning mt-2">
                     <i class="fas fa-file-alt mr-1"></i>Ver faltantes para solicitar
