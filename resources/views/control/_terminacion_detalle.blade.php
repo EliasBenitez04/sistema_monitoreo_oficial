@@ -38,6 +38,16 @@
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
             <small class="d-block">Plan logística</small>
             <strong>{{ number_format($totalPlan, 0, ',', '.') }}</strong>
+            <div class="mt-1">
+                <small class="{{ $totalSinAsignar > 0 ? 'text-warning' : 'text-success' }}">
+                    {{ number_format($totalPlanDetallado, 0, ',', '.') }} distribuidas
+                    @if($totalSinAsignar > 0)
+                        · {{ number_format($totalSinAsignar, 0, ',', '.') }} sin asignar
+                    @else
+                        · plan completo
+                    @endif
+                </small>
+            </div>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
             <small class="d-block">Remitido</small>
@@ -77,11 +87,44 @@
                     @if($detalle->remisiones->isEmpty())
                         <tr>
                             <td><span class="td-plan-badge">{{ $detalle->sucursal }}</span></td>
-                            <td class="text-muted">—</td>
+                            <td class="text-muted">Pendiente de salida</td>
                             <td class="text-muted">—</td>
                             <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
-                            <td colspan="4" class="text-muted">Todavía sin remisión vinculada.</td>
-                            <td><span class="badge badge-secondary">SIN REMISIÓN</span></td>
+                            <td class="text-muted">—</td>
+                            <td class="text-right"><span class="td-cantidad">0</span></td>
+                            <td class="text-right"><span class="text-muted font-weight-bold">0</span></td>
+                            <td class="text-muted">—</td>
+                            <td><span class="badge badge-warning">PENDIENTE</span></td>
+                        </tr>
+
+                        <tr class="td-subtotal-row">
+                            <td colspan="9">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                                    <div>
+                                        <span class="td-plan-badge">{{ $detalle->sucursal }}</span>
+                                    </div>
+                                    <div class="td-subtotal-box">
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Plan</span>
+                                            <span class="td-subtotal-value">{{ number_format($detalle->cantidad, 0, ',', '.') }}</span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Remitido</span>
+                                            <span class="td-subtotal-value">0</span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Confirmado</span>
+                                            <span class="td-subtotal-value text-success">0</span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Pendiente</span>
+                                            <span class="td-subtotal-value text-warning">
+                                                {{ number_format($detalle->cantidad, 0, ',', '.') }}
+                                            </span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
                         </tr>
                     @else
                         @php
