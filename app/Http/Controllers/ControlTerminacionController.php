@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Imports\ControlTerminacionRemisionImport;
+use App\Services\LogisticaConciliacionService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,176 +13,22 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ControlTerminacionController extends Controller
 {
+    private LogisticaConciliacionService $conciliacionService;
+
+    public function __construct(
+        LogisticaConciliacionService $conciliacionService
+    ) {
+        $this->conciliacionService = $conciliacionService;
+    }
+
     /**
-     * Replica literalmente el cálculo que usa dashboard/ot.blade.php
-     * para Producto Terminado, Total Distribuido OT y Faltante.
-     *
-     * Se centraliza acá para que Control Terminación y su reporte no
-     * puedan mostrar una cifra distinta al Dashboard OT.
+     * Alias interno temporal para no romper métodos existentes.
+     * La lógica real vive en LogisticaConciliacionService.
      */
-    /**
-     * Resumen físico/logístico por OT.
-     *
-     * Reglas:
-     * - PT = último TERMINACION - PRODUCTO TERMINADO (igual al Dashboard OT).
-     * - Distribuido = suma de ot_logistica_detalle de todos los movimientos
-     *   LOGISTICA - LOGISTICA Y DISTRIBUCION.
-     * - Remitido original = solo CASA CENTRAL/MATRIZ -> destino.
-     *   Redistribuciones Local -> Local NO vuelven a sumar.
-     * - Asignado efectivo = mayor entre Distribuido y Remitido original.
-     *   Si existe una remisión original, esa prenda necesariamente ya tuvo destino
-     *   aunque el detalle logístico haya quedado sin asociar.
-     * - Faltante real = PT - Asignado efectivo.
-     */
-    private function resumenDistribucionComoDashboardOt(array $idsOt): \Illuminate\Support\Collection
-    {
-        if (empty($idsOt)) {
-            return collect();
-        }
-
-        $remisionesOriginales = collect();
-
-        if (Schema::hasTable('ot_logistica_remisiones')) {
-            $remisionesOriginales = DB::table('ot_logistica_remisiones')
-                ->whereIn('id_ot', $idsOt)
-                ->where(function ($q) {
-                    $q->where('cod_sucursal_salida', 1)
-                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'")
-                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'");
-                })
-                ->where(function ($q) {
-                    $q->where(function ($sub) {
-                        $sub->whereNull('cod_sucursal_destino')
-                            ->orWhere('cod_sucursal_destino', '<>', 1);
-                    });
-
-                    $q->whereRaw(
-                        "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('CASA CENTRAL', 'MATRIZ')"
-                    );
-                })
-                ->groupBy('id_ot')
-                ->select(
-                    'id_ot',
-                    DB::raw('SUM(cantidad) as remitido_original'),
-                    DB::raw('SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as recibido_original'),
-                    DB::raw('MIN(fecha_remision) as primera_remision'),
-                    DB::raw('MAX(fecha_remision) as ultima_remision'),
-                    DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
-                )
-                ->get()
-                ->keyBy('id_ot');
-        }
-
-        return \App\Models\Ot::with([
-                'trazabilidades',
-                'logisticaDetalle',
-            ])
-            ->whereIn('id_ot', $idsOt)
-            ->get()
-            ->mapWithKeys(function ($ot) use ($remisionesOriginales) {
-                $trazabilidadPt = $ot->trazabilidades
-                    ->where(
-                        'proceso',
-                        'TERMINACION - PRODUCTO TERMINADO'
-                    )
-                    ->sortBy('fecha_proceso')
-                    ->last();
-
-                $productoTerminado = max(
-                    0,
-                    (int) ($trazabilidadPt->resultado ?? 0)
-                );
-
-                $trazabilidadesLogistica = $ot->trazabilidades
-                    ->where(
-                        'proceso',
-                        'LOGISTICA - LOGISTICA Y DISTRIBUCION'
-                    )
-                    ->sortBy('fecha_proceso');
-
-                $totalDistribuido = 0;
-                $sucursales = collect();
-
-                foreach ($trazabilidadesLogistica as $trazabilidad) {
-                    $detalles = $ot->logisticaDetalle
-                        ->where(
-                            'id_trazabilidad',
-                            $trazabilidad->id_trazabilidad
-                        );
-
-                    $totalDistribuido += (int) $detalles->sum('cantidad');
-
-                    foreach ($detalles as $detalle) {
-                        $sucursal = trim((string) $detalle->sucursal);
-
-                        if ($sucursal !== '') {
-                            $sucursales->push($sucursal);
-                        }
-                    }
-                }
-
-                $remision = $remisionesOriginales->get($ot->id_ot);
-
-                $remitidoOriginal = max(
-                    0,
-                    (int) ($remision->remitido_original ?? 0)
-                );
-
-                $recibidoOriginal = max(
-                    0,
-                    (int) ($remision->recibido_original ?? 0)
-                );
-
-                /*
-                 * No permitimos que movimientos extra superen el PT para los KPI.
-                 * La diferencia extra queda como diagnóstico, no como avance físico.
-                 */
-                $distribuidoEfectivo = min(
-                    $productoTerminado,
-                    max(0, $totalDistribuido)
-                );
-
-                $remitidoEfectivo = min(
-                    $productoTerminado,
-                    $remitidoOriginal
-                );
-
-                $recibidoEfectivo = min(
-                    $productoTerminado,
-                    $recibidoOriginal
-                );
-
-                $asignadoEfectivo = max(
-                    $distribuidoEfectivo,
-                    $remitidoEfectivo
-                );
-
-                $ultimaLogistica = $trazabilidadesLogistica->last();
-
-                return [
-                    (int) $ot->id_ot => (object) [
-                        'producto_terminado' => $productoTerminado,
-                        'total_distribuido' => $distribuidoEfectivo,
-                        'remitido_original' => $remitidoEfectivo,
-                        'recibido_original' => $recibidoEfectivo,
-                        'asignado_efectivo' => $asignadoEfectivo,
-                        'faltante' => max(
-                            0,
-                            $productoTerminado - $asignadoEfectivo
-                        ),
-                        'hueco_detalle' => max(
-                            0,
-                            $remitidoEfectivo - $distribuidoEfectivo
-                        ),
-                        'destinos' => $sucursales->unique()->count(),
-                        'ultima_fecha_pt' => $trazabilidadPt->fecha_proceso ?? null,
-                        'ultima_fecha_logistica' => $ultimaLogistica->fecha_proceso ?? null,
-                        'primera_remision' => $remision->primera_remision ?? null,
-                        'ultima_remision' => $remision->ultima_remision ?? null,
-                        'ultima_recepcion' => $remision->ultima_recepcion ?? null,
-                    ],
-                ];
-            });
+    private function resumenDistribucionComoDashboardOt(
+        array $idsOt
+    ): \Illuminate\Support\Collection {
+        return $this->conciliacionService->conciliarPorIds($idsOt);
     }
 
     public function index(Request $request)
