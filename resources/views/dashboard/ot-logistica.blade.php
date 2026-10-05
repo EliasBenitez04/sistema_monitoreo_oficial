@@ -49,7 +49,14 @@
                 <div class="col-lg-2 col-md-4 mb-2"><button class="btn btn-primary btn-block"><i class="fas fa-search mr-1"></i>Consultar</button></div>
             </div>
         </form>
-        <small class="text-muted">Período {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }} al {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}. Las redistribuciones entre locales no vuelven a sumar como salida de la OT.</small>
+        <small class="text-muted">
+            Período {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}
+            al {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}.
+            Las redistribuciones entre locales no vuelven a sumar como salida de la OT.
+            @if(!empty($sucursalesSeleccionadas))
+                <strong>El filtro de sucursal selecciona las OTs; los saldos PT/Plan/Remitido/Recibido se muestran completos por OT.</strong>
+            @endif
+        </small>
     </div></div>
 
     <div class="row">
