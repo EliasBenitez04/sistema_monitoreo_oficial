@@ -449,46 +449,63 @@ class ControlTerminacionController extends Controller
             })
             ->values();
 
-        $totalIngresoTerminacion = (int) $produccionTerminada->sum('cantidad_ingreso_terminacion');
-        $totalTerminado = (int) $produccionTerminada->sum('cantidad_terminada');
+        $totalIngresoTerminacion = (int) $produccionTerminada
+            ->sum('cantidad_ingreso_terminacion');
+
+        $totalTerminado = (int) $produccionTerminada
+            ->sum('cantidad_terminada');
 
         /*
-         * KPIs del flujo físico, sin alterar la lógica de seguimiento:
-         * Terminación = ingreso al área.
-         * Producto Terminado = salida de Terminación / entrada a Logística.
-         * Recepción Local = unidades efectivamente confirmadas por fecha_recepcion.
+         * KPI conciliados. Cada diferencia tiene una causa y un responsable.
          */
-        $totalRecepcionLocal = (int) $produccionTerminada->sum('recibido_efectivo');
+        $totalFaltaTerminacion = (int) $produccionTerminada
+            ->sum('falta_terminacion');
 
-        /*
-         * ESTE KPI NO MIDE REMISIONES.
-         *
-         * Falta completar destino =
-         * PT - mayor evidencia de salida/asignación:
-         *   a) detalle logístico, o
-         *   b) remisión original CASA CENTRAL/MATRIZ -> destino.
-         *
-         * Así una remisión ya emitida no vuelve a contarse como faltante
-         * solo porque id_logistica_detalle esté incompleto.
-         */
-        $totalPendienteEnvio = (int) $produccionTerminada->sum(
-            'pendiente_completar_destino'
-        );
-
-        $otsPendientesEnvio = $produccionTerminada
+        $otsFaltaTerminacion = $produccionTerminada
             ->filter(function ($item) {
-                return (int) $item->pendiente_completar_destino > 0;
+                return (int) $item->falta_terminacion > 0;
             })
             ->count();
 
+        $totalSinDestino = (int) $produccionTerminada
+            ->sum('sin_destino');
+
+        $otsSinDestino = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->sin_destino > 0;
+            })
+            ->count();
+
+        $totalPendienteRemitirPlan = (int) $produccionTerminada
+            ->sum('pendiente_remitir_plan');
+
+        $otsPendienteRemitirPlan = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->pendiente_remitir_plan > 0;
+            })
+            ->count();
+
+        $totalRemitidoReal = (int) $produccionTerminada
+            ->sum('remitido_efectivo');
+
+        $totalEnTransito = (int) $produccionTerminada
+            ->sum('en_transito');
+
+        $otsEnTransito = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->en_transito > 0;
+            })
+            ->count();
+
+        $totalRecepcionLocal = (int) $produccionTerminada
+            ->sum('recibido_efectivo');
+
         /*
-         * Diagnóstico de calidad de datos:
-         * prendas que ya tienen remisión original pero todavía no están
-         * explicadas por ot_logistica_detalle. No se cuentan como faltante.
+         * Diagnóstico de calidad: remisiones reales que superan lo explicado
+         * por el plan. No son faltantes físicos.
          */
-        $totalHuecoDetalleLogistico = (int) $produccionTerminada->sum(
-            'hueco_detalle_logistico'
-        );
+        $totalHuecoDetalleLogistico = (int) $produccionTerminada
+            ->sum('hueco_detalle_logistico');
 
         $otsHuecoDetalleLogistico = $produccionTerminada
             ->filter(function ($item) {
@@ -496,11 +513,21 @@ class ControlTerminacionController extends Controller
             })
             ->count();
 
-        // Mismo valor por definición del flujo.
+        /*
+         * Alias temporal para el reporte existente. Ahora representa únicamente
+         * PT realmente sin destino, no prendas pendientes de remisión.
+         */
+        $totalPendienteEnvio = $totalSinDestino;
+        $otsPendientesEnvio = $otsSinDestino;
+
+        // Producto Terminado ya representa entrada física a Logística.
         $totalEntregadoLogistica = $totalTerminado;
 
-        $totalPendienteTerminar = (int) $produccionTerminada->sum('pendiente_terminar');
-        $totalExcesoProductoTerminado = (int) $produccionTerminada->sum('exceso_producto_terminado');
+        $totalPendienteTerminar = $totalFaltaTerminacion;
+
+        $totalExcesoProductoTerminado = (int) $produccionTerminada
+            ->sum('exceso_producto_terminado');
+
         $totalOTs = $produccionTerminada->count();
 
         $otsParciales = $produccionTerminada
@@ -577,6 +604,15 @@ class ControlTerminacionController extends Controller
             'totalTerminado',
             'totalEntregadoLogistica',
             'totalRecepcionLocal',
+            'totalFaltaTerminacion',
+            'otsFaltaTerminacion',
+            'totalSinDestino',
+            'otsSinDestino',
+            'totalPendienteRemitirPlan',
+            'otsPendienteRemitirPlan',
+            'totalRemitidoReal',
+            'totalEnTransito',
+            'otsEnTransito',
             'totalPendienteEnvio',
             'otsPendientesEnvio',
             'totalHuecoDetalleLogistico',
