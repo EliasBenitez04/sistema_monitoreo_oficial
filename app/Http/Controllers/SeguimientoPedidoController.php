@@ -10,11 +10,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
+use App\Services\LogisticaConciliacionService;
 
 class SeguimientoPedidoController extends Controller
 {
-    public function __construct()
-    {
+    private LogisticaConciliacionService $conciliacionService;
+
+    public function __construct(
+        LogisticaConciliacionService $conciliacionService
+    ) {
+        $this->conciliacionService = $conciliacionService;
         $this->middleware('auth');
         $this->middleware('permission:ot dashboard');
     }
@@ -432,6 +437,9 @@ class SeguimientoPedidoController extends Controller
 
         $idsOt = $ots->pluck('id_ot')->all();
 
+        $conciliacionPorOt = $this->conciliacionService
+            ->conciliarPorIds($idsOt);
+
         $trazas = collect();
         $logistica = collect();
         $remisiones = collect();
@@ -666,7 +674,7 @@ class SeguimientoPedidoController extends Controller
                 $m->cantidad = (int) $m->cantidad;
                 $origenNorm = strtoupper($m->origen_mostrar);
                 $esCentral = (int) ($m->cod_sucursal_salida ?? 0) === 1
-                    || in_array($origenNorm, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+                    || in_array($origenNorm, ['CASA CENTRAL', 'MATRIZ'], true);
 
                 $m->tipo_movimiento = $esCentral
                     ? 'DESPACHO CENTRAL'
@@ -679,7 +687,7 @@ class SeguimientoPedidoController extends Controller
             // CASA CENTRAL y MATRIZ son nodos del canal mayorista y no deben inflar el contador de locales.
             $esMayorista = function ($local) {
                 $nombre = strtoupper(trim((string) $local->local));
-                return in_array($nombre, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+                return in_array($nombre, ['CASA CENTRAL', 'MATRIZ'], true);
             };
 
             $ot->locales_comerciales = $ot->locales->reject($esMayorista)->values();
@@ -738,6 +746,63 @@ class SeguimientoPedidoController extends Controller
                 $ot->estado_seguimiento = 'TERMINADO';
             }
 
+            /*
+             * Los saldos cuantitativos y el estado principal salen del mismo
+             * servicio usado por Control Terminación y Dashboard Logística.
+             * El detalle de movimientos se conserva para auditoría.
+             */
+            $conciliacion = $conciliacionPorOt->get($ot->id_ot);
+
+            if ($conciliacion) {
+                $ot->ingreso_terminacion =
+                    (int) $conciliacion->ingreso_terminacion;
+                $ot->producto_terminado =
+                    (int) $conciliacion->producto_terminado;
+                $ot->distribuido =
+                    (int) $conciliacion->planificado;
+                $ot->enviado =
+                    (int) $conciliacion->remitido_original;
+                $ot->recibido =
+                    (int) $conciliacion->recibido_original;
+                $ot->pendiente_recepcion =
+                    (int) $conciliacion->en_transito;
+                $ot->estado_conciliacion =
+                    $conciliacion->estado_conciliacion;
+
+                switch ($conciliacion->estado_conciliacion) {
+                    case 'FALTA TERMINACION':
+                        $ot->etapa_actual = 'TERMINACION';
+                        $ot->etapa_numero = 1;
+                        $ot->estado_seguimiento = 'EN TERMINACION';
+                        break;
+
+                    case 'SIN DESTINO':
+                        $ot->etapa_actual = 'PRODUCTO TERMINADO';
+                        $ot->etapa_numero = 2;
+                        $ot->estado_seguimiento = 'SIN DESTINO';
+                        break;
+
+                    case 'PENDIENTE REMITIR':
+                    case 'PENDIENTE SALIDA':
+                        $ot->etapa_actual = 'LOGISTICA';
+                        $ot->etapa_numero = 3;
+                        $ot->estado_seguimiento = 'EN LOGISTICA';
+                        break;
+
+                    case 'EN TRANSITO':
+                        $ot->etapa_actual = 'REMISION';
+                        $ot->etapa_numero = 4;
+                        $ot->estado_seguimiento = 'REMISIONADO';
+                        break;
+
+                    case 'CONFIRMADO':
+                        $ot->etapa_actual = 'RECEPCION LOCAL';
+                        $ot->etapa_numero = 5;
+                        $ot->estado_seguimiento = 'COMPLETO';
+                        break;
+                }
+            }
+
             $ot->porcentaje_seguimiento = $ot->etapa_numero > 0
                 ? (int) round(($ot->etapa_numero / 5) * 100)
                 : 0;
@@ -774,7 +839,7 @@ class SeguimientoPedidoController extends Controller
                     ?: ($mov->sucursal_destino ?? null))));
 
                 $origenCentral = (int) ($mov->cod_sucursal_salida ?? 0) === 1
-                    || in_array($origen, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+                    || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true);
 
                 $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
                     || in_array($destino, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', ''], true);
@@ -833,7 +898,7 @@ class SeguimientoPedidoController extends Controller
                         ?: ($mov->sucursal_destino ?? null))));
 
                     $origenCentral = (int) ($mov->cod_sucursal_salida ?? 0) === 1
-                        || in_array($origen, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'], true);
+                        || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true);
 
                     $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
                         || in_array($destino, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', ''], true);
