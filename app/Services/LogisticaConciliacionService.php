@@ -140,7 +140,13 @@ class LogisticaConciliacionService
                 $ptEfectivo = min($objetivo, $ptRaw);
 
                 $planRaw = max(0, (int) ($plan->planificado ?? 0));
-                $planEfectivo = min($ptEfectivo, $planRaw);
+
+                /*
+                 * El plan se conserva completo para mostrar lo importado.
+                 * Para pendientes físicos solo se considera la porción del plan
+                 * que ya puede existir porque llegó a Producto Terminado.
+                 */
+                $planDisponible = min($ptEfectivo, $planRaw);
 
                 $remitidoRaw = max(
                     0,
@@ -170,7 +176,7 @@ class LogisticaConciliacionService
                  */
                 $sinDestinoPlan = max(
                     0,
-                    $ptEfectivo - $planEfectivo
+                    $ptEfectivo - $planDisponible
                 );
 
                 /*
@@ -179,7 +185,7 @@ class LogisticaConciliacionService
                  * aunque ot_logistica_detalle esté incompleto.
                  */
                 $asignadoEfectivo = max(
-                    $planEfectivo,
+                    $planDisponible,
                     $remitidoEfectivo
                 );
 
@@ -190,7 +196,7 @@ class LogisticaConciliacionService
 
                 $pendienteRemitir = max(
                     0,
-                    $planEfectivo - $remitidoEfectivo
+                    $planDisponible - $remitidoEfectivo
                 );
 
                 $pendienteRealSalida = max(
@@ -205,7 +211,7 @@ class LogisticaConciliacionService
 
                 $huecoPlanVsReal = max(
                     0,
-                    $remitidoEfectivo - $planEfectivo
+                    $remitidoEfectivo - $planDisponible
                 );
 
                 $estado = $this->resolverEstado(
@@ -238,7 +244,8 @@ class LogisticaConciliacionService
                         ),
 
                         'planificado_raw' => $planRaw,
-                        'planificado' => $planEfectivo,
+                        'planificado' => $planRaw,
+                        'plan_disponible' => $planDisponible,
                         'destinos' => (int) ($plan->destinos ?? 0),
 
                         'remitido_original_raw' => $remitidoRaw,
@@ -290,7 +297,7 @@ class LogisticaConciliacionService
                          * Alias temporales para no romper las vistas existentes.
                          * Después podremos limpiar estos nombres progresivamente.
                          */
-                        'total_distribuido' => $planEfectivo,
+                        'total_distribuido' => $planRaw,
                         'asignado_efectivo_legacy' => $asignadoEfectivo,
                         'faltante' => $sinDestino,
                         'hueco_detalle' => $huecoPlanVsReal,
