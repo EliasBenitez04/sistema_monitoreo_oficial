@@ -46,8 +46,8 @@ class ControlTerminacionController extends Controller
                 ->whereIn('id_ot', $idsOt)
                 ->where(function ($q) {
                     $q->where('cod_sucursal_salida', 1)
-                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'")
-                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'");
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'")
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'");
                 })
                 ->where(function ($q) {
                     $q->where(function ($sub) {
@@ -56,7 +56,7 @@ class ControlTerminacionController extends Controller
                     });
 
                     $q->whereRaw(
-                        "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT LIKE '%CASA CENTRAL%'"
+                        "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('CASA CENTRAL', 'MATRIZ')"
                     );
                 })
                 ->groupBy('id_ot')
