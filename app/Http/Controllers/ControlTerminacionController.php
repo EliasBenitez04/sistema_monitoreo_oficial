@@ -19,10 +19,57 @@ class ControlTerminacionController extends Controller
      * Se centraliza acá para que Control Terminación y su reporte no
      * puedan mostrar una cifra distinta al Dashboard OT.
      */
+    /**
+     * Resumen físico/logístico por OT.
+     *
+     * Reglas:
+     * - PT = último TERMINACION - PRODUCTO TERMINADO (igual al Dashboard OT).
+     * - Distribuido = suma de ot_logistica_detalle de todos los movimientos
+     *   LOGISTICA - LOGISTICA Y DISTRIBUCION.
+     * - Remitido original = solo CASA CENTRAL/MATRIZ -> destino.
+     *   Redistribuciones Local -> Local NO vuelven a sumar.
+     * - Asignado efectivo = mayor entre Distribuido y Remitido original.
+     *   Si existe una remisión original, esa prenda necesariamente ya tuvo destino
+     *   aunque el detalle logístico haya quedado sin asociar.
+     * - Faltante real = PT - Asignado efectivo.
+     */
     private function resumenDistribucionComoDashboardOt(array $idsOt): \Illuminate\Support\Collection
     {
         if (empty($idsOt)) {
             return collect();
+        }
+
+        $remisionesOriginales = collect();
+
+        if (Schema::hasTable('ot_logistica_remisiones')) {
+            $remisionesOriginales = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $idsOt)
+                ->where(function ($q) {
+                    $q->where('cod_sucursal_salida', 1)
+                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'")
+                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'");
+                })
+                ->where(function ($q) {
+                    $q->where(function ($sub) {
+                        $sub->whereNull('cod_sucursal_destino')
+                            ->orWhere('cod_sucursal_destino', '<>', 1);
+                    });
+
+                    $q->whereRaw(
+                        "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT LIKE '%CASA CENTRAL%'"
+                    );
+                })
+                ->groupBy('id_ot')
+                ->select(
+                    'id_ot',
+                    DB::raw('SUM(cantidad) as remitido_original'),
+                    DB::raw('SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as recibido_original'),
+                    DB::raw('MIN(fecha_remision) as primera_remision'),
+                    DB::raw('MAX(fecha_remision) as ultima_remision'),
+                    DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
+                )
+                ->get()
+                ->keyBy('id_ot');
         }
 
         return \App\Models\Ot::with([
@@ -31,7 +78,7 @@ class ControlTerminacionController extends Controller
             ])
             ->whereIn('id_ot', $idsOt)
             ->get()
-            ->mapWithKeys(function ($ot) {
+            ->mapWithKeys(function ($ot) use ($remisionesOriginales) {
                 $trazabilidadPt = $ot->trazabilidades
                     ->where(
                         'proceso',
@@ -73,19 +120,65 @@ class ControlTerminacionController extends Controller
                     }
                 }
 
+                $remision = $remisionesOriginales->get($ot->id_ot);
+
+                $remitidoOriginal = max(
+                    0,
+                    (int) ($remision->remitido_original ?? 0)
+                );
+
+                $recibidoOriginal = max(
+                    0,
+                    (int) ($remision->recibido_original ?? 0)
+                );
+
+                /*
+                 * No permitimos que movimientos extra superen el PT para los KPI.
+                 * La diferencia extra queda como diagnóstico, no como avance físico.
+                 */
+                $distribuidoEfectivo = min(
+                    $productoTerminado,
+                    max(0, $totalDistribuido)
+                );
+
+                $remitidoEfectivo = min(
+                    $productoTerminado,
+                    $remitidoOriginal
+                );
+
+                $recibidoEfectivo = min(
+                    $productoTerminado,
+                    $recibidoOriginal
+                );
+
+                $asignadoEfectivo = max(
+                    $distribuidoEfectivo,
+                    $remitidoEfectivo
+                );
+
                 $ultimaLogistica = $trazabilidadesLogistica->last();
 
                 return [
                     (int) $ot->id_ot => (object) [
                         'producto_terminado' => $productoTerminado,
-                        'total_distribuido' => max(0, $totalDistribuido),
+                        'total_distribuido' => $distribuidoEfectivo,
+                        'remitido_original' => $remitidoEfectivo,
+                        'recibido_original' => $recibidoEfectivo,
+                        'asignado_efectivo' => $asignadoEfectivo,
                         'faltante' => max(
                             0,
-                            $productoTerminado - $totalDistribuido
+                            $productoTerminado - $asignadoEfectivo
+                        ),
+                        'hueco_detalle' => max(
+                            0,
+                            $remitidoEfectivo - $distribuidoEfectivo
                         ),
                         'destinos' => $sucursales->unique()->count(),
                         'ultima_fecha_pt' => $trazabilidadPt->fecha_proceso ?? null,
                         'ultima_fecha_logistica' => $ultimaLogistica->fecha_proceso ?? null,
+                        'primera_remision' => $remision->primera_remision ?? null,
+                        'ultima_remision' => $remision->ultima_remision ?? null,
+                        'ultima_recepcion' => $remision->ultima_recepcion ?? null,
                     ],
                 ];
             });
@@ -298,7 +391,6 @@ class ControlTerminacionController extends Controller
 
             $log = $logisticaPorOt->get($item->id_ot);
             $destino = $destinosPorOt->get($item->id_ot);
-            $rem = $remisionesPorOt->get($item->id_ot);
             $resumenDashboard = $resumenDashboardPorOt->get($item->id_ot);
             $tope = max(0, (int) $item->cantidad_orden);
 
@@ -322,8 +414,10 @@ class ControlTerminacionController extends Controller
                 (int) ($resumenDashboard->total_distribuido ?? 0)
             );
 
-            $item->cantidad_destino_asignado =
-                $item->cantidad_destino_detalle;
+            $item->cantidad_destino_asignado = max(
+                0,
+                (int) ($resumenDashboard->asignado_efectivo ?? 0)
+            );
 
             $item->cantidad_destinos = (int) (
                 $resumenDashboard->destinos ?? 0
@@ -334,18 +428,40 @@ class ControlTerminacionController extends Controller
                 (int) ($resumenDashboard->faltante ?? 0)
             );
 
-            $item->diferencia_fuente_destino = 0;
-            $item->detalle_destino_incompleto = false;
+            $item->hueco_detalle_logistico = max(
+                0,
+                (int) ($resumenDashboard->hueco_detalle ?? 0)
+            );
+
+            $item->diferencia_fuente_destino =
+                $item->hueco_detalle_logistico;
+
+            $item->detalle_destino_incompleto =
+                $item->hueco_detalle_logistico > 0;
+
             $item->primera_fecha_logistica = $log->primera_fecha_logistica ?? null;
             $item->ultima_fecha_logistica = $log->ultima_fecha_logistica ?? null;
-            $item->movimiento_fisico = (int) ($rem->movimiento_fisico ?? 0);
-            $item->movimiento_recibido = (int) ($rem->movimiento_recibido ?? 0);
-            $item->remitido_efectivo = min($tope, $item->movimiento_fisico);
-            $item->recibido_efectivo = min($tope, $item->movimiento_recibido);
-            $item->movimientos_adicionales = max(0, $item->movimiento_fisico - $tope);
-            $item->primera_remision = $rem->primera_remision ?? null;
-            $item->ultima_remision = $rem->ultima_remision ?? null;
-            $item->ultima_recepcion = $rem->ultima_recepcion ?? null;
+
+            $item->movimiento_fisico = max(
+                0,
+                (int) ($resumenDashboard->remitido_original ?? 0)
+            );
+
+            $item->movimiento_recibido = max(
+                0,
+                (int) ($resumenDashboard->recibido_original ?? 0)
+            );
+
+            $item->remitido_efectivo = $item->movimiento_fisico;
+            $item->recibido_efectivo = $item->movimiento_recibido;
+            $item->movimientos_adicionales = 0;
+
+            $item->primera_remision =
+                $resumenDashboard->primera_remision ?? null;
+            $item->ultima_remision =
+                $resumenDashboard->ultima_remision ?? null;
+            $item->ultima_recepcion =
+                $resumenDashboard->ultima_recepcion ?? null;
 
             if ($item->cantidad_terminada < max(1, $item->cantidad_ingreso_terminacion)) {
                 $item->etapa_actual = 'TERMINACION';
@@ -460,9 +576,12 @@ class ControlTerminacionController extends Controller
          * ESTE KPI NO MIDE REMISIONES.
          *
          * Falta completar destino =
-         * cantidad ordenada - cantidad ya distribuida en ot_logistica_detalle.
+         * PT - mayor evidencia de salida/asignación:
+         *   a) detalle logístico, o
+         *   b) remisión original CASA CENTRAL/MATRIZ -> destino.
          *
-         * Ejemplo: OT 360 / destino asignado 358 => faltan 2.
+         * Así una remisión ya emitida no vuelve a contarse como faltante
+         * solo porque id_logistica_detalle esté incompleto.
          */
         $totalPendienteEnvio = (int) $produccionTerminada->sum(
             'pendiente_completar_destino'
