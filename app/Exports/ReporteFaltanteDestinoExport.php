@@ -35,7 +35,8 @@ class ReporteFaltanteDestinoExport implements
             'OT',
             'Código',
             'Descripción',
-            'Objetivo OT',
+            'OT original',
+            'Ingreso Terminación',
             'Producto Terminado',
             'Plan logístico',
             'Remitido real',
@@ -56,6 +57,7 @@ class ReporteFaltanteDestinoExport implements
             $item->codigo,
             $item->descripcion,
             (int) $item->objetivo,
+            (int) $item->ingreso_terminacion,
             (int) $item->producto_terminado,
             (int) $item->planificado,
             (int) $item->remitido_original,
@@ -74,7 +76,7 @@ class ReporteFaltanteDestinoExport implements
         $sheet->freezePane('A2');
         $sheet->setAutoFilter($sheet->calculateWorksheetDimension());
 
-        $sheet->getStyle('A1:N1')->applyFromArray([
+        $sheet->getStyle('A1:O1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['ARGB' => 'FFFFFFFF'],
@@ -92,7 +94,7 @@ class ReporteFaltanteDestinoExport implements
         $ultimaFila = $sheet->getHighestRow();
 
         if ($ultimaFila >= 2) {
-            $sheet->getStyle('A2:N' . $ultimaFila)
+            $sheet->getStyle('A2:O' . $ultimaFila)
                 ->getAlignment()
                 ->setVertical('center');
 
@@ -100,36 +102,36 @@ class ReporteFaltanteDestinoExport implements
                 ->getAlignment()
                 ->setHorizontal('center');
 
-            $sheet->getStyle('D2:M' . $ultimaFila)
+            $sheet->getStyle('D2:N' . $ultimaFila)
                 ->getAlignment()
                 ->setHorizontal('center');
 
             for ($fila = 2; $fila <= $ultimaFila; $fila++) {
-                $sheet->getStyle('I' . $fila)
+                $sheet->getStyle('M' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFB91C1C');
 
-                $sheet->getStyle('J' . $fila)
+                $sheet->getStyle('M' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFC2410C');
 
-                $sheet->getStyle('K' . $fila)
+                $sheet->getStyle('M' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FF0E7490');
 
-                $sheet->getStyle('L' . $fila)
+                $sheet->getStyle('M' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FF1D4ED8');
 
-                $sheet->getStyle('N' . $fila)
+                $sheet->getStyle('O' . $fila)
                     ->getFont()
                     ->setBold(true);
             }
