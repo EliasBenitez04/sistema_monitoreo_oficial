@@ -2585,8 +2585,8 @@ class OtController extends Controller
              */
             $esSalidaCentral = "(
                 cod_sucursal_salida = 1
-                OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'
-                OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'
+                OR UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'
+                OR UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'
             )";
 
             $remisionPorDetalle = DB::table('ot_logistica_remisiones')
@@ -2723,8 +2723,8 @@ class OtController extends Controller
                     DB::raw('SUM(cantidad) as cantidad_envio'),
                     DB::raw("CASE
                         WHEN cod_sucursal_salida = 1
-                          OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'
-                          OR UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'
+                          OR UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'
+                          OR UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'
                         THEN 'DISTRIBUCION'
                         ELSE 'REDISTRIBUCION'
                     END as tipo_envio")
@@ -2749,12 +2749,12 @@ class OtController extends Controller
                 ->whereIn('id_ot', $idsOtPagina)
                 ->where(function ($q) {
                     $q->where('cod_sucursal_salida', 1)
-                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%CASA CENTRAL%'")
-                        ->orWhereRaw("UPPER(COALESCE(sucursal_salida, '')) LIKE '%MATRIZ%'");
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'")
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'");
                 })
                 ->where(function ($q) {
                     $q->whereNull('sucursal_destino')
-                        ->orWhereRaw("UPPER(COALESCE(sucursal_destino, '')) NOT LIKE '%CASA CENTRAL%'");
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')");
                 })
                 ->select(
                     'id_ot',
