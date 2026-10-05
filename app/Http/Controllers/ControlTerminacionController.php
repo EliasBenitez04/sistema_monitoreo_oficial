@@ -755,7 +755,7 @@ class ControlTerminacionController extends Controller
     {
         $datos = $this->construirReportePendientesEnvio($request);
 
-        $nombre = 'faltantes_destino_terminacion_'
+        $nombre = 'conciliacion_ot_'
             . $datos['fechaDesde'] . '_'
             . $datos['fechaHasta'] . '.xlsx';
 
