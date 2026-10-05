@@ -80,7 +80,7 @@
 
     <div class="cc-rule mb-3">
         <strong>Lectura:</strong>
-        <strong>Falta Terminación</strong> = Objetivo − PT ·
+        <strong>Falta Terminación</strong> = Ingreso a Terminación − PT ·
         <strong>Sin destino</strong> = PT sin plan/remisión suficiente ·
         <strong>Pendiente remitir</strong> = Plan disponible − Remitido ·
         <strong>En tránsito</strong> = Remitido − Recibido.
@@ -88,7 +88,7 @@
 
     <div class="row mb-2">
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label">Producto Terminado</div><div class="value">{{ number_format($resumen->producto_terminado,0,',','.') }}</div><div class="meta">de {{ number_format($resumen->objetivo,0,',','.') }} prendas objetivo</div></div>
+            <div class="cc-kpi"><div class="label">Producto Terminado</div><div class="value">{{ number_format($resumen->producto_terminado,0,',','.') }}</div><div class="meta">de {{ number_format($resumen->ingreso_terminacion,0,',','.') }} que ingresaron a Terminación · OT original {{ number_format($resumen->objetivo,0,',','.') }}</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label">Plan logístico</div><div class="value">{{ number_format($resumen->planificado,0,',','.') }}</div><div class="meta">distribución planificada</div></div>
@@ -144,7 +144,8 @@
                     <tr>
                         <th>OT</th>
                         <th>Código / Descripción</th>
-                        <th class="text-right">Objetivo</th>
+                        <th class="text-right">OT original</th>
+                        <th class="text-right">Ingreso Term.</th>
                         <th class="text-right">PT</th>
                         <th class="text-right">Plan</th>
                         <th class="text-right">Remitido</th>
@@ -173,6 +174,7 @@
                         <td><strong>{{ $item->nro_ot }}</strong></td>
                         <td><span class="cc-code">{{ $item->codigo }}</span><br><small class="text-muted">{{ $item->descripcion }}</small></td>
                         <td class="text-right">{{ number_format($item->objetivo,0,',','.') }}</td>
+                        <td class="text-right">{{ number_format($item->ingreso_terminacion,0,',','.') }}</td>
                         <td class="text-right"><strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong></td>
                         <td class="text-right">{{ number_format($item->planificado,0,',','.') }}</td>
                         <td class="text-right">{{ number_format($item->remitido_original,0,',','.') }}</td>
@@ -186,7 +188,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="13" class="text-center py-5 text-success">
+                        <td colspan="14" class="text-center py-5 text-success">
                             <i class="fas fa-check-circle mr-1"></i>
                             No hay OTs pendientes con los filtros seleccionados.
                         </td>
