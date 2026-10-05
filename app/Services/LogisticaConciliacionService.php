@@ -129,15 +129,22 @@ class LogisticaConciliacionService
                 $objetivo = max(0, (int) $ot->cantidad_orden);
 
                 /*
-                 * En trazabilidad los movimientos pueden ser incrementales:
-                 * ej. 359 PT y luego 1 PT reparada. Por eso se suman y se
-                 * limitan al objetivo para los KPI físicos.
+                 * La cantidad original de la OT es una referencia histórica,
+                 * NO la obligación de cada proceso posterior.
+                 *
+                 * Los procesos continúan con la cantidad real recibida del
+                 * proceso anterior. Ejemplo:
+                 * OT original 360 -> Ingreso Terminación 320 -> PT 320.
+                 * En ese caso Terminación está COMPLETA: no faltan 40.
+                 *
+                 * Los movimientos pueden ser incrementales:
+                 * 319 + 1 reparada = 320.
                  */
                 $ingresoRaw = max(0, (int) ($ingreso->cantidad ?? 0));
                 $ptRaw = max(0, (int) ($pt->cantidad ?? 0));
 
-                $ingresoEfectivo = min($objetivo, $ingresoRaw);
-                $ptEfectivo = min($objetivo, $ptRaw);
+                $ingresoEfectivo = $ingresoRaw;
+                $ptEfectivo = $ptRaw;
 
                 $planRaw = max(0, (int) ($plan->planificado ?? 0));
 
@@ -164,9 +171,13 @@ class LogisticaConciliacionService
                     $recibidoRaw
                 );
 
+                /*
+                 * Terminación se mide contra lo que realmente ingresó al área,
+                 * no contra cantidad_orden.
+                 */
                 $faltaTerminacion = max(
                     0,
-                    $objetivo - $ptEfectivo
+                    $ingresoEfectivo - $ptEfectivo
                 );
 
                 /*
@@ -240,7 +251,7 @@ class LogisticaConciliacionService
                         'producto_terminado' => $ptEfectivo,
                         'exceso_producto_terminado' => max(
                             0,
-                            $ptRaw - $objetivo
+                            $ptRaw - $ingresoRaw
                         ),
 
                         'planificado_raw' => $planRaw,
