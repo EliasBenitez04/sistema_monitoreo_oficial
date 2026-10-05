@@ -287,12 +287,18 @@
                             </td>
                             <td class="text-right">
                                 <strong>{{ number_format($item->cantidad_logistica,0,',','.') }}/{{ number_format($item->producto_terminado_referencia,0,',','.') }}</strong>
+
                                 @if($item->sin_destino_plan > 0)
-                                    <br><small class="text-warning">
-                                        {{ number_format($item->sin_destino_plan,0,',','.') }} fuera del plan
+                                    <br>
+                                    <small class="text-warning">
+                                        {{ number_format($item->cantidad_destino_detalle,0,',','.') }} distribuidas
+                                        · {{ number_format($item->sin_destino_plan,0,',','.') }} sin asignar
                                     </small>
                                 @else
-                                    <br><small class="text-success">Plan cubierto</small>
+                                    <br>
+                                    <small class="text-success">
+                                        {{ number_format($item->cantidad_destino_detalle,0,',','.') }} distribuidas · plan completo
+                                    </small>
                                 @endif
                             </td>
 
