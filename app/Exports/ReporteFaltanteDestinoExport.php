@@ -107,30 +107,35 @@ class ReporteFaltanteDestinoExport implements
                 ->setHorizontal('center');
 
             for ($fila = 2; $fila <= $ultimaFila; $fila++) {
-                $sheet->getStyle('M' . $fila)
+                // J = Falta Terminación.
+                $sheet->getStyle('J' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFB91C1C');
 
-                $sheet->getStyle('M' . $fila)
+                // K = Sin destino.
+                $sheet->getStyle('K' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFC2410C');
 
-                $sheet->getStyle('M' . $fila)
+                // L = Pendiente remitir.
+                $sheet->getStyle('L' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FF0E7490');
 
+                // M = En tránsito.
                 $sheet->getStyle('M' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FF1D4ED8');
 
+                // O = Acción requerida.
                 $sheet->getStyle('O' . $fila)
                     ->getFont()
                     ->setBold(true);
