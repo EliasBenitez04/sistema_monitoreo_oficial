@@ -593,6 +593,21 @@ class ControlTerminacionController extends Controller
             })
             ->count();
 
+        /*
+         * Diagnóstico de calidad de datos:
+         * prendas que ya tienen remisión original pero todavía no están
+         * explicadas por ot_logistica_detalle. No se cuentan como faltante.
+         */
+        $totalHuecoDetalleLogistico = (int) $produccionTerminada->sum(
+            'hueco_detalle_logistico'
+        );
+
+        $otsHuecoDetalleLogistico = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->hueco_detalle_logistico > 0;
+            })
+            ->count();
+
         // Mismo valor por definición del flujo.
         $totalEntregadoLogistica = $totalTerminado;
 
@@ -676,6 +691,8 @@ class ControlTerminacionController extends Controller
             'totalRecepcionLocal',
             'totalPendienteEnvio',
             'otsPendientesEnvio',
+            'totalHuecoDetalleLogistico',
+            'otsHuecoDetalleLogistico',
             'totalPendienteTerminar',
             'totalExcesoProductoTerminado',
             'totalOTs',
