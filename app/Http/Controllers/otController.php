@@ -2982,70 +2982,77 @@ class OtController extends Controller
             (int) $totalesConciliacion->hueco_plan_vs_real;
 
         /*
-         * Pendiente y exceso se calculan por OT para que una OT excedida no
-         * esconda el faltante documental de otra.
+         * Resumen ejecutivo desde la misma conciliación central.
          */
-        $resumenOt = (clone $baseQuery)
-            ->groupBy('d.id_ot')
-            ->select(
-                'd.id_ot',
-                DB::raw('SUM(d.cantidad) as plan')
-            );
+        $totalPendienteRemitir =
+            (int) $totalesConciliacion->pendiente_remitir;
 
-        if ($tablaRemisionesDisponible) {
-            $resumenOt->addSelect(
-                DB::raw('COALESCE(SUM(r.cantidad_remitida), 0) as remitido')
-            );
-        } else {
-            $resumenOt->addSelect(DB::raw('0 as remitido'));
-        }
+        $totalExcesoRemitido = (int) $conciliacionPorOt
+            ->sum(function ($item) {
+                return max(
+                    0,
+                    (int) $item->remitido_original_raw
+                        - (int) $item->planificado_raw
+                );
+            });
 
-        $resumenOt = $resumenOt->get();
+        $otsSinRemision = $conciliacionPorOt
+            ->filter(function ($item) {
+                return (int) $item->planificado > 0
+                    && (int) $item->remitido_original <= 0;
+            })
+            ->count();
 
-        $totalPendienteRemitir = 0;
-        $totalExcesoRemitido = 0;
-        $otsSinRemision = 0;
-        $otsPendientes = 0;
-        $otsCompletas = 0;
-        $otsExcedidas = 0;
+        $otsPendientes =
+            (int) $totalesConciliacion->ots_pendiente_remitir;
 
-        foreach ($resumenOt as $resumen) {
-            $plan = (int) $resumen->plan;
-            $remitido = (int) $resumen->remitido;
+        $otsExcedidas = $conciliacionPorOt
+            ->filter(function ($item) {
+                return (int) $item->remitido_original_raw
+                    > (int) $item->planificado_raw;
+            })
+            ->count();
 
-            $totalPendienteRemitir += max(0, $plan - $remitido);
-            $totalExcesoRemitido += max(0, $remitido - $plan);
-
-            if ($remitido <= 0) {
-                $otsSinRemision++;
-            } elseif ($remitido < $plan) {
-                $otsPendientes++;
-            } elseif ($remitido > $plan) {
-                $otsExcedidas++;
-            } else {
-                $otsCompletas++;
-            }
-        }
+        $otsCompletas = $conciliacionPorOt
+            ->filter(function ($item) {
+                return (int) $item->planificado > 0
+                    && (int) $item->pendiente_remitir === 0
+                    && (int) $item->remitido_original > 0;
+            })
+            ->count();
 
         $coberturaRemision = $totalCantidadEnviada > 0
-            ? round(($totalRemitido / $totalCantidadEnviada) * 100, 1)
+            ? round(
+                min(
+                    100,
+                    ($totalRemitido / $totalCantidadEnviada) * 100
+                ),
+                1
+            )
             : 0;
 
         $coberturaRecepcion = $totalRemitido > 0
-            ? round(($totalRecibido / $totalRemitido) * 100, 1)
+            ? round(
+                min(
+                    100,
+                    ($totalRecibido / $totalRemitido) * 100
+                ),
+                1
+            )
             : 0;
 
-        /*
-         * Resumen ejecutivo: pocos indicadores accionables.
-         * El pendiente de recepción es lo ya remitido que todavía no fue confirmado.
-         */
-        $totalPendienteRecepcion = max(0, $totalRemitido - $totalRecibido);
-        $otsConProblema = $otsSinRemision + $otsPendientes;
-        $otsAlDia = max(0, $totalOT - $otsConProblema);
+        $totalPendienteRecepcion = $totalEnTransito;
 
-        $alertasOt = collect($resumenOt)->filter(function ($resumen) {
-            return (int) $resumen->remitido < (int) $resumen->plan;
-        })->count();
+        $alertasOt = $conciliacionPorOt
+            ->filter(function ($item) {
+                return (int) $item->falta_terminacion > 0
+                    || (int) $item->sin_destino > 0
+                    || (int) $item->pendiente_remitir > 0
+                    || (int) $item->en_transito > 0;
+            })
+            ->count();
+
+        $otsAlDia = max(0, $totalOT - $alertasOt);
 
         $resumenEjecutivo = (object) [
             'ots' => $totalOT,
@@ -3053,10 +3060,17 @@ class OtController extends Controller
             'remitido' => $totalRemitido,
             'recibido' => $totalRecibido,
             'transito' => $totalEnTransito,
+
+            'falta_terminacion' => $totalFaltaTerminacion,
+            'sin_destino' => $totalSinDestino,
+            'pendiente_real_salida' => $totalPendienteRealSalida,
             'pendiente_remitir' => $totalPendienteRemitir,
             'pendiente_recepcion' => $totalPendienteRecepcion,
+            'hueco_plan_vs_real' => $totalHuecoPlanVsReal,
+
             'ots_al_dia' => $otsAlDia,
             'ots_atencion' => $alertasOt,
+
             'avance_remision' => $coberturaRemision,
             'avance_recepcion' => $coberturaRecepcion,
         ];
