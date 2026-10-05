@@ -129,8 +129,8 @@
             <div>
                 <strong><i class="fas fa-clipboard-list mr-1"></i>OT que requieren atención</strong>
                 <div class="cc-sub">
-                    Período PT {{ CarbonCarbon::parse($fechaDesde)->format('d/m/Y') }}
-                    al {{ CarbonCarbon::parse($fechaHasta)->format('d/m/Y') }}
+                    Período PT {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}
+                    al {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}
                 </div>
             </div>
             <span class="badge badge-primary p-2">
