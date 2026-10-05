@@ -3056,7 +3056,9 @@ class OtController extends Controller
 
         $resumenEjecutivo = (object) [
             'ots' => $totalOT,
+            'pt' => (int) $totalesConciliacion->producto_terminado,
             'plan' => $totalCantidadEnviada,
+            'sin_destino_plan' => (int) $totalesConciliacion->sin_destino_plan,
             'remitido' => $totalRemitido,
             'recibido' => $totalRecibido,
             'transito' => $totalEnTransito,
