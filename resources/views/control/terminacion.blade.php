@@ -122,40 +122,80 @@
                 <div class="meta">Prendas que ingresaron a Terminación</div>
             </div></div>
         </div>
+
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label"><i class="fas fa-check-double text-success mr-1"></i>Producto Terminado / Logística</div>
+                <div class="label"><i class="fas fa-check-double text-success mr-1"></i>Producto Terminado</div>
                 <div class="value">{{ number_format($totalTerminado,0,',','.') }}</div>
-                <div class="meta">{{ number_format($porcentajeTerminado,1,',','.') }}% del ingreso · entrada a Logística</div>
+                <div class="meta">{{ number_format($porcentajeTerminado,1,',','.') }}% del ingreso · disponible para Logística</div>
             </div></div>
         </div>
+
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label"><i class="fas fa-store text-info mr-1"></i>Recepción Local</div>
-                <div class="value">{{ number_format($totalRecepcionLocal,0,',','.') }}</div>
-                <div class="meta">Prendas confirmadas por los locales</div>
+            <div class="card ct-card ct-kpi h-100 {{ $totalFaltaTerminacion>0?'border-danger':'' }}"><div class="card-body">
+                <div class="label"><i class="fas fa-industry text-danger mr-1"></i>Falta Terminación</div>
+                <div class="value">{{ number_format($totalFaltaTerminacion,0,',','.') }}</div>
+                <div class="meta">{{ number_format($otsFaltaTerminacion,0,',','.') }} OTs todavía incompletas de producción</div>
             </div></div>
         </div>
+
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card ct-card ct-kpi h-100 {{ $totalPendienteEnvio>0?'border-warning':'' }}"><div class="card-body">
-                <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Falta completar destino</div>
-                <div class="value">{{ number_format($totalPendienteEnvio,0,',','.') }}</div>
-                <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con PT aún sin destino o remisión original</div>
-                @if($totalHuecoDetalleLogistico > 0)
-                    <div class="small text-info mt-1">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        {{ number_format($totalHuecoDetalleLogistico,0,',','.') }} prendas de
-                        {{ number_format($otsHuecoDetalleLogistico,0,',','.') }} OTs ya tienen remisión,
-                        pero aún no vínculo completo en detalle. No se cuentan como faltante.
-                    </div>
-                @endif
+            <div class="card ct-card ct-kpi h-100 {{ $totalSinDestino>0?'border-warning':'' }}"><div class="card-body">
+                <div class="label"><i class="fas fa-map-marker-alt text-warning mr-1"></i>Sin destino</div>
+                <div class="value">{{ number_format($totalSinDestino,0,',','.') }}</div>
+                <div class="meta">{{ number_format($otsSinDestino,0,',','.') }} OTs con PT sin plan ni remisión original suficiente</div>
                 <a href="{{ route('control.terminacion.reporte-pendientes-envio', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>$buscar]) }}"
                    class="btn btn-sm btn-outline-warning mt-2">
-                    <i class="fas fa-file-alt mr-1"></i>Ver faltantes para solicitar
+                    <i class="fas fa-balance-scale mr-1"></i>Ver conciliación
                 </a>
             </div></div>
         </div>
     </div>
+
+    <div class="row mb-2">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100"><div class="card-body">
+                <div class="label"><i class="fas fa-file-invoice text-info mr-1"></i>Remitido real</div>
+                <div class="value">{{ number_format($totalRemitidoReal,0,',','.') }}</div>
+                <div class="meta">Salida original Casa Central / Matriz → destino</div>
+            </div></div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100 {{ $totalPendienteRemitirPlan>0?'border-info':'' }}"><div class="card-body">
+                <div class="label"><i class="fas fa-truck-loading text-info mr-1"></i>Pendiente remitir</div>
+                <div class="value">{{ number_format($totalPendienteRemitirPlan,0,',','.') }}</div>
+                <div class="meta">{{ number_format($otsPendienteRemitirPlan,0,',','.') }} OTs con plan asignado todavía no remitido</div>
+            </div></div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100 {{ $totalEnTransito>0?'border-primary':'' }}"><div class="card-body">
+                <div class="label"><i class="fas fa-shipping-fast text-primary mr-1"></i>En tránsito</div>
+                <div class="value">{{ number_format($totalEnTransito,0,',','.') }}</div>
+                <div class="meta">{{ number_format($otsEnTransito,0,',','.') }} OTs remitidas pendientes de recepción</div>
+            </div></div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card ct-card ct-kpi h-100"><div class="card-body">
+                <div class="label"><i class="fas fa-store text-success mr-1"></i>Recepción Local</div>
+                <div class="value">{{ number_format($totalRecepcionLocal,0,',','.') }}</div>
+                <div class="meta">Prendas confirmadas por fecha de recepción</div>
+            </div></div>
+        </div>
+    </div>
+
+    @if($totalHuecoDetalleLogistico > 0)
+        <div class="alert alert-info py-2 mb-3">
+            <i class="fas fa-info-circle mr-1"></i>
+            <strong>Conciliación de datos:</strong>
+            {{ number_format($totalHuecoDetalleLogistico,0,',','.') }} prendas de
+            {{ number_format($otsHuecoDetalleLogistico,0,',','.') }} OTs ya tienen remisión original,
+            pero el plan logístico todavía no las explica completamente.
+            <strong>No se cuentan como faltante físico.</strong>
+        </div>
+    @endif
 
     <div class="ct-summary mb-3">
         <div class="d-flex justify-content-between align-items-center flex-wrap">
@@ -200,8 +240,8 @@
                         <th>Terminación</th>
                         <th>Producto Terminado</th>
                         <th>Situación actual</th>
-                        <th class="text-right">Destino asignado</th>
-                        <th class="text-right">Remitido</th>
+                        <th class="text-right">Plan logístico</th>
+                        <th class="text-right">Remitido real</th>
                         <th class="text-right">Recibido</th>
                         <th>Última remisión</th>
                         <th>Avance</th>
@@ -230,37 +270,52 @@
                             </td>
                             <td class="text-center">
                                 @php
-                                    $etapaClase = $item->etapa_numero >= 5 ? 'success' : ($item->etapa_numero >= 4 ? 'warning' : 'primary');
+                                    $estadoClase = [
+                                        'FALTA TERMINACION' => 'danger',
+                                        'SIN DESTINO' => 'warning',
+                                        'PENDIENTE REMITIR' => 'info',
+                                        'PENDIENTE SALIDA' => 'info',
+                                        'EN TRANSITO' => 'primary',
+                                        'CONFIRMADO' => 'success',
+                                    ][$item->estado_conciliacion] ?? 'secondary';
+
+                                    $etapaClase = $estadoClase;
                                 @endphp
-                                <span class="badge badge-{{ $etapaClase }} px-2 py-2">{{ $item->etapa_actual }}</span>
+                                <span class="badge badge-{{ $estadoClase }} px-2 py-2">
+                                    {{ $item->estado_conciliacion }}
+                                </span>
                             </td>
                             <td class="text-right">
-                                <strong>{{ number_format($item->cantidad_destino_asignado,0,',','.') }}/{{ number_format($item->producto_terminado_referencia,0,',','.') }}</strong>
-
-                                @if($item->pendiente_completar_destino > 0)
-                                    <br>
-                                    <small class="text-danger">
-                                        <strong>{{ number_format($item->pendiente_completar_destino,0,',','.') }}</strong> faltan
+                                <strong>{{ number_format($item->cantidad_logistica,0,',','.') }}/{{ number_format($item->producto_terminado_referencia,0,',','.') }}</strong>
+                                @if($item->sin_destino_plan > 0)
+                                    <br><small class="text-warning">
+                                        {{ number_format($item->sin_destino_plan,0,',','.') }} fuera del plan
                                     </small>
                                 @else
-                                    <br><small class="text-success">Destino completo</small>
+                                    <br><small class="text-success">Plan cubierto</small>
                                 @endif
+                            </td>
 
-                                @if(!empty($item->detalle_destino_incompleto))
-                                    <br>
-                                    <small class="text-warning font-weight-bold">
-                                        Detalle {{ number_format($item->cantidad_destino_detalle,0,',','.') }}
-                                        · {{ number_format($item->diferencia_fuente_destino,0,',','.') }} ya respaldadas por remisión
+                            <td class="text-right">
+                                <strong>{{ number_format($item->remitido_efectivo,0,',','.') }}/{{ number_format($item->producto_terminado_referencia,0,',','.') }}</strong>
+                                @if($item->pendiente_real_salida > 0)
+                                    <br><small class="text-info">
+                                        {{ number_format($item->pendiente_real_salida,0,',','.') }} sin salida
                                     </small>
+                                @else
+                                    <br><small class="text-success">Salida cubierta</small>
                                 @endif
                             </td>
+
                             <td class="text-right">
-                                <strong>{{ number_format($item->remitido_efectivo,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
-                                @if($item->movimientos_adicionales > 0)<br><small class="text-warning">+{{ number_format($item->movimientos_adicionales,0,',','.') }} mov.</small>@endif
-                            </td>
-                            <td class="text-right">
-                                <strong>{{ number_format($item->recibido_efectivo,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
-                                <br><small class="text-muted">{{ $item->ultima_recepcion ? \Carbon\Carbon::parse($item->ultima_recepcion)->format('d/m/Y') : '—' }}</small>
+                                <strong>{{ number_format($item->recibido_efectivo,0,',','.') }}/{{ number_format($item->remitido_efectivo,0,',','.') }}</strong>
+                                @if($item->en_transito > 0)
+                                    <br><small class="text-primary">
+                                        {{ number_format($item->en_transito,0,',','.') }} en tránsito
+                                    </small>
+                                @else
+                                    <br><small class="text-muted">{{ $item->ultima_recepcion ? \Carbon\Carbon::parse($item->ultima_recepcion)->format('d/m/Y') : '—' }}</small>
+                                @endif
                             </td>
                             <td class="ct-nowrap text-center">
                                 @if($item->ultima_remision)
