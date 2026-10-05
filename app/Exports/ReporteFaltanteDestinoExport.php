@@ -105,12 +105,14 @@ class ReporteFaltanteDestinoExport implements
                 ->setHorizontal('center');
 
             for ($fila = 2; $fila <= $ultimaFila; $fila++) {
-                $sheet->getStyle('L' . $fila)
+                // Columna I = Falta real.
+                $sheet->getStyle('I' . $fila)
                     ->getFont()
                     ->setBold(true)
                     ->getColor()
                     ->setARGB('FFB91C1C');
 
+                // Columna L = Solicitud.
                 $sheet->getStyle('L' . $fila)
                     ->getFont()
                     ->setBold(true);
