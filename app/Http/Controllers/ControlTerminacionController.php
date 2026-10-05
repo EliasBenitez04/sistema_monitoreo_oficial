@@ -1017,13 +1017,31 @@ class ControlTerminacionController extends Controller
                     (int) ($resumenDashboard->producto_terminado ?? 0)
                 );
 
-                $ot->total_distribuido = max(
+                $ot->detalle_logistico = max(
                     0,
                     (int) ($resumenDashboard->total_distribuido ?? 0)
                 );
 
-                $ot->destino_asignado = $ot->total_distribuido;
-                $ot->destino_detalle = $ot->total_distribuido;
+                $ot->remitido_original = max(
+                    0,
+                    (int) ($resumenDashboard->remitido_original ?? 0)
+                );
+
+                $ot->asignado_efectivo = max(
+                    0,
+                    (int) ($resumenDashboard->asignado_efectivo ?? 0)
+                );
+
+                // Compatibilidad con la vista/export existente.
+                $ot->total_distribuido = $ot->asignado_efectivo;
+                $ot->destino_asignado = $ot->asignado_efectivo;
+                $ot->destino_detalle = $ot->detalle_logistico;
+
+                $ot->hueco_detalle = max(
+                    0,
+                    (int) ($resumenDashboard->hueco_detalle ?? 0)
+                );
+
                 $ot->destinos = (int) (
                     $resumenDashboard->destinos ?? 0
                 );
@@ -1071,8 +1089,12 @@ class ControlTerminacionController extends Controller
                 ->sum('faltante_destino'),
             'producto_terminado' => (int) $reporteCompleto
                 ->sum('producto_terminado'),
-            'total_distribuido' => (int) $reporteCompleto
-                ->sum('total_distribuido'),
+            'asignado_efectivo' => (int) $reporteCompleto
+                ->sum('asignado_efectivo'),
+            'detalle_logistico' => (int) $reporteCompleto
+                ->sum('detalle_logistico'),
+            'hueco_detalle' => (int) $reporteCompleto
+                ->sum('hueco_detalle'),
         ];
 
         return compact(
