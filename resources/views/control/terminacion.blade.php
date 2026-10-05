@@ -140,7 +140,7 @@
             <div class="card ct-card ct-kpi h-100 {{ $totalPendienteEnvio>0?'border-warning':'' }}"><div class="card-body">
                 <div class="label"><i class="fas fa-hourglass-half text-warning mr-1"></i>Falta completar destino</div>
                 <div class="value">{{ number_format($totalPendienteEnvio,0,',','.') }}</div>
-                <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con diferencia entre orden y destino asignado</div>
+                <div class="meta">{{ number_format($otsPendientesEnvio,0,',','.') }} OTs con PT aún sin destino o remisión original</div>
                 <a href="{{ route('control.terminacion.reporte-pendientes-envio', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>$buscar]) }}"
                    class="btn btn-sm btn-outline-warning mt-2">
                     <i class="fas fa-file-alt mr-1"></i>Ver faltantes para solicitar
@@ -227,7 +227,7 @@
                                 <span class="badge badge-{{ $etapaClase }} px-2 py-2">{{ $item->etapa_actual }}</span>
                             </td>
                             <td class="text-right">
-                                <strong>{{ number_format($item->cantidad_destino_asignado,0,',','.') }}/{{ number_format($item->cantidad_orden,0,',','.') }}</strong>
+                                <strong>{{ number_format($item->cantidad_destino_asignado,0,',','.') }}/{{ number_format($item->producto_terminado_referencia,0,',','.') }}</strong>
 
                                 @if($item->pendiente_completar_destino > 0)
                                     <br>
@@ -242,7 +242,7 @@
                                     <br>
                                     <small class="text-warning font-weight-bold">
                                         Detalle {{ number_format($item->cantidad_destino_detalle,0,',','.') }}
-                                        · dif. {{ number_format($item->diferencia_fuente_destino,0,',','.') }}
+                                        · {{ number_format($item->diferencia_fuente_destino,0,',','.') }} ya respaldadas por remisión
                                     </small>
                                 @endif
                             </td>
