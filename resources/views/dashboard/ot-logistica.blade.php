@@ -53,10 +53,77 @@
     </div></div>
 
     <div class="row">
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter" data-filter="TODOS"><div class="card-body"><div class="label">OT en el período</div><div class="value">{{ number_format($resumenEjecutivo->ots,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->plan,0,',','.') }} prendas planificadas</div></div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter" data-filter="REMITIDO"><div class="card-body"><div class="label">Remitido desde Central</div><div class="value">{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan</div></div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter" data-filter="COMPLETO"><div class="card-body"><div class="label">Confirmado por locales</div><div class="value">{{ number_format($resumenEjecutivo->recibido,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->avance_recepcion,1,',','.') }}% de lo remitido</div></div></div></div>
-        <div class="col-lg-3 col-6 mb-3"><div class="card lg-card lg-kpi h-100 js-kpi-filter {{ $resumenEjecutivo->pendiente_remitir>0?'lg-attention':'lg-ok' }}" data-filter="PENDIENTE"><div class="card-body"><div class="label">Pendiente de remitir</div><div class="value">{{ number_format($resumenEjecutivo->pendiente_remitir,0,',','.') }}</div><div class="meta">{{ number_format($resumenEjecutivo->ots_atencion,0,',','.') }} OT requieren revisión</div></div></div></div>
+        <div class="col-lg-3 col-6 mb-3">
+            <div class="card lg-card lg-kpi h-100">
+                <div class="card-body">
+                    <div class="label">Plan logístico</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->plan,0,',','.') }}</div>
+                    <div class="meta">{{ number_format($resumenEjecutivo->ots,0,',','.') }} OTs seleccionadas</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6 mb-3">
+            <div class="card lg-card lg-kpi h-100">
+                <div class="card-body">
+                    <div class="label">Remitido real</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</div>
+                    <div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6 mb-3">
+            <div class="card lg-card lg-kpi h-100">
+                <div class="card-body">
+                    <div class="label">Confirmado local</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->recibido,0,',','.') }}</div>
+                    <div class="meta">{{ number_format($resumenEjecutivo->avance_recepcion,1,',','.') }}% de lo remitido</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6 mb-3">
+            <div class="card lg-card lg-kpi h-100 {{ $resumenEjecutivo->transito>0?'lg-attention':'lg-ok' }}">
+                <div class="card-body">
+                    <div class="label">En tránsito</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->transito,0,',','.') }}</div>
+                    <div class="meta">Remitido todavía sin recepción</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-4 mb-3">
+            <div class="card lg-card lg-kpi h-100 {{ $resumenEjecutivo->falta_terminacion>0?'lg-attention':'lg-ok' }}">
+                <div class="card-body">
+                    <div class="label">Falta Terminación</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->falta_terminacion,0,',','.') }}</div>
+                    <div class="meta">Objetivo OT que todavía no llegó a Producto Terminado</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-3">
+            <div class="card lg-card lg-kpi h-100 {{ $resumenEjecutivo->sin_destino>0?'lg-attention':'lg-ok' }}">
+                <div class="card-body">
+                    <div class="label">Sin destino</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->sin_destino,0,',','.') }}</div>
+                    <div class="meta">PT sin plan ni remisión original suficiente</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 mb-3">
+            <div class="card lg-card lg-kpi h-100 {{ $resumenEjecutivo->pendiente_remitir>0?'lg-attention':'lg-ok' }}">
+                <div class="card-body">
+                    <div class="label">Pendiente remitir</div>
+                    <div class="value">{{ number_format($resumenEjecutivo->pendiente_remitir,0,',','.') }}</div>
+                    <div class="meta">Plan asignado que todavía no tiene salida real</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="card lg-card mb-3"><div class="card-body py-3">
@@ -64,6 +131,8 @@
             <div class="col-lg-8">
                 <strong>Situación del período</strong>
                 <div class="lg-flow mt-2">
+                    PT <strong>{{ number_format($resumenEjecutivo->plan + $resumenEjecutivo->sin_destino_plan,0,',','.') }}</strong>
+                    <i class="fas fa-angle-right mx-2"></i>
                     Plan <strong>{{ number_format($resumenEjecutivo->plan,0,',','.') }}</strong>
                     <i class="fas fa-angle-right mx-2"></i>
                     Remitido <strong>{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</strong>
@@ -81,10 +150,11 @@
     <div class="lg-toolbar mb-3 d-flex justify-content-between align-items-center flex-wrap">
         <div class="lg-status-filter">
             <button type="button" class="btn btn-sm btn-primary js-status active" data-filter="TODOS">Todas</button>
-            <button type="button" class="btn btn-sm btn-outline-warning js-status" data-filter="PENDIENTE">Pendientes</button>
-            <button type="button" class="btn btn-sm btn-outline-primary js-status" data-filter="TRANSITO">En tránsito</button>
-            <button type="button" class="btn btn-sm btn-outline-success js-status" data-filter="COMPLETO">Completas</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary js-status" data-filter="SIN_REMISION">Sin remisión</button>
+            <button type="button" class="btn btn-sm btn-outline-danger js-status" data-filter="FALTA_TERMINACION">Falta Terminación</button>
+            <button type="button" class="btn btn-sm btn-outline-warning js-status" data-filter="SIN_DESTINO">Sin destino</button>
+            <button type="button" class="btn btn-sm btn-outline-info js-status" data-filter="PENDIENTE_REMITIR">Pendiente remitir</button>
+            <button type="button" class="btn btn-sm btn-outline-primary js-status" data-filter="EN_TRANSITO">En tránsito</button>
+            <button type="button" class="btn btn-sm btn-outline-success js-status" data-filter="CONFIRMADO">Confirmadas</button>
         </div>
         <small class="text-muted"><i class="fas fa-mouse-pointer mr-1"></i>Hacé clic en una OT para ver su trazabilidad sin salir de la pantalla.</small>
     </div>
@@ -95,32 +165,42 @@
             <span class="badge badge-primary">{{ number_format($detalles->total(),0,',','.') }} OTs</span>
         </div>
         <div class="table-responsive"><table class="table table-hover mb-0 lg-table">
-            <thead><tr><th>OT / artículo</th><th>Salida</th><th class="text-right">Plan</th><th class="text-right">Remitido</th><th class="text-right">Recibido</th><th class="text-right">Falta remitir</th><th class="text-right">En tránsito</th><th>Estado</th></tr></thead>
+            <thead><tr><th>OT / artículo</th><th>Salida</th><th class="text-right">PT</th><th class="text-right">Plan</th><th class="text-right">Remitido</th><th class="text-right">Recibido</th><th class="text-right">Sin destino</th><th class="text-right">Pend. remitir</th><th class="text-right">Tránsito</th><th>Estado</th></tr></thead>
             <tbody>
             @forelse($detalles as $item)
                 @php
-                    $estadoFila = $item->pendiente_remitir > 0 ? 'PENDIENTE'
-                        : ($item->cantidad_en_transito > 0 ? 'TRANSITO'
-                        : (($item->cantidad_remitida > 0 && $item->cantidad_recibida >= $item->cantidad_remitida) ? 'COMPLETO' : 'SIN_REMISION'));
+                    $estadoFila = str_replace(' ', '_', $item->estado_conciliacion);
+                    $estadoClase = [
+                        'FALTA_TERMINACION' => 'danger',
+                        'SIN_DESTINO' => 'warning',
+                        'PENDIENTE_REMITIR' => 'info',
+                        'PENDIENTE_SALIDA' => 'info',
+                        'EN_TRANSITO' => 'primary',
+                        'CONFIRMADO' => 'success',
+                    ][$estadoFila] ?? 'secondary';
                 @endphp
                 <tr class="lg-row js-ot-row" data-estado="{{ $estadoFila }}" data-detail="detail-{{ $item->id_ot }}">
                     <td><i class="fas fa-chevron-right text-muted mr-1 js-chevron"></i><strong>{{ $item->nro_ot }}</strong> <span class="lg-code ml-1">{{ $item->codigo }}</span><br><small class="text-muted">{{ \Illuminate\Support\Str::limit($item->descripcion,55) }}</small></td>
                     <td class="lg-nowrap">{{ $item->primera_salida ? \Carbon\Carbon::parse($item->primera_salida)->format('d/m/Y') : '—' }}</td>
-                    <td class="text-right"><strong>{{ number_format($item->cantidad_logistica,0,',','.') }}</strong></td>
+                    <td class="text-right"><strong>{{ number_format($item->cantidad_pt,0,',','.') }}</strong></td>
+                    <td class="text-right">{{ number_format($item->cantidad_logistica,0,',','.') }}</td>
                     <td class="text-right">{{ number_format($item->cantidad_remitida,0,',','.') }}</td>
                     <td class="text-right">{{ number_format($item->cantidad_recibida,0,',','.') }}</td>
-                    <td class="text-right">@if($item->pendiente_remitir>0)<span class="badge badge-warning">{{ number_format($item->pendiente_remitir,0,',','.') }}</span>@else 0 @endif</td>
+                    <td class="text-right">@if($item->sin_destino>0)<span class="badge badge-warning">{{ number_format($item->sin_destino,0,',','.') }}</span>@else 0 @endif</td>
+                    <td class="text-right">@if($item->pendiente_remitir>0)<span class="badge badge-info">{{ number_format($item->pendiente_remitir,0,',','.') }}</span>@else 0 @endif</td>
                     <td class="text-right">@if($item->cantidad_en_transito>0)<span class="badge badge-primary">{{ number_format($item->cantidad_en_transito,0,',','.') }}</span>@else 0 @endif</td>
                     <td>
-                        @if($item->pendiente_remitir>0)<span class="badge badge-warning lg-badge">PENDIENTE</span>
-                        @elseif($item->cantidad_en_transito>0)<span class="badge badge-primary lg-badge">EN TRÁNSITO</span>
-                        @elseif($item->cantidad_remitida>0 && $item->cantidad_recibida >= $item->cantidad_remitida)<span class="badge badge-success lg-badge">COMPLETO</span>
-                        @else<span class="badge badge-secondary lg-badge">SIN REMISIÓN</span>@endif
-                        @if($item->cantidad_redistribuida>0)<br><small class="text-muted">{{ number_format($item->cantidad_redistribuida,0,',','.') }} redistribuidas</small>@endif
+                        <span class="badge badge-{{ $estadoClase }} lg-badge">{{ $item->estado_conciliacion }}</span>
+                        @if($item->hueco_plan_vs_real>0)
+                            <br><small class="text-info">{{ number_format($item->hueco_plan_vs_real,0,',','.') }} remitidas fuera del plan</small>
+                        @endif
+                        @if($item->cantidad_redistribuida>0)
+                            <br><small class="text-muted">{{ number_format($item->cantidad_redistribuida,0,',','.') }} redistribuidas</small>
+                        @endif
                     </td>
                 </tr>
                 <tr id="detail-{{ $item->id_ot }}" class="lg-detail-row" data-parent-estado="{{ $estadoFila }}">
-                    <td colspan="8">
+                    <td colspan="10">
                         <div class="lg-detail-box">
                             <div class="row">
                                 <div class="col-lg-8">
@@ -130,6 +210,8 @@
                                         <span class="lg-step"><i class="fas fa-clipboard-list text-info"></i>Plan: <strong class="ml-1">{{ number_format($item->cantidad_logistica,0,',','.') }}</strong></span>
                                         <span class="lg-step"><i class="fas fa-file-alt text-primary"></i>Remitido: <strong class="ml-1">{{ number_format($item->cantidad_remitida,0,',','.') }}</strong></span>
                                         <span class="lg-step"><i class="fas fa-check-circle text-success"></i>Recibido: <strong class="ml-1">{{ number_format($item->cantidad_recibida,0,',','.') }}</strong></span>
+                                        @if($item->falta_terminacion>0)<span class="lg-step text-danger">Falta Terminación: <strong>{{ number_format($item->falta_terminacion,0,',','.') }}</strong></span>@endif
+                                        @if($item->sin_destino>0)<span class="lg-step text-warning">Sin destino: <strong>{{ number_format($item->sin_destino,0,',','.') }}</strong></span>@endif
                                     </div>
                                 </div>
                                 <div class="col-lg-4">
@@ -230,7 +312,7 @@
                         </div>
                     </td>
                 </tr>
-            @empty<tr><td colspan="8" class="text-center text-muted py-5">Sin movimientos para los filtros seleccionados.</td></tr>@endforelse
+            @empty<tr><td colspan="10" class="text-center text-muted py-5">Sin movimientos para los filtros seleccionados.</td></tr>@endforelse
             </tbody>
         </table></div>
         @if($detalles->hasPages())<div class="card-footer bg-white">{{ $detalles->links('pagination::bootstrap-4') }}</div>@endif
@@ -261,21 +343,27 @@
 <script>
 $(function () {
     function filtrar(estado) {
-        $('.js-status').removeClass('active btn-primary btn-warning btn-success btn-secondary')
-            .addClass(function(){ return $(this).data('filter')==='PENDIENTE'?'btn-outline-warning':($(this).data('filter')==='TRANSITO'?'btn-outline-primary':($(this).data('filter')==='COMPLETO'?'btn-outline-success':($(this).data('filter')==='SIN_REMISION'?'btn-outline-secondary':'btn-outline-primary'))); });
-        $('.js-status[data-filter="'+estado+'"]').addClass('active').removeClass('btn-outline-primary btn-outline-warning btn-outline-success btn-outline-secondary').addClass('btn-primary');
-        $('.js-kpi-filter').removeClass('active');
-        $('.js-kpi-filter[data-filter="'+estado+'"]').addClass('active');
+        $('.js-status')
+            .removeClass('active btn-primary btn-danger btn-warning btn-info btn-success')
+            .addClass('btn-outline-secondary');
+
+        $('.js-status[data-filter="'+estado+'"]')
+            .addClass('active btn-primary')
+            .removeClass('btn-outline-secondary');
+
         $('.js-ot-row').each(function(){
-            var visible = estado==='TODOS' || (estado==='REMITIDO' ? $(this).find('td:nth-child(4)').text().trim()!=='0' : $(this).data('estado')===estado);
+            var visible = estado === 'TODOS'
+                || $(this).data('estado') === estado;
+
             $(this).toggle(visible);
             $('#'+$(this).data('detail')).hide();
-            $(this).find('.js-chevron').removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            $(this).find('.js-chevron')
+                .removeClass('fa-chevron-down')
+                .addClass('fa-chevron-right');
         });
     }
 
     $('.js-status').on('click', function(){ filtrar($(this).data('filter')); });
-    $('.js-kpi-filter').on('click', function(){ filtrar($(this).data('filter')); });
     $('.js-ot-row').on('click', function(){
         var detail=$('#'+$(this).data('detail'));
         detail.toggle();
