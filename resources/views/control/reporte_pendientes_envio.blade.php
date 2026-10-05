@@ -81,8 +81,9 @@
 
     <div class="fd-rule mb-3">
         <strong><i class="fas fa-calculator mr-1"></i>Regla:</strong>
-        <strong>Falta completar destino = Cantidad ordenada − Cantidad asignada en Logística.</strong>
-        La remisión no interviene en este cálculo.
+        <strong>Faltante real = Producto Terminado − mayor evidencia de asignación.</strong>
+        Se considera tanto el detalle logístico como la remisión original Casa Central/Matriz → destino.
+        Una remisión válida evita marcar como faltante una prenda que ya salió físicamente.
     </div>
 
     <div class="row mb-3">
@@ -98,7 +99,7 @@
             <div class="fd-kpi is-warning">
                 <div class="label">OT con faltante</div>
                 <div class="value">{{ number_format($resumen->ots_pendientes,0,',','.') }}</div>
-                <div class="meta">Tienen diferencia entre orden y destino asignado</div>
+                <div class="meta">Tienen PT sin destino ni remisión original</div>
             </div>
         </div>
 
@@ -138,8 +139,9 @@
                         <th>OT</th>
                         <th>Código / Descripción</th>
                         <th class="text-right">Producto Terminado</th>
-                        <th class="text-right">Total distribuido OT</th>
-                        <th class="text-right">Falta</th>
+                        <th class="text-right">Asignado efectivo</th>
+                        <th class="text-right">Detalle logístico</th>
+                        <th class="text-right">Falta real</th>
                         <th>Último PT</th>
                         <th>Última asignación</th>
                         <th>Solicitud</th>
@@ -161,9 +163,23 @@
                         </td>
 
                         <td class="text-right">
-                            <strong>{{ number_format($item->total_distribuido,0,',','.') }}</strong>
+                            <strong>{{ number_format($item->asignado_efectivo,0,',','.') }}</strong>
+                            @if($item->remitido_original > $item->detalle_logistico)
+                                <br><small class="text-success">
+                                    remisión original {{ number_format($item->remitido_original,0,',','.') }}
+                                </small>
+                            @endif
+                        </td>
+
+                        <td class="text-right">
+                            {{ number_format($item->detalle_logistico,0,',','.') }}
                             @if($item->destinos > 0)
                                 <br><small class="text-muted">{{ $item->destinos }} destinos</small>
+                            @endif
+                            @if($item->hueco_detalle > 0)
+                                <br><small class="text-warning font-weight-bold">
+                                    {{ number_format($item->hueco_detalle,0,',','.') }} sin vínculo en detalle
+                                </small>
                             @endif
                         </td>
 
@@ -191,7 +207,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-success">
+                        <td colspan="9" class="text-center py-5 text-success">
                             <i class="fas fa-check-circle mr-1"></i>
                             Todas las OTs del rango tienen el destino completo.
                         </td>
@@ -207,7 +223,10 @@
                                 {{ number_format($reportePendiente->sum('producto_terminado'),0,',','.') }}
                             </td>
                             <td class="text-right">
-                                {{ number_format($reportePendiente->sum('total_distribuido'),0,',','.') }}
+                                {{ number_format($reportePendiente->sum('asignado_efectivo'),0,',','.') }}
+                            </td>
+                            <td class="text-right">
+                                {{ number_format($reportePendiente->sum('detalle_logistico'),0,',','.') }}
                             </td>
                             <td class="text-right text-danger">
                                 {{ number_format($reportePendiente->sum('faltante_destino'),0,',','.') }}
