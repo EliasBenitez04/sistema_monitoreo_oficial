@@ -2635,6 +2635,25 @@ class OtController extends Controller
         }
 
         /*
+         * Conciliación central por OT.
+         * El filtro de sucursal/fecha selecciona las OTs visibles; una vez
+         * seleccionadas, sus saldos PLAN vs REAL se calculan completos.
+         */
+        $idsOtFiltradas = (clone $baseQuery)
+            ->select('d.id_ot')
+            ->distinct()
+            ->pluck('d.id_ot')
+            ->filter()
+            ->values()
+            ->all();
+
+        $conciliacionPorOt = $this->conciliacionService
+            ->conciliarPorIds($idsOtFiltradas);
+
+        $totalesConciliacion = $this->conciliacionService
+            ->totales($conciliacionPorOt);
+
+        /*
          * Producto Terminado acumulado por OT. Se muestra como referencia del
          * volumen disponible para Logística, no como filtro del período.
          */
@@ -2814,25 +2833,84 @@ class OtController extends Controller
                 ->where('estado_confirmacion', '<>', 'CONFIRMADO')
                 ->count();
 
-            $item->cantidad_pt = (int) $item->cantidad_pt;
-            $item->cantidad_logistica = (int) $item->cantidad_logistica;
-            $item->cantidad_remitida = (int) $item->cantidad_remitida;
-            $item->cantidad_recibida = (int) $item->cantidad_recibida;
-            $item->cantidad_en_transito = (int) $item->cantidad_en_transito;
-            $item->cantidad_redistribuida = (int) $item->cantidad_redistribuida;
+            $conciliacion = $conciliacionPorOt->get($item->id_ot);
 
-            $item->pendiente_remitir = max(
-                0,
-                $item->cantidad_logistica - $item->cantidad_remitida
-            );
+            if ($conciliacion) {
+                $item->cantidad_pt =
+                    (int) $conciliacion->producto_terminado;
+                $item->cantidad_logistica =
+                    (int) $conciliacion->planificado;
+                $item->cantidad_remitida =
+                    (int) $conciliacion->remitido_original;
+                $item->cantidad_recibida =
+                    (int) $conciliacion->recibido_original;
+                $item->cantidad_en_transito =
+                    (int) $conciliacion->en_transito;
 
-            $item->exceso_remitido = max(
-                0,
-                $item->cantidad_remitida - $item->cantidad_logistica
-            );
+                $item->falta_terminacion =
+                    (int) $conciliacion->falta_terminacion;
+                $item->sin_destino =
+                    (int) $conciliacion->sin_destino;
+                $item->sin_destino_plan =
+                    (int) $conciliacion->sin_destino_plan;
+                $item->pendiente_real_salida =
+                    (int) $conciliacion->pendiente_real_salida;
+                $item->estado_conciliacion =
+                    $conciliacion->estado_conciliacion;
+                $item->hueco_plan_vs_real =
+                    (int) $conciliacion->hueco_plan_vs_real;
 
-            $item->diferencia_pt_logistica =
-                $item->cantidad_pt - $item->cantidad_logistica;
+                $item->pendiente_remitir =
+                    (int) $conciliacion->pendiente_remitir;
+
+                $item->exceso_remitido = max(
+                    0,
+                    (int) $conciliacion->remitido_original_raw
+                        - (int) $conciliacion->planificado_raw
+                );
+
+                $item->diferencia_pt_logistica =
+                    (int) $conciliacion->sin_destino_plan;
+            } else {
+                $item->cantidad_pt = (int) $item->cantidad_pt;
+                $item->cantidad_logistica =
+                    (int) $item->cantidad_logistica;
+                $item->cantidad_remitida =
+                    (int) $item->cantidad_remitida;
+                $item->cantidad_recibida =
+                    (int) $item->cantidad_recibida;
+                $item->cantidad_en_transito =
+                    (int) $item->cantidad_en_transito;
+
+                $item->falta_terminacion = 0;
+                $item->sin_destino = max(
+                    0,
+                    $item->cantidad_pt - $item->cantidad_logistica
+                );
+                $item->sin_destino_plan = $item->sin_destino;
+                $item->pendiente_real_salida = max(
+                    0,
+                    $item->cantidad_pt - $item->cantidad_remitida
+                );
+                $item->estado_conciliacion = 'SIN CONCILIAR';
+                $item->hueco_plan_vs_real = 0;
+
+                $item->pendiente_remitir = max(
+                    0,
+                    $item->cantidad_logistica - $item->cantidad_remitida
+                );
+
+                $item->exceso_remitido = max(
+                    0,
+                    $item->cantidad_remitida - $item->cantidad_logistica
+                );
+
+                $item->diferencia_pt_logistica =
+                    $item->cantidad_pt - $item->cantidad_logistica;
+            }
+
+            $item->cantidad_redistribuida =
+                (int) $item->cantidad_redistribuida;
 
             if ($item->cantidad_remitida <= 0) {
                 $item->estado_documental = 'SIN REMISION';
@@ -2881,10 +2959,27 @@ class OtController extends Controller
         $totalOT = (int) ($totales->total_ot ?? 0);
         $totalSucursales = (int) ($totales->total_sucursales ?? 0);
         $totalRegistros = (int) ($totales->total_detalles ?? 0);
-        $totalCantidadEnviada = (int) ($totales->total_logistica ?? 0);
-        $totalRemitido = (int) ($totales->total_remitido ?? 0);
-        $totalRecibido = (int) ($totales->total_recibido ?? 0);
-        $totalEnTransito = (int) ($totales->total_en_transito ?? 0);
+
+        /*
+         * Cantidades ejecutivas desde la conciliación central.
+         */
+        $totalCantidadEnviada =
+            (int) $totalesConciliacion->planificado;
+        $totalRemitido =
+            (int) $totalesConciliacion->remitido;
+        $totalRecibido =
+            (int) $totalesConciliacion->recibido;
+        $totalEnTransito =
+            (int) $totalesConciliacion->en_transito;
+
+        $totalFaltaTerminacion =
+            (int) $totalesConciliacion->falta_terminacion;
+        $totalSinDestino =
+            (int) $totalesConciliacion->sin_destino;
+        $totalPendienteRealSalida =
+            (int) $totalesConciliacion->pendiente_real_salida;
+        $totalHuecoPlanVsReal =
+            (int) $totalesConciliacion->hueco_plan_vs_real;
 
         /*
          * Pendiente y exceso se calculan por OT para que una OT excedida no
