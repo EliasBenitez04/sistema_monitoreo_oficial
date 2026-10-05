@@ -140,7 +140,7 @@ class ControlTerminacionController extends Controller
                 (int) $resumen->planificado;
 
             $item->cantidad_destino_detalle =
-                (int) $resumen->planificado;
+                (int) $resumen->plan_detallado;
 
             $item->cantidad_destino_asignado =
                 (int) $resumen->asignado_efectivo;
@@ -990,13 +990,28 @@ class ControlTerminacionController extends Controller
 
         $ot = DB::table('ot')
             ->where('id_ot', $idOt)
-            ->select('id_ot', 'nro_ot', 'codigo', 'descripcion', 'cantidad_orden')
+            ->select(
+                'id_ot',
+                'nro_ot',
+                'codigo',
+                'descripcion',
+                'cantidad_orden'
+            )
             ->first();
 
         abort_if(!$ot, 404);
 
+        $conciliacion = $this->conciliacionService
+            ->conciliarPorIds([(int) $idOt])
+            ->get((int) $idOt);
+
         $queryDetalles = DB::table('ot_trazabilidad as tl')
-            ->join('ot_logistica_detalle as d', 'd.id_trazabilidad', '=', 'tl.id_trazabilidad')
+            ->join(
+                'ot_logistica_detalle as d',
+                'd.id_trazabilidad',
+                '=',
+                'tl.id_trazabilidad'
+            )
             ->where('tl.id_ot', $idOt)
             ->where('tl.proceso', $procesoLogistica);
 
@@ -1015,88 +1030,226 @@ class ControlTerminacionController extends Controller
             ->orderBy('d.id')
             ->get();
 
+        $remisionesOriginales = collect();
         $remisionesPorDetalle = collect();
+        $remisionesSinDetalle = collect();
 
-        if (Schema::hasTable('ot_logistica_remisiones') && $detalles->isNotEmpty()) {
-            $remisionesOriginales = DB::table('ot_logistica_remisiones')
+        if (Schema::hasTable('ot_logistica_remisiones')) {
+            /*
+             * Tomamos TODAS las remisiones originales de la OT, tengan o no
+             * id_logistica_detalle. El vínculo al plan es una conciliación
+             * visual; la remisión física no deja de existir por falta de FK.
+             */
+            $queryRemisiones = DB::table('ot_logistica_remisiones')
                 ->where('id_ot', $idOt)
                 ->where(function ($q) {
                     $q->where('cod_sucursal_salida', 1)
-                        ->orWhere('sucursal_salida', 'ILIKE', 'CASA CENTRAL');
+                        ->orWhereRaw(
+                            "UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'"
+                        )
+                        ->orWhereRaw(
+                            "UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'"
+                        );
                 })
-                ->whereNotNull('id_logistica_detalle')
-                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
+                ->where(function ($q) {
+                    $q->whereNull('cod_sucursal_destino')
+                        ->orWhere('cod_sucursal_destino', '<>', 1);
+                })
+                ->whereRaw(
+                    "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
+                );
+
+            if ($fechaPt) {
+                $queryRemisiones->whereRaw(
+                    'COALESCE(fecha_remision, fecha_creacion) >= ?',
+                    [$fechaPt]
+                );
+            }
+
+            $remisionesOriginales = $queryRemisiones
+                ->orderByRaw(
+                    'COALESCE(fecha_remision, fecha_creacion) ASC'
+                )
                 ->orderBy('serie')
                 ->orderBy('numero_remision')
                 ->orderBy('id')
                 ->get();
+        }
 
-            // Una remisión puede tener varias líneas del mismo artículo (talles/variantes).
-            // Para AYALA / MODELO la unidad de decisión es el DOCUMENTO completo:
-            // serie + número + destino. El mismo documento nunca puede repartirse
-            // entre ambos planes.
-            $documentos = $remisionesOriginales->groupBy(function ($remision) {
-                return implode('|', [
-                    (string) $remision->serie,
-                    (string) $remision->numero_remision,
-                    (string) $remision->cod_sucursal_salida,
-                    (string) $remision->cod_sucursal_destino,
-                ]);
-            });
+        if ($detalles->isNotEmpty() && $remisionesOriginales->isNotEmpty()) {
+            $detallesPorId = $detalles->keyBy('id');
+
+            $capacidad = $detalles->mapWithKeys(function ($detalle) {
+                return [
+                    (int) $detalle->id =>
+                        max(0, (int) $detalle->cantidad),
+                ];
+            })->all();
+
+            $asignado = array_fill_keys(
+                array_keys($capacidad),
+                0
+            );
+
+            $asignadas = [];
+            $idsRemisionAsignada = [];
 
             /*
-             * Una misma línea física hacia COMERCIAL MATRIZ no puede aparecer
-             * simultáneamente en AYALA y MODELO MUESTRA. Primero respetamos el
-             * vínculo persistido; después, para MATRIZ, consumimos cada remisión
-             * una sola vez hasta completar la capacidad de AYALA/MODELO.
+             * AYALA y MODELO MUESTRA comparten destino físico
+             * COMERCIAL MATRIZ. Se concilian por LÍNEA, no por documento
+             * completo:
+             *
+             * Ayala 9 + Modelo 4 y líneas 3,3,3,3 =>
+             * Ayala recibe las primeras 3 líneas (9) y Modelo la siguiente (3).
+             *
+             * Así una misma remisión puede contener líneas de ambos planes,
+             * pero una misma línea física nunca se duplica.
              */
-            $detallesPorId = $detalles->keyBy('id');
-            $capacidad = $detalles->mapWithKeys(function ($detalle) {
-                return [(int) $detalle->id => max(0, (int) $detalle->cantidad)];
-            })->all();
-            $asignado = array_fill_keys(array_keys($capacidad), 0);
-            $asignadas = [];
+            $detallesMatriz = $detalles
+                ->filter(function ($detalle) {
+                    return in_array(
+                        $this->normalizarDestinoMovimiento(
+                            $detalle->sucursal
+                        ),
+                        ['AYALA', 'MODELO'],
+                        true
+                    );
+                })
+                ->sortBy(function ($detalle) {
+                    return $this->normalizarDestinoMovimiento(
+                        $detalle->sucursal
+                    ) === 'AYALA'
+                        ? 1
+                        : 2;
+                })
+                ->values();
 
-            foreach ($documentos as $lineasDocumento) {
-                $primera = $lineasDocumento->first();
-                $destinoReal = $primera->sucursal_destino ?: $primera->sucursal_logistica;
-                $destinoNormalizado = $this->normalizarDestinoMovimiento($destinoReal);
-                $cantidadDocumento = (int) $lineasDocumento->sum('cantidad');
-                $idAsignado = null;
+            foreach ($remisionesOriginales as $remisionOriginal) {
+                $destinoReal = $remisionOriginal->sucursal_destino
+                    ?: $remisionOriginal->sucursal_logistica;
 
-                // Para destinos normales, conservar el detalle persistido si es compatible.
-                // Para COMERCIAL MATRIZ, decidir el documento completo entre AYALA/MODELO.
-                if ($destinoNormalizado !== 'MATRIZ') {
-                    $idDetalleActual = (int) $primera->id_logistica_detalle;
-                    $detalleActual = $detallesPorId->get($idDetalleActual);
+                $destinoNormalizado =
+                    $this->normalizarDestinoMovimiento($destinoReal);
 
-                    if ($detalleActual) {
-                        $planActual = $this->normalizarDestinoMovimiento($detalleActual->sucursal);
+                $cantidadOriginal = max(
+                    0,
+                    (int) $remisionOriginal->cantidad
+                );
 
-                        if ($destinoNormalizado === $planActual
-                            && (($asignado[$idDetalleActual] ?? 0) + $cantidadDocumento)
-                                <= ($capacidad[$idDetalleActual] ?? 0)) {
-                            $idAsignado = $idDetalleActual;
+                if ($cantidadOriginal <= 0) {
+                    continue;
+                }
+
+                /*
+                 * COMERCIAL MATRIZ: repartir la línea contra AYALA y luego
+                 * MODELO MUESTRA respetando las capacidades del plan.
+                 */
+                if ($destinoNormalizado === 'MATRIZ'
+                    && $detallesMatriz->isNotEmpty()) {
+                    $cantidadRestante = $cantidadOriginal;
+                    $asignoAlgo = false;
+
+                    foreach ($detallesMatriz as $candidato) {
+                        if ($cantidadRestante <= 0) {
+                            break;
                         }
+
+                        $idCandidato = (int) $candidato->id;
+                        $capacidadRestante = max(
+                            0,
+                            ($capacidad[$idCandidato] ?? 0)
+                                - ($asignado[$idCandidato] ?? 0)
+                        );
+
+                        if ($capacidadRestante <= 0) {
+                            continue;
+                        }
+
+                        $cantidadAsignar = min(
+                            $cantidadRestante,
+                            $capacidadRestante
+                        );
+
+                        $remisionVisual = clone $remisionOriginal;
+                        $remisionVisual->cantidad = $cantidadAsignar;
+                        $remisionVisual->id_detalle_visual =
+                            $idCandidato;
+
+                        $asignadas[] = $remisionVisual;
+
+                        $asignado[$idCandidato] =
+                            ($asignado[$idCandidato] ?? 0)
+                            + $cantidadAsignar;
+
+                        $cantidadRestante -= $cantidadAsignar;
+                        $asignoAlgo = true;
                     }
-                } else {
-                    // Prioridad: completar AYALA con documentos completos; una vez lleno,
-                    // los documentos siguientes de MATRIZ pasan a MODELO MUESTRA.
-                    foreach (['AYALA', 'MODELO'] as $planBuscado) {
-                        foreach ($detalles as $candidato) {
-                            $idCandidato = (int) $candidato->id;
-                            $planCandidato = $this->normalizarDestinoMovimiento($candidato->sucursal);
 
-                            if ($planCandidato !== $planBuscado) {
-                                continue;
-                            }
+                    /*
+                     * Si MATRIZ ya superó el plan conjunto AYALA+MODELO,
+                     * conservar el exceso en el último plan para que siga
+                     * visible y no desaparezca del modal.
+                     */
+                    if ($cantidadRestante > 0) {
+                        $candidatoExceso = $detallesMatriz->last();
+                        $idCandidato = (int) $candidatoExceso->id;
 
-                            if ((($asignado[$idCandidato] ?? 0) + $cantidadDocumento)
-                                <= ($capacidad[$idCandidato] ?? 0)) {
-                                $idAsignado = $idCandidato;
-                                break 2;
-                            }
+                        $remisionVisual = clone $remisionOriginal;
+                        $remisionVisual->cantidad = $cantidadRestante;
+                        $remisionVisual->id_detalle_visual =
+                            $idCandidato;
+                        $remisionVisual->exceso_plan = true;
+
+                        $asignadas[] = $remisionVisual;
+
+                        $asignado[$idCandidato] =
+                            ($asignado[$idCandidato] ?? 0)
+                            + $cantidadRestante;
+
+                        $cantidadRestante = 0;
+                        $asignoAlgo = true;
+                    }
+
+                    if ($asignoAlgo) {
+                        $idsRemisionAsignada[(int) $remisionOriginal->id]
+                            = true;
+                    }
+
+                    continue;
+                }
+
+                /*
+                 * Destinos normales: primero respetar un vínculo persistido
+                 * compatible; si no existe, buscar el plan por nombre.
+                 */
+                $idAsignado = null;
+                $idDetalleActual =
+                    (int) $remisionOriginal->id_logistica_detalle;
+
+                if ($idDetalleActual > 0) {
+                    $detalleActual = $detallesPorId->get(
+                        $idDetalleActual
+                    );
+
+                    if ($detalleActual
+                        && $this->normalizarDestinoMovimiento(
+                            $detalleActual->sucursal
+                        ) === $destinoNormalizado) {
+                        $idAsignado = $idDetalleActual;
+                    }
+                }
+
+                if (!$idAsignado) {
+                    $candidato = $detalles->first(
+                        function ($detalle) use ($destinoNormalizado) {
+                            return $this->normalizarDestinoMovimiento(
+                                $detalle->sucursal
+                            ) === $destinoNormalizado;
                         }
+                    );
+
+                    if ($candidato) {
+                        $idAsignado = (int) $candidato->id;
                     }
                 }
 
@@ -1104,72 +1257,148 @@ class ControlTerminacionController extends Controller
                     continue;
                 }
 
-                $asignado[$idAsignado] = ($asignado[$idAsignado] ?? 0) + $cantidadDocumento;
+                $remisionVisual = clone $remisionOriginal;
+                $remisionVisual->id_detalle_visual = $idAsignado;
+                $asignadas[] = $remisionVisual;
 
-                foreach ($lineasDocumento as $remision) {
-                    $remision->id_detalle_visual = $idAsignado;
-                    $asignadas[] = $remision;
-                }
+                $asignado[$idAsignado] =
+                    ($asignado[$idAsignado] ?? 0)
+                    + $cantidadOriginal;
+
+                $idsRemisionAsignada[(int) $remisionOriginal->id]
+                    = true;
             }
 
-            $remisionesPorDetalle = collect($asignadas)->groupBy('id_detalle_visual');
+            $remisionesPorDetalle = collect($asignadas)
+                ->groupBy('id_detalle_visual');
+
+            $remisionesSinDetalle = $remisionesOriginales
+                ->reject(function ($remision) use (
+                    $idsRemisionAsignada
+                ) {
+                    return isset(
+                        $idsRemisionAsignada[(int) $remision->id]
+                    );
+                })
+                ->values();
+        } else {
+            $remisionesSinDetalle = $remisionesOriginales;
         }
 
         foreach ($detalles as $detalle) {
-            $planNormalizado = $this->normalizarDestinoMovimiento($detalle->sucursal);
+            $planNormalizado =
+                $this->normalizarDestinoMovimiento(
+                    $detalle->sucursal
+                );
 
             $detalle->remisiones = collect(
-                $remisionesPorDetalle->get((int) $detalle->id, collect())
-            )->map(function ($remision) use ($detalle, $planNormalizado) {
-                $destinoReal = $remision->sucursal_destino ?: $remision->sucursal_logistica;
-                $destinoNormalizado = $this->normalizarDestinoMovimiento($destinoReal);
+                $remisionesPorDetalle->get(
+                    (int) $detalle->id,
+                    collect()
+                )
+            )->map(function (
+                $remision
+            ) use ($detalle, $planNormalizado) {
+                $destinoReal = $remision->sucursal_destino
+                    ?: $remision->sucursal_logistica;
 
-                $remision->destino_planificado = $detalle->sucursal;
+                $destinoNormalizado =
+                    $this->normalizarDestinoMovimiento(
+                        $destinoReal
+                    );
+
+                $remision->destino_planificado =
+                    $detalle->sucursal;
+
                 $remision->destino_real = $destinoReal;
-                $remision->es_redireccion = $destinoNormalizado !== $planNormalizado;
+
+                /*
+                 * AYALA y MODELO son planes internos que físicamente pueden
+                 * salir a COMERCIAL MATRIZ. Eso no se marca como error:
+                 * se muestra como REDIRIGIDO para explicar el destino real.
+                 */
+                $remision->es_redireccion =
+                    $destinoNormalizado !== $planNormalizado;
 
                 return $remision;
             })->values();
 
-            $detalle->cantidad_remitida = (int) $detalle->remisiones->sum('cantidad');
-            $detalle->cantidad_recibida = (int) $detalle->remisiones
-                ->filter(function ($remision) {
-                    return !empty($remision->fecha_recepcion);
-                })
-                ->sum('cantidad');
+            $detalle->cantidad_remitida =
+                (int) $detalle->remisiones->sum('cantidad');
+
+            $detalle->cantidad_recibida =
+                (int) $detalle->remisiones
+                    ->filter(function ($remision) {
+                        return !empty(
+                            $remision->fecha_recepcion
+                        );
+                    })
+                    ->sum('cantidad');
+
             $detalle->cantidad_en_transito = max(
                 0,
-                $detalle->cantidad_remitida - $detalle->cantidad_recibida
+                $detalle->cantidad_remitida
+                    - $detalle->cantidad_recibida
             );
+
             $detalle->pendiente_remitir = max(
                 0,
-                (int) $detalle->cantidad - $detalle->cantidad_remitida
+                (int) $detalle->cantidad
+                    - $detalle->cantidad_remitida
+            );
+
+            $detalle->exceso_remitido = max(
+                0,
+                $detalle->cantidad_remitida
+                    - (int) $detalle->cantidad
             );
         }
 
-        $remisionesSinDetalle = collect();
+        /*
+         * Encabezado del modal:
+         * - Plan logística = TODO PT que debe salir.
+         * - Plan detallado = suma distribuida por sucursales.
+         * - Sin asignar = PT - plan detallado.
+         */
+        $totalPlanDetallado = (int) $detalles->sum('cantidad');
 
-        if (Schema::hasTable('ot_logistica_remisiones')) {
-            $remisionesSinDetalle = DB::table('ot_logistica_remisiones')
-                ->where('id_ot', $idOt)
-                ->whereNull('id_logistica_detalle')
-                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
-                ->orderBy('serie')
-                ->orderBy('numero_remision')
-                ->get();
-        }
+        $totalPlan = $conciliacion
+            ? (int) $conciliacion->plan_objetivo
+            : max(
+                (int) $ot->cantidad_orden,
+                $totalPlanDetallado
+            );
 
-        $totalPlan = (int) $detalles->sum('cantidad');
-        $totalRemitido = (int) $detalles->sum('cantidad_remitida');
-        $totalRecibido = (int) $detalles->sum('cantidad_recibida');
-        $totalEnTransito = (int) $detalles->sum('cantidad_en_transito');
-        $totalPendiente = (int) $detalles->sum('pendiente_remitir');
+        $totalSinAsignar = max(
+            0,
+            $totalPlan - $totalPlanDetallado
+        );
+
+        $totalRemitido = $conciliacion
+            ? (int) $conciliacion->remitido_original
+            : (int) $detalles->sum('cantidad_remitida');
+
+        $totalRecibido = $conciliacion
+            ? (int) $conciliacion->recibido_original
+            : (int) $detalles->sum('cantidad_recibida');
+
+        $totalEnTransito = max(
+            0,
+            $totalRemitido - $totalRecibido
+        );
+
+        $totalPendiente = max(
+            0,
+            $totalPlan - $totalRemitido
+        );
 
         return view('control._terminacion_detalle', compact(
             'ot',
             'detalles',
             'remisionesSinDetalle',
             'totalPlan',
+            'totalPlanDetallado',
+            'totalSinAsignar',
             'totalRemitido',
             'totalRecibido',
             'totalEnTransito',
