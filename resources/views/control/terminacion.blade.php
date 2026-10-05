@@ -118,8 +118,8 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card ct-card ct-kpi h-100"><div class="card-body">
                 <div class="label"><i class="fas fa-sign-in-alt text-primary mr-1"></i>Terminación</div>
-                <div class="value">{{ number_format($totalIngresoTerminacion,0,',','.') }}</div>
-                <div class="meta">Prendas que ingresaron a Terminación</div>
+                <div class="value">{{ number_format($totalTerminado,0,',','.') }}</div>
+                <div class="meta">Volumen consolidado de Terminación</div>
             </div></div>
         </div>
 
@@ -127,7 +127,7 @@
             <div class="card ct-card ct-kpi h-100"><div class="card-body">
                 <div class="label"><i class="fas fa-check-double text-success mr-1"></i>Producto Terminado</div>
                 <div class="value">{{ number_format($totalTerminado,0,',','.') }}</div>
-                <div class="meta">{{ number_format($porcentajeTerminado,1,',','.') }}% del ingreso · disponible para Logística</div>
+                <div class="meta">100,0% del volumen consolidado · disponible para Logística</div>
             </div></div>
         </div>
 
