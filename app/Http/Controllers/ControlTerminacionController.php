@@ -852,6 +852,8 @@ class ControlTerminacionController extends Controller
                 }
 
                 $ot->objetivo = (int) $c->objetivo;
+                $ot->ingreso_terminacion =
+                    (int) $c->ingreso_terminacion;
                 $ot->producto_terminado =
                     (int) $c->producto_terminado;
                 $ot->planificado =
@@ -948,6 +950,8 @@ class ControlTerminacionController extends Controller
 
             'objetivo' => (int) $reporteCompleto
                 ->sum('objetivo'),
+            'ingreso_terminacion' => (int) $reporteCompleto
+                ->sum('ingreso_terminacion'),
             'producto_terminado' => (int) $reporteCompleto
                 ->sum('producto_terminado'),
             'planificado' => (int) $reporteCompleto
