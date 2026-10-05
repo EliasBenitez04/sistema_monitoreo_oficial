@@ -687,7 +687,12 @@ class SeguimientoPedidoController extends Controller
             // CASA CENTRAL y MATRIZ son nodos del canal mayorista y no deben inflar el contador de locales.
             $esMayorista = function ($local) {
                 $nombre = strtoupper(trim((string) $local->local));
-                return in_array($nombre, ['CASA CENTRAL', 'MATRIZ'], true);
+
+                return in_array(
+                    $nombre,
+                    ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ'],
+                    true
+                );
             };
 
             $ot->locales_comerciales = $ot->locales->reject($esMayorista)->values();
@@ -842,7 +847,7 @@ class SeguimientoPedidoController extends Controller
                     || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true);
 
                 $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
-                    || in_array($destino, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', ''], true);
+                    || in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true);
 
                 return $origenCentral && !$destinoCentral;
             });
@@ -901,7 +906,7 @@ class SeguimientoPedidoController extends Controller
                         || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true);
 
                     $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
-                        || in_array($destino, ['CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', ''], true);
+                        || in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true);
 
                     return $origenCentral
                         && !$destinoCentral
