@@ -186,6 +186,63 @@
         </div>
     </div>
 
+    <div class="card ct-card mb-3">
+        <div class="card-header bg-white">
+            <strong><i class="fas fa-coins text-warning mr-1"></i>Valorización económica</strong>
+            <div class="ct-subtitle">
+                Costo y valor a precio de venta de las remisiones originales vinculadas a las OTs del período.
+            </div>
+        </div>
+        <div class="card-body pb-2">
+            <div class="row">
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="ct-mini">
+                        <div class="small text-uppercase text-muted font-weight-bold">Costo remitido real</div>
+                        <div class="h5 font-weight-bold mb-1">Gs {{ number_format($totalCostoRemitido,0,',','.') }}</div>
+                        <small class="text-muted">
+                            {{ number_format($totalRemitidoReal,0,',','.') }} prendas con salida original
+                        </small>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="ct-mini">
+                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta remitido</div>
+                        <div class="h5 font-weight-bold mb-1 text-primary">Gs {{ number_format($totalVentaRemitida,0,',','.') }}</div>
+                        <small class="text-muted">Según precio_venta importado en remisiones</small>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="ct-mini">
+                        <div class="small text-uppercase text-muted font-weight-bold">Costo recibido local</div>
+                        <div class="h5 font-weight-bold mb-1">Gs {{ number_format($totalCostoRecibido,0,',','.') }}</div>
+                        <small class="text-muted">
+                            {{ number_format($totalRecepcionLocal,0,',','.') }} prendas confirmadas
+                        </small>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="ct-mini">
+                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta recibido</div>
+                        <div class="h5 font-weight-bold mb-1 text-success">Gs {{ number_format($totalVentaRecibida,0,',','.') }}</div>
+                        <small class="text-muted">Valor comercial de lo ya recibido por locales</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ct-flow mb-2">
+                <strong>Margen bruto teórico remitido:</strong>
+                Gs {{ number_format($totalMargenBrutoRemitido,0,',','.') }}
+                · {{ number_format($porcentajeMargenBrutoRemitido,1,',','.') }}% sobre el valor de venta.
+                <span class="text-muted">
+                    Se calcula como precio de venta menos costo; no representa utilidad neta ni venta ya cobrada.
+                </span>
+            </div>
+        </div>
+    </div>
+
     @if($totalHuecoDetalleLogistico > 0)
         <div class="alert alert-info py-2 mb-3">
             <i class="fas fa-info-circle mr-1"></i>
