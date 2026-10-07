@@ -887,6 +887,7 @@ class ControlTerminacionController extends Controller
         /*
          * TEMPORADA
          *
+         * Fuente: maestro_codigos.temporada.
          * Filtro multiselección. Cada valor es independiente: VERANO,
          * INVIERNO, AMBOS u otra temporada existente. Sin selección = TODAS.
          */
@@ -902,8 +903,15 @@ class ControlTerminacionController extends Controller
         $temporadasDisponibles = collect();
         $codigosTemporada = collect();
 
-        if (Schema::hasTable('stock_ventas_sucursales')) {
-            $temporadasDisponibles = DB::table('stock_ventas_sucursales')
+        /*
+         * FUENTE OFICIAL DE TEMPORADA: maestro_codigos
+         *
+         * Ya no dependemos de stock_ventas_sucursales.temporada.
+         * Para OT usamos cod_imagen como vínculo natural con el código
+         * de 9 dígitos; cod_base/cod_articulo quedan como respaldo.
+         */
+        if (Schema::hasTable('maestro_codigos')) {
+            $temporadasDisponibles = DB::table('maestro_codigos')
                 ->whereNotNull('temporada')
                 ->whereRaw("TRIM(COALESCE(temporada, '')) <> ''")
                 ->selectRaw('UPPER(TRIM(temporada)) as temporada')
@@ -914,15 +922,23 @@ class ControlTerminacionController extends Controller
                 ->values();
 
             if (!empty($temporadas)) {
-                $codigosTemporada = DB::table('stock_ventas_sucursales')
+                $codigosTemporada = DB::table('maestro_codigos')
                     ->whereIn(
                         DB::raw('UPPER(TRIM(temporada))'),
                         $temporadas
                     )
-                    ->whereNotNull('codigo')
+                    ->selectRaw(
+                        "COALESCE(
+                            NULLIF(TRIM(cod_imagen), ''),
+                            NULLIF(TRIM(cod_base), ''),
+                            NULLIF(TRIM(cod_articulo), '')
+                        ) as codigo"
+                    )
                     ->pluck('codigo')
                     ->map(function ($codigo) {
-                        return $this->normalizarCodigoBaseTemporada($codigo);
+                        return $this->normalizarCodigoBaseTemporada(
+                            $codigo
+                        );
                     })
                     ->filter()
                     ->unique()
