@@ -146,20 +146,40 @@
                 @forelse($pedidos as $pedido)
                     @php
                         $cantidad = (int) $pedido->cantidad_total;
-                        $pt = min($cantidad, (int) $pedido->producto_terminado);
-                        $mov = (int) $pedido->movimientos; // historial completo, incluye Comercial Matriz
+                        $pt = min(
+                            $cantidad,
+                            (int) ($pedido->producto_terminado_efectivo
+                                ?? $pedido->producto_terminado)
+                        );
+
+                        $mov = (int) $pedido->movimientos; // auditoría completa
+
                         $movLocales = (int) $pedido->movimientos_locales;
-                        $confLocales = (int) $pedido->confirmado_locales;
+
+                        $remitidoEfectivo = (int) (
+                            $pedido->remitido_efectivo ?? 0
+                        );
+
+                        $confLocales = (int) (
+                            $pedido->confirmado_efectivo ?? 0
+                        );
+
                         $otsConfirmadas = (int) $pedido->ots_confirmadas;
                         $otsTotal = (int) $pedido->detalles_count;
-                        $pctPt = $cantidad > 0 ? min(100, round(($pt / $cantidad) * 100)) : 0;
 
-                        // El porcentaje "Confirmado" representa el cierre real del pedido:
-                        // OTs confirmadas / OTs totales. No debe dar 100% sólo porque
-                        // todo lo ya enviado haya sido recibido si todavía existe una OT
-                        // sin despacho o sin confirmación.
-                        $pctConf = $otsTotal > 0
-                            ? min(100, round(($otsConfirmadas / $otsTotal) * 100))
+                        $pctPt = $cantidad > 0
+                            ? min(100, round(($pt / $cantidad) * 100, 1))
+                            : 0;
+
+                        /*
+                         * El porcentaje confirmado usa PRENDAS efectivamente
+                         * conciliadas, no "OT con alguna recepción".
+                         */
+                        $pctConf = $cantidad > 0
+                            ? min(
+                                100,
+                                round(($confLocales / $cantidad) * 100, 1)
+                            )
                             : 0;
 
                         if (!empty($pedido->completo_locales)) {
@@ -189,8 +209,14 @@
                         </td>
                         <td class="align-middle progreso-celda">
                             <strong>{{ number_format($confLocales,0,',','.') }}</strong>
-                            <small class="d-block text-muted">{{ $pctConf }}% confirmado</small>
-                            <div class="progress progress-xs"><div class="progress-bar bg-success" style="width:{{ $pctConf }}%"></div></div>
+                            <small class="d-block text-muted">
+                                {{ number_format($pctConf,1,',','.') }}% confirmado
+                                · {{ $otsConfirmadas }}/{{ $otsTotal }} OT cerradas
+                            </small>
+                            <div class="progress progress-xs">
+                                <div class="progress-bar bg-success"
+                                     style="width:{{ $pctConf }}%"></div>
+                            </div>
                         </td>
                         <td class="align-middle"><span class="badge badge-{{ $clase }} px-2 py-2"><i class="fas fa-{{ $icono }} mr-1"></i>{{ $situacion }}</span></td>
                         <td class="align-middle">
@@ -198,7 +224,14 @@
                             @if(!$pedido->fecha_pedido)<small class="d-block text-danger">Reimportar con fecha</small>@endif
                         </td>
                         <td class="align-middle">
-                            {{ $pedido->ultima_confirmacion ? date('d/m/Y', strtotime($pedido->ultima_confirmacion)) : '-' }}
+                            @php
+                                $ultimaConfirmacionMostrar =
+                                    $pedido->ultima_confirmacion_efectiva
+                                    ?? null;
+                            @endphp
+                            {{ $ultimaConfirmacionMostrar
+                                ? date('d/m/Y', strtotime($ultimaConfirmacionMostrar))
+                                : '-' }}
                         </td>
                         <td class="align-middle">
                             @if($pedido->dias_confirmacion !== null)
