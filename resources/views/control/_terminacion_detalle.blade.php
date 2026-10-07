@@ -19,6 +19,8 @@
     .td-subtotal-label{font-size:10px;text-transform:uppercase;color:#7a8796;font-weight:800;margin-right:4px}
     .td-subtotal-value{font-size:15px;font-weight:800;color:#26364a}
     .td-section-label{font-size:11px;text-transform:uppercase;font-weight:800;color:#7a8796;letter-spacing:.04em}
+    .td-money{white-space:nowrap;font-weight:800;color:#26364a}
+    .td-money small{display:block;font-size:10px;font-weight:600;color:#7a8796}
 </style>
 <div class="p-2">
     <div class="td-header-card mb-3">
@@ -67,6 +69,51 @@
         </div></div>
     </div>
 
+    <div class="td-section-label mb-2">Valorización de las remisiones de la OT</div>
+    <div class="row mb-3">
+        <div class="col-lg-4 col-md-6 mb-2">
+            <div class="td-kpi">
+                <small class="d-block">Costo remitido total</small>
+                <strong>Gs {{ number_format($totalCostoRemitido, 0, ',', '.') }}</strong>
+                <div class="mt-1">
+                    <small class="text-muted">
+                        Confirmado: Gs {{ number_format($totalCostoRecibido, 0, ',', '.') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6 mb-2">
+            <div class="td-kpi">
+                <small class="d-block">Valor a precio de venta</small>
+                <strong class="text-primary">Gs {{ number_format($totalVentaRemitida, 0, ',', '.') }}</strong>
+                <div class="mt-1">
+                    <small class="text-muted">
+                        Confirmado: Gs {{ number_format($totalVentaRecibida, 0, ',', '.') }}
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6 mb-2">
+            <div class="td-kpi">
+                <small class="d-block">Margen bruto teórico</small>
+                <strong class="text-success">Gs {{ number_format($totalMargenBrutoRemitido, 0, ',', '.') }}</strong>
+                <div class="mt-1">
+                    <small class="text-muted">
+                        {{ number_format($porcentajeMargenBrutoRemitido, 1, ',', '.') }}% sobre valor de venta
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-light border py-2 small">
+        <i class="fas fa-info-circle text-info mr-1"></i>
+        Los importes salen de <strong>costo_unitario</strong> y <strong>precio_venta</strong>
+        de cada código/variante realmente remitido. No se estima el valor de prendas todavía no remitidas.
+    </div>
+
     <div class="table-responsive">
         <table class="table table-sm table-hover mb-0 td-table">
             <thead class="thead-light">
@@ -78,6 +125,8 @@
                     <th>Remisión</th>
                     <th class="text-right">Remitido</th>
                     <th class="text-right">Confirmado</th>
+                    <th class="text-right">Costo</th>
+                    <th class="text-right">Venta</th>
                     <th>Recepción</th>
                     <th>Estado</th>
                 </tr>
@@ -93,12 +142,14 @@
                             <td class="text-muted">—</td>
                             <td class="text-right"><span class="td-cantidad">0</span></td>
                             <td class="text-right"><span class="text-muted font-weight-bold">0</span></td>
+                            <td class="text-right"><span class="td-money">Gs 0</span></td>
+                            <td class="text-right"><span class="td-money">Gs 0</span></td>
                             <td class="text-muted">—</td>
                             <td><span class="badge badge-warning">PENDIENTE</span></td>
                         </tr>
 
                         <tr class="td-subtotal-row">
-                            <td colspan="9">
+                            <td colspan="11">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
                                         <span class="td-plan-badge">{{ $detalle->sucursal }}</span>
@@ -121,6 +172,14 @@
                                             <span class="td-subtotal-value text-warning">
                                                 {{ number_format($detalle->cantidad, 0, ',', '.') }}
                                             </span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Costo</span>
+                                            <span class="td-subtotal-value">Gs 0</span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Venta</span>
+                                            <span class="td-subtotal-value">Gs 0</span>
                                         </span>
                                     </div>
                                 </div>
@@ -164,6 +223,18 @@
                                         {{ number_format($remision->fecha_recepcion ? $remision->cantidad : 0, 0, ',', '.') }}
                                     </span>
                                 </td>
+                                <td class="text-right">
+                                    <span class="td-money">
+                                        Gs {{ number_format(((float) $remision->cantidad) * ((float) $remision->costo_unitario), 0, ',', '.') }}
+                                        <small>Gs {{ number_format((float) $remision->costo_unitario, 0, ',', '.') }}/u</small>
+                                    </span>
+                                </td>
+                                <td class="text-right">
+                                    <span class="td-money text-primary">
+                                        Gs {{ number_format(((float) $remision->cantidad) * ((float) $remision->precio_venta), 0, ',', '.') }}
+                                        <small>Gs {{ number_format((float) $remision->precio_venta, 0, ',', '.') }}/u</small>
+                                    </span>
+                                </td>
                                 <td>{{ $remision->fecha_recepcion ? \Carbon\Carbon::parse($remision->fecha_recepcion)->format('d/m/Y') : 'Pendiente' }}</td>
                                 <td>
                                     @if($remision->fecha_recepcion)
@@ -176,7 +247,7 @@
                         @endforeach
 
                         <tr class="td-subtotal-row">
-                            <td colspan="9">
+                            <td colspan="11">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
                                         <span class="td-plan-badge">{{ $detalle->sucursal }}</span>
@@ -203,6 +274,24 @@
                                                 {{ number_format($detalle->pendiente_remitir, 0, ',', '.') }}
                                             </span>
                                         </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Costo</span>
+                                            <span class="td-subtotal-value">
+                                                Gs {{ number_format($detalle->costo_remitido, 0, ',', '.') }}
+                                            </span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Venta</span>
+                                            <span class="td-subtotal-value text-primary">
+                                                Gs {{ number_format($detalle->venta_remitida, 0, ',', '.') }}
+                                            </span>
+                                        </span>
+                                        <span class="td-subtotal-item">
+                                            <span class="td-subtotal-label">Margen</span>
+                                            <span class="td-subtotal-value text-success">
+                                                Gs {{ number_format($detalle->margen_bruto, 0, ',', '.') }}
+                                            </span>
+                                        </span>
                                     </div>
                                 </div>
                             </td>
@@ -210,7 +299,7 @@
                     @endif
                 @empty
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-4">
+                        <td colspan="11" class="text-center text-muted py-4">
                             Esta OT todavía no tiene distribución logística.
                         </td>
                     </tr>
@@ -233,6 +322,8 @@
                             <th>Código variante</th>
                             <th>Remisión</th>
                             <th class="text-right">Cantidad</th>
+                            <th class="text-right">Costo</th>
+                            <th class="text-right">Venta</th>
                             <th>Fecha remisión</th>
                             <th>Recepción</th>
                         </tr>
@@ -247,6 +338,12 @@
                                 <td><code class="font-weight-bold">{{ $remision->codigo ?: '—' }}</code></td>
                                 <td><strong>{{ $remision->serie }}-{{ $remision->numero_remision }}</strong></td>
                                 <td class="text-right">{{ number_format($remision->cantidad, 0, ',', '.') }}</td>
+                                <td class="text-right">
+                                    Gs {{ number_format(((float) $remision->cantidad) * ((float) $remision->costo_unitario), 0, ',', '.') }}
+                                </td>
+                                <td class="text-right">
+                                    Gs {{ number_format(((float) $remision->cantidad) * ((float) $remision->precio_venta), 0, ',', '.') }}
+                                </td>
                                 <td>{{ $remision->fecha_remision ? \Carbon\Carbon::parse($remision->fecha_remision)->format('d/m/Y') : '—' }}</td>
                                 <td>
                                     @if($remision->fecha_recepcion)
