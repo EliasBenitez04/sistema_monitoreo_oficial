@@ -122,11 +122,16 @@ class UsuarioController extends Controller
         $estado = ["ACTIVO" => "ACTIVO", "INACTIVO" => "INACTIVO"];
         $sucursal = DB::table('sucursal')->pluck('suc_descri', 'cod_suc');
 
+        $auditoriaSeguimiento = $usuario
+            ->getDirectPermissions()
+            ->contains('name', 'seguimiento auditoria privada');
+
         return view('usuarios.edit')
             ->with('usuario', $usuario)
             ->with('roles', $roles)
             ->with('sucursal', $sucursal)
-            ->with('estado', $estado);
+            ->with('estado', $estado)
+            ->with('auditoriaSeguimiento', $auditoriaSeguimiento);
     }
 
     public function update(Request $request, $id)
@@ -193,6 +198,27 @@ class UsuarioController extends Controller
         $usuario->update($dataUpdate);
 
         $usuario->roles()->sync([$input['role_id']]);
+
+        /*
+         * Permiso privado por USUARIO, no por rol.
+         * Esto evita que otros administradores hereden la auditoría.
+         */
+        $permisoAuditoria = DB::table('permissions')
+            ->where('name', 'seguimiento auditoria privada')
+            ->where('guard_name', 'web')
+            ->first();
+
+        if ($permisoAuditoria) {
+            if ($request->boolean('seguimiento_auditoria_privada')) {
+                $usuario->givePermissionTo(
+                    'seguimiento auditoria privada'
+                );
+            } else {
+                $usuario->revokePermissionTo(
+                    'seguimiento auditoria privada'
+                );
+            }
+        }
 
         alert()->success('Éxito', 'Registro actualizado correctamente');
         return redirect(route('usuarios.index'));
