@@ -468,6 +468,9 @@ class SeguimientoPedidoController extends Controller
             'urgentes' => $pendientes->where('urgente', true)->count(),
             'en_terminacion' => $pendientes->where('etapa_gerencial', 'TERMINACION')->count(),
             'en_logistica' => $pendientes->where('etapa_gerencial', 'LOGISTICA')->count(),
+            'recepcion_parcial' => $pendientes
+                ->where('etapa_gerencial', 'RECEPCION PARCIAL')
+                ->count(),
         ];
 
         return view('seguimiento_pedidos.informe_gerencial', compact('pendientes', 'resumen'));
