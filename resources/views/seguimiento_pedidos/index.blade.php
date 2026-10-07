@@ -15,9 +15,11 @@
                 <a href="{{ route('pedidos.importar') }}" class="btn btn-outline-primary shadow-sm mr-1">
                     <i class="fas fa-file-import mr-1"></i> Importar datos
                 </a>
-                <a href="{{ route('seguimiento-terminacion.informe-gerencial') }}" class="btn btn-danger shadow-sm">
-                    <i class="fas fa-briefcase mr-1"></i> Informe gerencial
-                </a>
+                @if($auditoriaPrivada)
+                    <a href="{{ route('seguimiento-terminacion.informe-gerencial') }}" class="btn btn-danger shadow-sm">
+                        <i class="fas fa-briefcase mr-1"></i> Informe gerencial
+                    </a>
+                @endif
             </div>
         </div>
     </div>
@@ -37,32 +39,35 @@
     @endif
 
     <div class="row">
-        <div class="col-lg-3 col-6">
+        <div class="col-lg-{{ $auditoriaPrivada ? '3' : '6' }} col-6">
             <div class="small-box bg-white border-left border-primary shadow-sm">
                 <div class="inner"><h3>{{ number_format($resumenGerencial->pedidos,0,',','.') }}</h3><p>Pedidos monitoreados</p></div>
                 <div class="icon"><i class="fas fa-clipboard-list text-primary"></i></div>
             </div>
         </div>
-        <div class="col-lg-3 col-6">
+        <div class="col-lg-{{ $auditoriaPrivada ? '3' : '6' }} col-6">
             <div class="small-box bg-white border-left border-info shadow-sm">
                 <div class="inner"><h3>{{ number_format($resumenGerencial->prendas,0,',','.') }}</h3><p>Prendas solicitadas · {{ $resumenGerencial->ots }} OT</p></div>
                 <div class="icon"><i class="fas fa-tshirt text-info"></i></div>
             </div>
         </div>
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-white border-left border-success shadow-sm">
-                <div class="inner"><h3>{{ $resumenGerencial->cobertura_confirmada }}%</h3><p>Confirmado en locales</p></div>
-                <div class="icon"><i class="fas fa-check-circle text-success"></i></div>
+        @if($auditoriaPrivada)
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-white border-left border-success shadow-sm">
+                    <div class="inner"><h3>{{ $resumenGerencial->cobertura_confirmada }}%</h3><p>Confirmado en locales</p></div>
+                    <div class="icon"><i class="fas fa-check-circle text-success"></i></div>
+                </div>
             </div>
-        </div>
-        <div class="col-lg-3 col-6">
-            <div class="small-box bg-white border-left border-warning shadow-sm">
-                <div class="inner"><h3>{{ number_format($resumenGerencial->pendiente_confirmar,0,',','.') }}</h3><p>Prendas pendientes de confirmar</p></div>
-                <div class="icon"><i class="fas fa-exclamation-triangle text-warning"></i></div>
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-white border-left border-warning shadow-sm">
+                    <div class="inner"><h3>{{ number_format($resumenGerencial->pendiente_confirmar,0,',','.') }}</h3><p>Prendas pendientes de confirmar</p></div>
+                    <div class="icon"><i class="fas fa-exclamation-triangle text-warning"></i></div>
+                </div>
             </div>
-        </div>
+        @endif
     </div>
 
+    @if($auditoriaPrivada)
     <div class="card card-outline card-dark mb-4">
         <div class="card-header">
             <h3 class="card-title"><i class="fas fa-chart-line mr-2"></i>Resumen ejecutivo</h3>
@@ -95,7 +100,9 @@
         </div>
     </div>
 
-    @if($resumenGerencial->en_curso > 0)
+    @endif
+
+    @if($auditoriaPrivada && $resumenGerencial->en_curso > 0)
     <div class="card card-outline card-warning mb-4">
         <div class="card-header py-2"><h3 class="card-title"><i class="fas fa-bullseye mr-2"></i>Dónde mirar primero</h3></div>
         <div class="card-body py-3">
@@ -133,8 +140,12 @@
                         <th>OT</th>
                         <th>Prendas</th>
                         <th>Prod. terminado</th>
-                        <th>Movimientos (auditoría)</th>
-                        <th>Confirmado</th>
+                        @if($auditoriaPrivada)
+                            <th>Movimientos (auditoría)</th>
+                            <th>Confirmado</th>
+                        @else
+                            <th>Recepción</th>
+                        @endif
                         <th>Situación</th>
                         <th>Fecha pedido</th>
                         <th>1ª confirmación local</th>
@@ -202,6 +213,23 @@
                         } else {
                             $situacion = 'EN TERMINACIÓN'; $clase = 'secondary'; $icono = 'industry';
                         }
+
+                        /*
+                         * Vista operativa pública del módulo:
+                         * una recepción ya registrada se muestra en verde;
+                         * los saldos finos quedan sólo para auditoría privada.
+                         */
+                        if (!$auditoriaPrivada) {
+                            if (in_array($situacion, ['COMPLETO', 'COMPLETADO'], true)) {
+                                $situacion = 'COMPLETO';
+                                $clase = 'success';
+                                $icono = 'check-circle';
+                            } elseif ($confLocales > 0) {
+                                $situacion = 'RECIBIDO';
+                                $clase = 'success';
+                                $icono = 'check-circle';
+                            }
+                        }
                     @endphp
                     <tr>
                         <td class="align-middle"><div class="pedido-numero">{{ $pedido->nro_pedido }}</div></td>
@@ -212,21 +240,37 @@
                             <small class="d-block text-muted">{{ $pctPt }}%</small>
                             <div class="progress progress-xs"><div class="progress-bar bg-info" style="width:{{ $pctPt }}%"></div></div>
                         </td>
-                        <td class="align-middle">
-                            <strong>{{ number_format($mov,0,',','.') }}</strong>
-                            @if($mov > $cantidad)<small class="d-block text-warning">+{{ number_format($mov-$cantidad,0,',','.') }} mov. extra</small>@endif
-                        </td>
-                        <td class="align-middle progreso-celda">
-                            <strong>{{ number_format($confLocales,0,',','.') }}</strong>
-                            <small class="d-block text-muted">
-                                {{ number_format($pctConf,1,',','.') }}% confirmado
-                                · {{ $otsConfirmadas }}/{{ $otsTotal }} OT cerradas
-                            </small>
-                            <div class="progress progress-xs">
-                                <div class="progress-bar bg-success"
-                                     style="width:{{ $pctConf }}%"></div>
-                            </div>
-                        </td>
+                        @if($auditoriaPrivada)
+                            <td class="align-middle">
+                                <strong>{{ number_format($mov,0,',','.') }}</strong>
+                                @if($mov > $cantidad)<small class="d-block text-warning">+{{ number_format($mov-$cantidad,0,',','.') }} mov. extra</small>@endif
+                            </td>
+                            <td class="align-middle progreso-celda">
+                                <strong>{{ number_format($confLocales,0,',','.') }}</strong>
+                                <small class="d-block text-muted">
+                                    {{ number_format($pctConf,1,',','.') }}% confirmado
+                                    · {{ $otsConfirmadas }}/{{ $otsTotal }} OT cerradas
+                                </small>
+                                <div class="progress progress-xs">
+                                    <div class="progress-bar bg-success"
+                                         style="width:{{ $pctConf }}%"></div>
+                                </div>
+                            </td>
+                        @else
+                            <td class="align-middle">
+                                @if($confLocales > 0)
+                                    <span class="badge badge-success px-2 py-2">
+                                        <i class="fas fa-check-circle mr-1"></i>RECIBIDO
+                                    </span>
+                                @elseif($remitidoEfectivo > 0)
+                                    <span class="badge badge-info px-2 py-2">
+                                        <i class="fas fa-truck mr-1"></i>REMITIDO
+                                    </span>
+                                @else
+                                    <span class="badge badge-secondary px-2 py-2">PENDIENTE</span>
+                                @endif
+                            </td>
+                        @endif
                         <td class="align-middle"><span class="badge badge-{{ $clase }} px-2 py-2"><i class="fas fa-{{ $icono }} mr-1"></i>{{ $situacion }}</span></td>
                         <td class="align-middle">
                             <strong>{{ $pedido->fecha_pedido ? $pedido->fecha_pedido->format('d/m/Y') : '-' }}</strong>
@@ -243,13 +287,28 @@
                                 : '-' }}
                         </td>
                         <td class="align-middle">
-                            @if($pedido->dias_confirmacion !== null)
-                                <span class="badge badge-success px-2 py-2">{{ $pedido->dias_confirmacion }} días</span>
-                            @elseif($pedido->dias_transcurridos !== null)
-                                <span class="badge badge-warning px-2 py-2">{{ $pedido->dias_transcurridos }} días</span>
-                                <small class="d-block text-muted">en curso</small>
+                            @if($auditoriaPrivada)
+                                @if($pedido->dias_confirmacion !== null)
+                                    <span class="badge badge-success px-2 py-2">{{ $pedido->dias_confirmacion }} días</span>
+                                @elseif($pedido->dias_transcurridos !== null)
+                                    <span class="badge badge-warning px-2 py-2">{{ $pedido->dias_transcurridos }} días</span>
+                                    <small class="d-block text-muted">en curso</small>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
                             @else
-                                <span class="text-muted">-</span>
+                                @php
+                                    $tiempoOperativo = ($pedido->fecha_pedido && $ultimaConfirmacionMostrar)
+                                        ? \Carbon\Carbon::parse($pedido->fecha_pedido)->startOfDay()
+                                            ->diffInDays(\Carbon\Carbon::parse($ultimaConfirmacionMostrar)->startOfDay(), false)
+                                        : null;
+                                @endphp
+                                @if($tiempoOperativo !== null && $tiempoOperativo >= 0)
+                                    <span class="badge badge-success px-2 py-2">{{ $tiempoOperativo }} días</span>
+                                    <small class="d-block text-muted">a recepción</small>
+                                @else
+                                    <span class="text-muted">-</span>
+                                @endif
                             @endif
                         </td>
                         <td class="align-middle"><a href="{{ route('seguimiento-pedidos.show', $pedido->id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-eye mr-1"></i> Ver</a></td>
