@@ -115,6 +115,28 @@
         ]) !!}
     </div>
 
+    <!-- Auditoría privada de Seguimiento Terminación -->
+    @if(isset($usuario))
+    <div class="form-group col-md-12">
+        <div class="custom-control custom-switch">
+            <input type="checkbox"
+                   class="custom-control-input"
+                   id="seguimiento_auditoria_privada"
+                   name="seguimiento_auditoria_privada"
+                   value="1"
+                   {{ !empty($auditoriaSeguimiento) ? 'checked' : '' }}>
+            <label class="custom-control-label font-weight-bold"
+                   for="seguimiento_auditoria_privada">
+                Auditoría privada de Seguimiento Terminación
+            </label>
+        </div>
+        <small class="text-muted">
+            Permite ver diferencias, movimientos extra, saldos cuantitativos,
+            OT cerradas e Informe Gerencial. Asignar sólo al usuario auditor.
+        </small>
+    </div>
+    @endif
+
     <!-- Teléfono -->
     <div class="form-group col-md-6">
         {!! Form::label('telefono', 'Teléfono', ['class' => 'font-weight-bold']) !!}
