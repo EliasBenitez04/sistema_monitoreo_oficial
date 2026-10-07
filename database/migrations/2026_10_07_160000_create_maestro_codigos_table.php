@@ -43,11 +43,11 @@ return new class extends Migration
             $table->string('estado', 80)->nullable();
             $table->date('fecha_creacion')->nullable();
             $table->string('temporada_codigo', 80)->nullable();
-            $table->smallInteger('anio')->nullable();
+            $table->string('anio', 30)->nullable();
 
             $table->string('tipo_stock', 80)->nullable();
-            $table->decimal('precio_venta', 15, 2)->nullable();
-            $table->decimal('costo_unitario', 15, 2)->nullable();
+            $table->decimal('precio_venta', 30, 6)->nullable();
+            $table->decimal('costo_unitario', 30, 6)->nullable();
 
             $table->string('temp', 80)->nullable();
             $table->string('complejidad', 80)->nullable();
