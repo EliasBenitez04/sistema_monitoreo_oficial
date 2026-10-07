@@ -424,7 +424,11 @@ class MaestroCodigosImport
             'temporada_codigo' => $this->limpiarTexto(
                 $get(['temporada_2'])
             ),
-            'anio' => $this->normalizarEntero(
+            /*
+             * Año se conserva como texto porque el maestro histórico trae
+             * algunos valores no convencionales (ej. 273514, ?).
+             */
+            'anio' => $this->limpiarTexto(
                 $get(['ano', 'anio'])
             ),
             'tipo_stock' => $this->limpiarTexto(
@@ -496,12 +500,27 @@ class MaestroCodigosImport
         return $numero === '' ? null : (int) $numero;
     }
 
-    private function normalizarDecimal($valor): ?float
+    private function normalizarDecimal($valor): ?string
     {
         $texto = $this->limpiarTexto($valor);
 
         if ($texto === null) {
             return null;
+        }
+
+        $texto = str_replace(' ', '', $texto);
+
+        /*
+         * PostgreSQL NUMERIC acepta notación científica. La conservamos como
+         * string para no convertir números grandes a float y perder precisión.
+         */
+        if (
+            preg_match(
+                '/^[+-]?\d+(?:\.\d+)?[eE][+-]?\d+$/',
+                $texto
+            )
+        ) {
+            return $texto;
         }
 
         $texto = preg_replace('/[^0-9,.\-]/', '', $texto);
@@ -534,12 +553,18 @@ class MaestroCodigosImport
             $partes = explode('.', $texto);
             $decimales = end($partes);
 
-            if (strlen($decimales) > 2) {
-                $texto = str_replace('.', '', $texto);
+            if (strlen($decimales) > 6) {
+                /*
+                 * No asumimos separador de miles si el valor ya parece un
+                 * decimal de alta precisión; NUMERIC(30,6) hará el redondeo.
+                 */
+                if (count($partes) > 2) {
+                    $texto = str_replace('.', '', $texto);
+                }
             }
         }
 
-        return is_numeric($texto) ? (float) $texto : null;
+        return is_numeric($texto) ? $texto : null;
     }
 
     private function normalizarFecha($valor): ?string
