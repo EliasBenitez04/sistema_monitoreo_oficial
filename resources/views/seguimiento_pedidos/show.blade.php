@@ -146,9 +146,14 @@
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
                                 <span class="badge badge-success">1ª RECEPCIÓN</span>
-                                <div class="small mt-1 {{ $otKpi->estado_seguimiento === 'COMPLETO' ? 'text-success' : 'text-warning' }}">
-                                    Cierre: {{ $otKpi->estado_seguimiento }}
+                                <div class="small mt-1 text-success">
+                                    Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
                                 </div>
+                                @if(($otKpi->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
+                                    <div class="small text-muted">
+                                        Saldo cuantitativo: {{ $otKpi->estado_conciliacion }}
+                                    </div>
+                                @endif
                             @elseif($otKpi->kpi_estado === 'REMISIONADO')
                                 <span class="badge badge-warning">
                                     <i class="fas fa-file-invoice mr-1"></i>REMISIONADO
@@ -166,7 +171,7 @@
 </div>
 
 @foreach($ots as $ot)
-<div class="card card-outline {{ $ot->estado_seguimiento === 'COMPLETO' ? 'card-success' : 'card-primary' }}">
+<div class="card card-outline {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'card-success' : ($ot->estado_seguimiento === 'COMPLETO' ? 'card-success' : 'card-primary') }}">
     <div class="card-header seguimiento-card-header" data-toggle="collapse" data-target="#detalle-ot-{{ $ot->id_ot }}" aria-expanded="false" aria-controls="detalle-ot-{{ $ot->id_ot }}">
         <div class="row align-items-center text-center w-100 mx-0">
             <div class="col-lg-2 col-md-3 mb-2 mb-md-0">
@@ -184,10 +189,12 @@
             </div>
             <div class="col-lg-3 col-md-3 mb-2 mb-md-0">
                 <div class="text-muted small text-uppercase">Etapa actual</div>
-                <span class="badge badge-pill badge-primary px-3 py-2">{{ $ot->etapa_actual }}</span>
+                <span class="badge badge-pill {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'badge-success' : 'badge-primary' }} px-3 py-2">{{ $ot->etapa_actual_visual ?? $ot->etapa_actual }}</span>
             </div>
             <div class="col-lg-2 mt-2 mt-lg-0">
-                <span class="badge {{ $ot->estado_seguimiento === 'COMPLETO' ? 'badge-success' : 'badge-warning' }} px-2 py-2">{{ $ot->estado_seguimiento }}</span>
+                <span class="badge {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'badge-success' : ($ot->estado_seguimiento === 'COMPLETO' ? 'badge-success' : 'badge-warning') }} px-2 py-2">
+                    {{ $ot->estado_seguimiento_visual ?? $ot->estado_seguimiento }}
+                </span>
                 <button type="button" class="btn btn-sm btn-light border ml-2 seguimiento-toggle" aria-label="Desplegar detalle">
                     <i class="fas fa-chevron-down"></i>
                 </button>
@@ -234,7 +241,7 @@
                 <div>
                     <div class="text-muted small text-uppercase font-weight-bold">Etapa actual</div>
                     <div class="seguimiento-etapa-actual">
-                        <i class="fas fa-map-marker-alt mr-2"></i>{{ $ot->etapa_actual }}
+                        <i class="fas fa-map-marker-alt mr-2"></i>{{ $ot->etapa_actual_visual ?? $ot->etapa_actual }}
                     </div>
                 </div>
                 <div class="text-right mt-2 mt-md-0">
@@ -246,8 +253,9 @@
             <div class="seguimiento-linea">
                 @foreach($etapas as $numero => $etapa)
                     @php
-                        $completada = $ot->etapa_numero > $numero;
-                        $actual = $ot->etapa_numero === $numero;
+                        $etapaVisual = $ot->etapa_numero_visual ?? $ot->etapa_numero;
+                        $completada = $etapaVisual > $numero;
+                        $actual = $etapaVisual === $numero;
                     @endphp
                     <div class="seguimiento-paso {{ $completada ? 'completado' : '' }} {{ $actual ? 'actual' : '' }}">
                         <div class="seguimiento-circulo">
@@ -303,6 +311,17 @@
                 </div>
             </div>
         </div>
+        @endif
+
+        @if(($ot->tiene_recepcion_confirmada ?? false) && ($ot->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
+            <div class="alert alert-light border py-2 mb-3">
+                <i class="fas fa-info-circle text-info mr-1"></i>
+                <strong>Estado operativo: RECIBIDO.</strong>
+                La OT ya tuvo recepción confirmada.
+                El saldo cuantitativo sigue visible como
+                <strong>{{ $ot->estado_conciliacion }}</strong>
+                y no modifica el estado visual.
+            </div>
         @endif
 
         <div class="row mb-3">
