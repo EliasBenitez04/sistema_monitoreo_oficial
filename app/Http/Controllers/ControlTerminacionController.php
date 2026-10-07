@@ -106,6 +106,57 @@ class ControlTerminacionController extends Controller
             ->values();
 
         /*
+         * VALORIZACIÓN ECONÓMICA
+         *
+         * La fuente monetaria es ot_logistica_remisiones porque allí se
+         * importan costo_unitario y precio_venta por código/variante.
+         * Se consideran únicamente remisiones originales que salen de
+         * Casa Central / Matriz hacia un destino real, exactamente igual
+         * que en la conciliación física del Control de Terminación.
+         */
+        $valorizacionPorOt = collect();
+
+        if ($idsOt->isNotEmpty()
+            && Schema::hasTable('ot_logistica_remisiones')) {
+            $valorizacionPorOt = DB::table('ot_logistica_remisiones')
+                ->whereIn('id_ot', $idsOt->all())
+                ->where(function ($q) {
+                    $q->where('cod_sucursal_salida', 1)
+                        ->orWhereRaw(
+                            "UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'"
+                        )
+                        ->orWhereRaw(
+                            "UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'"
+                        );
+                })
+                ->where(function ($q) {
+                    $q->whereNull('cod_sucursal_destino')
+                        ->orWhere('cod_sucursal_destino', '<>', 1);
+                })
+                ->whereRaw(
+                    "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
+                )
+                ->groupBy('id_ot')
+                ->select(
+                    'id_ot',
+                    DB::raw(
+                        'SUM(COALESCE(cantidad, 0) * COALESCE(costo_unitario, 0)) as costo_remitido'
+                    ),
+                    DB::raw(
+                        'SUM(COALESCE(cantidad, 0) * COALESCE(precio_venta, 0)) as venta_remitida'
+                    ),
+                    DB::raw(
+                        'SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN COALESCE(cantidad, 0) * COALESCE(costo_unitario, 0) ELSE 0 END) as costo_recibido'
+                    ),
+                    DB::raw(
+                        'SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN COALESCE(cantidad, 0) * COALESCE(precio_venta, 0) ELSE 0 END) as venta_recibida'
+                    )
+                )
+                ->get()
+                ->keyBy('id_ot');
+        }
+
+        /*
          * Una sola fuente de cálculo para Producción + Plan + ENVIOS.
          * El rango selecciona las OTs por fecha de PT; la conciliación toma
          * el estado completo acumulado de cada OT.
@@ -189,6 +240,30 @@ class ControlTerminacionController extends Controller
 
             $item->recibido_efectivo =
                 $item->movimiento_recibido;
+
+            $valorizacion = $valorizacionPorOt->get(
+                $item->id_ot
+            );
+
+            $item->costo_remitido = $valorizacion
+                ? (float) $valorizacion->costo_remitido
+                : 0.0;
+
+            $item->venta_remitida = $valorizacion
+                ? (float) $valorizacion->venta_remitida
+                : 0.0;
+
+            $item->costo_recibido = $valorizacion
+                ? (float) $valorizacion->costo_recibido
+                : 0.0;
+
+            $item->venta_recibida = $valorizacion
+                ? (float) $valorizacion->venta_recibida
+                : 0.0;
+
+            $item->margen_bruto_remitido =
+                $item->venta_remitida
+                - $item->costo_remitido;
 
             $item->movimientos_adicionales = max(
                 0,
@@ -389,6 +464,30 @@ class ControlTerminacionController extends Controller
         $totalRecepcionLocal = (int) $produccionTerminada
             ->sum('recibido_efectivo');
 
+        $totalCostoRemitido = (float) $produccionTerminada
+            ->sum('costo_remitido');
+
+        $totalVentaRemitida = (float) $produccionTerminada
+            ->sum('venta_remitida');
+
+        $totalCostoRecibido = (float) $produccionTerminada
+            ->sum('costo_recibido');
+
+        $totalVentaRecibida = (float) $produccionTerminada
+            ->sum('venta_recibida');
+
+        $totalMargenBrutoRemitido =
+            $totalVentaRemitida - $totalCostoRemitido;
+
+        $porcentajeMargenBrutoRemitido =
+            $totalVentaRemitida > 0
+                ? round(
+                    ($totalMargenBrutoRemitido
+                        / $totalVentaRemitida) * 100,
+                    1
+                )
+                : 0;
+
         /*
          * Diagnóstico de calidad: remisiones reales que superan lo explicado
          * por el plan. No son faltantes físicos.
@@ -493,6 +592,12 @@ class ControlTerminacionController extends Controller
             'totalTerminado',
             'totalEntregadoLogistica',
             'totalRecepcionLocal',
+            'totalCostoRemitido',
+            'totalVentaRemitida',
+            'totalCostoRecibido',
+            'totalVentaRecibida',
+            'totalMargenBrutoRemitido',
+            'porcentajeMargenBrutoRemitido',
             'totalFaltaTerminacion',
             'otsFaltaTerminacion',
             'totalSinDestino',
@@ -1352,6 +1457,50 @@ class ControlTerminacionController extends Controller
                 $detalle->cantidad_remitida
                     - (int) $detalle->cantidad
             );
+
+            $detalle->costo_remitido = (float)
+                $detalle->remisiones->sum(
+                    function ($remision) {
+                        return (float) $remision->cantidad
+                            * (float) $remision->costo_unitario;
+                    }
+                );
+
+            $detalle->venta_remitida = (float)
+                $detalle->remisiones->sum(
+                    function ($remision) {
+                        return (float) $remision->cantidad
+                            * (float) $remision->precio_venta;
+                    }
+                );
+
+            $detalle->costo_recibido = (float)
+                $detalle->remisiones
+                    ->filter(function ($remision) {
+                        return !empty(
+                            $remision->fecha_recepcion
+                        );
+                    })
+                    ->sum(function ($remision) {
+                        return (float) $remision->cantidad
+                            * (float) $remision->costo_unitario;
+                    });
+
+            $detalle->venta_recibida = (float)
+                $detalle->remisiones
+                    ->filter(function ($remision) {
+                        return !empty(
+                            $remision->fecha_recepcion
+                        );
+                    })
+                    ->sum(function ($remision) {
+                        return (float) $remision->cantidad
+                            * (float) $remision->precio_venta;
+                    });
+
+            $detalle->margen_bruto =
+                $detalle->venta_remitida
+                - $detalle->costo_remitido;
         }
 
         /*
@@ -1392,6 +1541,61 @@ class ControlTerminacionController extends Controller
             $totalPlan - $totalRemitido
         );
 
+        /*
+         * Total económico general de la OT.
+         * Se calcula sobre las líneas físicas originales para no duplicar
+         * importes cuando COMERCIAL MATRIZ se reparte visualmente entre
+         * AYALA y MODELO MUESTRA.
+         */
+        $totalCostoRemitido = (float)
+            $remisionesOriginales->sum(
+                function ($remision) {
+                    return (float) $remision->cantidad
+                        * (float) $remision->costo_unitario;
+                }
+            );
+
+        $totalVentaRemitida = (float)
+            $remisionesOriginales->sum(
+                function ($remision) {
+                    return (float) $remision->cantidad
+                        * (float) $remision->precio_venta;
+                }
+            );
+
+        $remisionesRecibidas = $remisionesOriginales
+            ->filter(function ($remision) {
+                return !empty($remision->fecha_recepcion);
+            });
+
+        $totalCostoRecibido = (float)
+            $remisionesRecibidas->sum(
+                function ($remision) {
+                    return (float) $remision->cantidad
+                        * (float) $remision->costo_unitario;
+                }
+            );
+
+        $totalVentaRecibida = (float)
+            $remisionesRecibidas->sum(
+                function ($remision) {
+                    return (float) $remision->cantidad
+                        * (float) $remision->precio_venta;
+                }
+            );
+
+        $totalMargenBrutoRemitido =
+            $totalVentaRemitida - $totalCostoRemitido;
+
+        $porcentajeMargenBrutoRemitido =
+            $totalVentaRemitida > 0
+                ? round(
+                    ($totalMargenBrutoRemitido
+                        / $totalVentaRemitida) * 100,
+                    1
+                )
+                : 0;
+
         return view('control._terminacion_detalle', compact(
             'ot',
             'detalles',
@@ -1402,7 +1606,13 @@ class ControlTerminacionController extends Controller
             'totalRemitido',
             'totalRecibido',
             'totalEnTransito',
-            'totalPendiente'
+            'totalPendiente',
+            'totalCostoRemitido',
+            'totalVentaRemitida',
+            'totalCostoRecibido',
+            'totalVentaRecibida',
+            'totalMargenBrutoRemitido',
+            'porcentajeMargenBrutoRemitido'
         ));
     }
 
