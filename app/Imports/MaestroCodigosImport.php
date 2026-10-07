@@ -114,6 +114,7 @@ class MaestroCodigosImport
 
                 if (empty($encabezados)) {
                     $encabezados = $this->normalizarEncabezados($valores);
+                    $this->validarEncabezados($encabezados);
                     continue;
                 }
 
@@ -202,6 +203,7 @@ class MaestroCodigosImport
 
             if (empty($encabezados)) {
                 $encabezados = $this->normalizarEncabezados($valores);
+                $this->validarEncabezados($encabezados);
                 continue;
             }
 
@@ -571,6 +573,29 @@ class MaestroCodigosImport
         }
 
         return null;
+    }
+
+    private function validarEncabezados(array $encabezados): void
+    {
+        $tieneCodigo = in_array(
+            'cod_articulo',
+            $encabezados,
+            true
+        ) || in_array(
+            'cod_articulo_2',
+            $encabezados,
+            true
+        ) || in_array(
+            'codarticulo',
+            $encabezados,
+            true
+        );
+
+        if (!$tieneCodigo) {
+            throw new \RuntimeException(
+                'No se encontró la columna Cod Articulo / Cod.Articulo en el archivo.'
+            );
+        }
     }
 
     private function normalizarEncabezados(array $valores): array
