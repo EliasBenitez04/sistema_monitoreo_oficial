@@ -16,6 +16,7 @@
         'sucursal.*',
         'articulos.*',
         'stocks.*',
+        'maestro-codigos.*',
     );
 @endphp
 
@@ -60,6 +61,22 @@
 
                     <p>Artículos</p>
 
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="{{ route('maestro-codigos.index') }}"
+                    class="nav-link {{ request()->routeIs('maestro-codigos.index') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-barcode"></i>
+                    <p>Listado de Códigos</p>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="{{ route('maestro-codigos.importar.form') }}"
+                    class="nav-link {{ request()->routeIs('maestro-codigos.importar.*') ? 'active' : '' }}">
+                    <i class="nav-icon fas fa-file-import"></i>
+                    <p>Importar Datos</p>
                 </a>
             </li>
 
