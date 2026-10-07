@@ -877,6 +877,13 @@ class SeguimientoPedidoController extends Controller
                     (int) $conciliacion->remitido_original;
                 $ot->recibido =
                     (int) $conciliacion->recibido_original;
+
+                $ot->cierre_remitido_reconocido =
+                    (int) ($conciliacion->remitido_cierre ?? 0);
+
+                $ot->cierre_recibido_reconocido =
+                    (int) ($conciliacion->recibido_cierre ?? 0);
+
                 $ot->pendiente_recepcion =
                     (int) $conciliacion->en_transito;
                 $ot->estado_conciliacion =
