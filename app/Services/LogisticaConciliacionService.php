@@ -93,12 +93,20 @@ class LogisticaConciliacionService
 
         $remisionesPorOt = $this->remisionesOriginalesPorOt($idsOt);
 
+        /*
+         * Complementos/reenvíos que cierran saldos reales del plan.
+         * Se calculan por detalle logístico y se capan por la cantidad
+         * planificada para no convertir redistribuciones en prendas nuevas.
+         */
+        $coberturaPlanPorOt = $this->coberturaPlanPorOt($idsOt);
+
         return collect($idsOt)
             ->mapWithKeys(function (int $idOt) use (
                 $ots,
                 $trazabilidad,
                 $planPorOt,
-                $remisionesPorOt
+                $remisionesPorOt,
+                $coberturaPlanPorOt
             ) {
                 $ot = $ots->get($idOt);
 
@@ -125,6 +133,7 @@ class LogisticaConciliacionService
 
                 $plan = $planPorOt->get($idOt);
                 $remision = $remisionesPorOt->get($idOt);
+                $coberturaPlan = $coberturaPlanPorOt->get($idOt);
 
                 $objetivo = max(0, (int) $ot->cantidad_orden);
 
@@ -155,15 +164,31 @@ class LogisticaConciliacionService
                  */
                 $planDisponible = min($ptEfectivo, $planRaw);
 
-                $remitidoRaw = max(
+                $remitidoCentralRaw = max(
                     0,
                     (int) ($remision->remitido_original ?? 0)
                 );
 
-                $recibidoRaw = max(
+                $recibidoCentralRaw = max(
                     0,
                     (int) ($remision->recibido_original ?? 0)
                 );
+
+                $remitidoCierre = max(
+                    0,
+                    (int) ($coberturaPlan->remitido_cierre ?? 0)
+                );
+
+                $recibidoCierre = max(
+                    0,
+                    (int) ($coberturaPlan->recibido_cierre ?? 0)
+                );
+
+                $remitidoRaw =
+                    $remitidoCentralRaw + $remitidoCierre;
+
+                $recibidoRaw =
+                    $recibidoCentralRaw + $recibidoCierre;
 
                 $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
                 $recibidoEfectivo = min(
@@ -277,10 +302,16 @@ class LogisticaConciliacionService
                         ),
                         'destinos' => (int) ($plan->destinos ?? 0),
 
-                        'remitido_original_raw' => $remitidoRaw,
+                        // *_raw conserva el despacho central puro para
+                        // auditoría; *_efectivo_raw suma el cierre reconocido.
+                        'remitido_original_raw' => $remitidoCentralRaw,
+                        'remitido_efectivo_raw' => $remitidoRaw,
+                        'remitido_cierre' => $remitidoCierre,
                         'remitido_original' => $remitidoEfectivo,
 
-                        'recibido_original_raw' => $recibidoRaw,
+                        'recibido_original_raw' => $recibidoCentralRaw,
+                        'recibido_efectivo_raw' => $recibidoRaw,
+                        'recibido_cierre' => $recibidoCierre,
                         'recibido_original' => $recibidoEfectivo,
 
                         'falta_terminacion' => $faltaTerminacion,
@@ -432,6 +463,103 @@ class LogisticaConciliacionService
             )
             ->get()
             ->keyBy('id_ot');
+    }
+
+    /**
+     * Devuelve solamente el complemento que una remisión vinculada aporta
+     * por encima del despacho central ya contado.
+     *
+     * Ejemplo:
+     *   plan SL = 30
+     *   Central -> SL = 29
+     *   Comercial Matriz -> SL = 1
+     *   cobertura efectiva = 30
+     *
+     * Si luego existe otra redistribución de 5 hacia SL, el detalle sigue
+     * cubierto en 30 porque cada id_logistica_detalle se limita a d.cantidad.
+     */
+    private function coberturaPlanPorOt(array $idsOt): Collection
+    {
+        if (
+            empty($idsOt)
+            || !Schema::hasTable('ot_logistica_detalle')
+            || !Schema::hasTable('ot_logistica_remisiones')
+        ) {
+            return collect();
+        }
+
+        return DB::table('ot_logistica_detalle as d')
+            ->leftJoin('ot_logistica_remisiones as r', function ($join) {
+                $join->on('r.id_logistica_detalle', '=', 'd.id')
+                    ->on('r.id_ot', '=', 'd.id_ot');
+            })
+            ->whereIn('d.id_ot', $idsOt)
+            ->groupBy('d.id_ot', 'd.id', 'd.cantidad')
+            ->select(
+                'd.id_ot',
+                'd.id',
+                'd.cantidad as plan',
+                DB::raw(
+                    'COALESCE(SUM(r.cantidad), 0) as movido_total'
+                ),
+                DB::raw(
+                    "COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ') THEN r.cantidad ELSE 0 END), 0) as movido_central"
+                ),
+                DB::raw(
+                    'COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
+                ),
+                DB::raw(
+                    "COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
+                )
+            )
+            ->get()
+            ->groupBy('id_ot')
+            ->map(function ($filas) {
+                $coberturaTotal = 0;
+                $coberturaCentral = 0;
+                $recibidoTotal = 0;
+                $recibidoCentral = 0;
+
+                foreach ($filas as $fila) {
+                    $plan = max(0, (int) $fila->plan);
+
+                    $cubierto = min(
+                        $plan,
+                        max(0, (int) $fila->movido_total)
+                    );
+
+                    $cubiertoCentral = min(
+                        $plan,
+                        max(0, (int) $fila->movido_central)
+                    );
+
+                    $confirmado = min(
+                        $cubierto,
+                        max(0, (int) $fila->recibido_total)
+                    );
+
+                    $confirmadoCentral = min(
+                        $cubiertoCentral,
+                        max(0, (int) $fila->recibido_central)
+                    );
+
+                    $coberturaTotal += $cubierto;
+                    $coberturaCentral += $cubiertoCentral;
+                    $recibidoTotal += $confirmado;
+                    $recibidoCentral += $confirmadoCentral;
+                }
+
+                return (object) [
+                    'remitido_cierre' => max(
+                        0,
+                        $coberturaTotal - $coberturaCentral
+                    ),
+                    'recibido_cierre' => max(
+                        0,
+                        $recibidoTotal - $recibidoCentral
+                    ),
+                ];
+            });
     }
 
     private function resolverEstado(
