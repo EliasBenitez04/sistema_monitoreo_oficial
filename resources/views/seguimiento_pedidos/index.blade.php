@@ -165,6 +165,7 @@
                         );
 
                         $otsConfirmadas = (int) $pedido->ots_confirmadas;
+                        $otsConRemision = (int) ($pedido->ots_con_remision ?? 0);
                         $otsTotal = (int) $pedido->detalles_count;
 
                         $pctPt = $cantidad > 0
@@ -184,6 +185,14 @@
 
                         if (!empty($pedido->completo_locales)) {
                             $situacion = 'COMPLETO'; $clase = 'success'; $icono = 'check-circle';
+                        } elseif ($otsTotal > 0 && $otsConRemision >= $otsTotal) {
+                            /*
+                             * Situación OPERATIVA: todas las OTs ya tuvieron
+                             * al menos una remisión efectiva. Los faltantes
+                             * cuantitativos siguen visibles en Confirmado y
+                             * dentro del detalle de cada OT.
+                             */
+                            $situacion = 'COMPLETADO'; $clase = 'primary'; $icono = 'check';
                         } elseif ($confLocales > 0) {
                             $situacion = 'RECEPCIÓN PARCIAL'; $clase = 'warning'; $icono = 'store';
                         } elseif ($remitidoEfectivo > 0) {
