@@ -14,16 +14,24 @@
 </section>
 
 <section class="content"><div class="container-fluid">
+@php
+    $kpisCabecera = [
+        ['OT', $resumen->ots, 'clipboard-list'],
+        ['Cantidad orden', number_format($resumen->cantidad,0,',','.'), 'boxes'],
+        ['Producto terminado', number_format($resumen->terminado,0,',','.'), 'check-circle'],
+    ];
+
+    if ($auditoriaPrivada) {
+        $kpisCabecera = array_merge($kpisCabecera, [
+            ['Remitido efectivo', number_format($resumen->enviado,0,',','.'), 'truck'],
+            ['Confirmado efectivo', number_format($resumen->recibido,0,',','.'), 'store'],
+            ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double'],
+        ]);
+    }
+@endphp
 <div class="row">
-@foreach([
-    ['OT', $resumen->ots, 'clipboard-list'],
-    ['Cantidad orden', number_format($resumen->cantidad,0,',','.'), 'boxes'],
-    ['Producto terminado', number_format($resumen->terminado,0,',','.'), 'check-circle'],
-    ['Remitido efectivo', number_format($resumen->enviado,0,',','.'), 'truck'],
-    ['Confirmado efectivo', number_format($resumen->recibido,0,',','.'), 'store'],
-    ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double']
-] as $kpi)
-<div class="col-lg-2 col-md-4 col-6">
+@foreach($kpisCabecera as $kpi)
+<div class="col-lg-{{ $auditoriaPrivada ? '2' : '4' }} col-md-4 col-6">
     <div class="small-box bg-light border"><div class="inner"><h4>{{ $kpi[1] }}</h4><p>{{ $kpi[0] }}</p></div><div class="icon"><i class="fas fa-{{ $kpi[2] }}"></i></div></div>
 </div>
 @endforeach
@@ -85,6 +93,7 @@
     </div>
 </div>
 
+@if($auditoriaPrivada)
 <div class="alert alert-light border py-2 mb-4">
     <i class="fas fa-info-circle text-info mr-1"></i>
     <strong>Importante:</strong>
@@ -92,8 +101,9 @@
     En cambio, una <strong>OT completa</strong> exige que toda la cantidad efectiva
     haya sido remitida y recibida. Son dos indicadores distintos.
 </div>
+@endif
 
-@if(($resumen->movimientos_anteriores_omitidos ?? 0) > 0)
+@if($auditoriaPrivada && ($resumen->movimientos_anteriores_omitidos ?? 0) > 0)
 <div class="alert alert-secondary py-2">
     <i class="fas fa-filter mr-1"></i>
     Se omitieron <strong>{{ $resumen->movimientos_anteriores_omitidos }}</strong> movimientos anteriores a la fecha del pedido para no distorsionar los KPI.
@@ -161,7 +171,7 @@
                                 <div class="small mt-1 text-success">
                                     Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
                                 </div>
-                                @if(($otKpi->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
+                                @if($auditoriaPrivada && ($otKpi->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
                                     <div class="small text-muted">
                                         Saldo cuantitativo: {{ $otKpi->estado_conciliacion }}
                                     </div>
@@ -222,7 +232,7 @@
     </div>
     <div id="detalle-ot-{{ $ot->id_ot }}" class="collapse seguimiento-detalle">
     <div class="card-body">
-        @if(($ot->cierre_remitido_reconocido ?? 0) > 0)
+        @if($auditoriaPrivada && ($ot->cierre_remitido_reconocido ?? 0) > 0)
             <div class="alert alert-success py-2 mb-3">
                 <i class="fas fa-check-double mr-1"></i>
                 <strong>Complemento/cierre reconocido:</strong>
@@ -241,8 +251,10 @@
             <div class="col-md"><small class="text-muted d-block">Ingreso Terminación</small><strong>{{ number_format($ot->ingreso_terminacion,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_ingreso ? date('d/m/Y', strtotime($ot->fecha_ingreso)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Producto Terminado</small><strong>{{ number_format($ot->producto_terminado,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_pt ? date('d/m/Y', strtotime($ot->fecha_pt)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª salida: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. movimiento: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
-            <div class="col-md"><small class="text-muted d-block">Remitido efectivo</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
-            <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+            @if($auditoriaPrivada)
+                <div class="col-md"><small class="text-muted d-block">Remitido efectivo</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+                <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+            @endif
         </div>
 
         @php
@@ -295,7 +307,7 @@
             </div>
         </div>
 
-        @if($ot->cantidad_movimientos > 0)
+        @if($auditoriaPrivada && $ot->cantidad_movimientos > 0)
         <div class="text-center mb-3">
             <button class="btn btn-sm btn-outline-secondary px-3" type="button" data-toggle="collapse" data-target="#movimientos-ot-{{ $ot->id_ot }}" aria-expanded="false">
                 <i class="fas fa-exchange-alt mr-1"></i> Ver movimientos ({{ $ot->cantidad_movimientos }})
@@ -332,7 +344,7 @@
         </div>
         @endif
 
-        @if(($ot->tiene_recepcion_confirmada ?? false) && ($ot->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
+        @if($auditoriaPrivada && ($ot->tiene_recepcion_confirmada ?? false) && ($ot->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
             <div class="alert alert-light border py-2 mb-3">
                 <i class="fas fa-info-circle text-info mr-1"></i>
                 <strong>Estado operativo: RECIBIDO.</strong>
@@ -344,28 +356,41 @@
         @endif
 
         <div class="row mb-3">
-            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen movido (auditoría)</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
-            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen re-movido</small><strong>{{ number_format($ot->movimientos_adicionales,0,',','.') }}</strong></div></div>
-            <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Locales comerciales confirmados</small><strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> <span class="text-muted">(máximo operativo: 12)</span></div></div>
+            @if($auditoriaPrivada)
+                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen movido (auditoría)</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
+                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen re-movido</small><strong>{{ number_format($ot->movimientos_adicionales,0,',','.') }}</strong></div></div>
+                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Locales comerciales confirmados</small><strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> <span class="text-muted">(máximo operativo: 12)</span></div></div>
+            @else
+                <div class="col-12">
+                    <div class="border rounded p-2 text-center">
+                        <small class="text-muted d-block">Estado de recepción</small>
+                        <strong class="{{ ($ot->tiene_recepcion_confirmada ?? false) ? 'text-success' : 'text-muted' }}">
+                            {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'RECEPCIÓN REGISTRADA' : 'PENDIENTE' }}
+                        </strong>
+                    </div>
+                </div>
+            @endif
         </div>
 
         <h6 class="font-weight-bold mb-2"><i class="fas fa-store mr-1"></i> Locales comerciales</h6>
         <div class="table-responsive">
             <table class="table table-sm table-hover text-center align-middle">
-                <thead><tr><th>Local</th><th class="text-right">Enviado</th><th class="text-right">Recibido</th><th class="text-right">Pendiente</th><th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Local</th>@if($auditoriaPrivada)<th class="text-right">Enviado</th><th class="text-right">Recibido</th><th class="text-right">Pendiente</th>@endif<th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
                 <tbody>
                 @forelse($ot->locales_comerciales as $local)
                     <tr>
                         <td>{{ $local->local }}</td>
-                        <td class="text-right">{{ number_format($local->enviado,0,',','.') }}</td>
-                        <td class="text-right">{{ number_format($local->recibido,0,',','.') }}</td>
-                        <td class="text-right">{{ number_format($local->pendiente,0,',','.') }}</td>
+                        @if($auditoriaPrivada)
+                            <td class="text-right">{{ number_format($local->enviado,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($local->recibido,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($local->pendiente,0,',','.') }}</td>
+                        @endif
                         <td>{{ $local->ultima_remision ? date('d/m/Y', strtotime($local->ultima_remision)) : '-' }}</td>
                         <td>{{ $local->ultima_recepcion ? date('d/m/Y', strtotime($local->ultima_recepcion)) : '-' }}</td>
                         <td><span class="badge {{ $local->estado_local === 'RECIBIDO' ? 'badge-success' : ($local->estado_local === 'PARCIAL' ? 'badge-warning' : 'badge-secondary') }}">{{ $local->estado_local }}</span></td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="text-center text-muted">Esta OT todavía no tiene remisiones vinculadas.</td></tr>
+                    <tr><td colspan="{{ $auditoriaPrivada ? 7 : 4 }}" class="text-center text-muted">Esta OT todavía no tiene remisiones vinculadas.</td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -373,25 +398,33 @@
         <h6 class="font-weight-bold mt-4 mb-2"><i class="fas fa-warehouse mr-1"></i> Mayorista / Depósito</h6>
         <div class="table-responsive">
             <table class="table table-sm table-hover text-center align-middle mb-2">
-                <thead><tr><th>Nodo</th><th class="text-right">Movimiento</th><th class="text-right">Confirmado</th><th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Nodo</th>@if($auditoriaPrivada)<th class="text-right">Movimiento</th><th class="text-right">Confirmado</th>@endif<th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
                 <tbody>
                 @forelse($ot->canal_mayorista as $local)
                     <tr>
                         <td>{{ $local->local }}</td>
-                        <td class="text-right">{{ number_format($local->enviado,0,',','.') }}</td>
-                        <td class="text-right">{{ number_format($local->recibido,0,',','.') }}</td>
+                        @if($auditoriaPrivada)
+                            <td class="text-right">{{ number_format($local->enviado,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($local->recibido,0,',','.') }}</td>
+                        @endif
                         <td>{{ $local->ultima_remision ? date('d/m/Y', strtotime($local->ultima_remision)) : '-' }}</td>
                         <td>{{ $local->ultima_recepcion ? date('d/m/Y', strtotime($local->ultima_recepcion)) : '-' }}</td>
                         <td><span class="badge {{ $local->estado_local === 'RECIBIDO' ? 'badge-success' : ($local->estado_local === 'PARCIAL' ? 'badge-warning' : 'badge-secondary') }}">{{ $local->estado_local }}</span></td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="text-center text-muted">Sin movimientos de Mayorista / Depósito.</td></tr>
+                    <tr><td colspan="{{ $auditoriaPrivada ? 6 : 4 }}" class="text-center text-muted">Sin movimientos de Mayorista / Depósito.</td></tr>
                 @endforelse
                 </tbody>
             </table>
         </div>
 
-        <div class="small text-muted text-center mt-3">Locales comerciales confirmados: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
+        @if($auditoriaPrivada)
+            <div class="small text-muted text-center mt-3">Locales comerciales confirmados: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
+        @else
+            <div class="small text-muted text-center mt-3">
+                Seguimiento operativo de remisiones y recepciones por local.
+            </div>
+        @endif
     </div>
     </div>
 </div>
