@@ -127,10 +127,10 @@
             <div class="cc-kpi"><div class="label">Plan logístico</div><div class="value">{{ number_format($resumen->planificado,0,',','.') }}</div><div class="meta">distribución planificada</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label">Remitido real</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Salida efectiva conciliada</div></div>
+            <div class="cc-kpi"><div class="label">Remitido real</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Tiene remisión emitida/importada · no requiere recepción</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label">Recibido</div><div class="value">{{ number_format($resumen->recibido,0,',','.') }}</div><div class="meta">confirmado por fecha_recepcion</div></div>
+            <div class="cc-kpi"><div class="label">Recibido</div><div class="value">{{ number_format($resumen->recibido,0,',','.') }}</div><div class="meta">Confirmado únicamente cuando existe fecha_recepcion</div></div>
         </div>
     </div>
 
@@ -145,7 +145,7 @@
             <div class="cc-kpi"><div class="label text-info">Pendiente remitir</div><div class="value">{{ number_format($resumen->pendiente_remitir,0,',','.') }}</div><div class="meta">plan aún sin salida</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label text-primary">En tránsito</div><div class="value">{{ number_format($resumen->en_transito,0,',','.') }}</div><div class="meta">remitido aún no recibido</div></div>
+            <div class="cc-kpi"><div class="label text-primary">En tránsito</div><div class="value">{{ number_format($resumen->en_transito,0,',','.') }}</div><div class="meta">Tiene remisión pero todavía no tiene fecha_recepcion</div></div>
         </div>
     </div>
 
