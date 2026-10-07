@@ -444,6 +444,15 @@ class LogisticaConciliacionService
         }
 
         /*
+         * REGLA ÚNICA DE CONCILIACIÓN:
+         *
+         * REMITIDO = existe una línea de remisión/salida. NO requiere
+         * fecha_recepcion.
+         *
+         * RECIBIDO/CONFIRMADO = esa remisión ya tiene fecha_recepcion.
+         *
+         * EN TRÁNSITO = REMITIDO - RECIBIDO.
+         *
          * Distribución original:
          * CASA CENTRAL / MATRIZ -> destino.
          *
