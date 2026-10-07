@@ -133,7 +133,7 @@
                         <th>OT</th>
                         <th>Prendas</th>
                         <th>Prod. terminado</th>
-                        <th>Movimientos</th>
+                        <th>Movimientos (auditoría)</th>
                         <th>Confirmado</th>
                         <th>Situación</th>
                         <th>Fecha pedido</th>
@@ -184,9 +184,9 @@
 
                         if (!empty($pedido->completo_locales)) {
                             $situacion = 'COMPLETO'; $clase = 'success'; $icono = 'check-circle';
-                        } elseif ($otsConfirmadas > 0) {
-                            $situacion = 'RECEPCIÓN PARCIAL'; $clase = 'warning'; $icono = 'truck';
-                        } elseif ($movLocales > 0) {
+                        } elseif ($confLocales > 0) {
+                            $situacion = 'RECEPCIÓN PARCIAL'; $clase = 'warning'; $icono = 'store';
+                        } elseif ($remitidoEfectivo > 0) {
                             $situacion = 'EN REMISIÓN'; $clase = 'warning'; $icono = 'truck';
                         } elseif ($pt > 0) {
                             $situacion = $pt >= $cantidad ? 'PRODUCTO TERMINADO' : 'EN PRODUCCIÓN'; $clase = 'info'; $icono = 'box';
