@@ -75,7 +75,7 @@
                 <div class="card-body">
                     <div class="label">Remitido real</div>
                     <div class="value">{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</div>
-                    <div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan</div>
+                    <div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan · cuenta la remisión aunque no esté recibida</div>
                 </div>
             </div>
         </div>
@@ -85,7 +85,7 @@
                 <div class="card-body">
                     <div class="label">Confirmado local</div>
                     <div class="value">{{ number_format($resumenEjecutivo->recibido,0,',','.') }}</div>
-                    <div class="meta">{{ number_format($resumenEjecutivo->avance_recepcion,1,',','.') }}% de lo remitido</div>
+                    <div class="meta">{{ number_format($resumenEjecutivo->avance_recepcion,1,',','.') }}% de lo remitido · requiere fecha_recepcion</div>
                 </div>
             </div>
         </div>
@@ -95,7 +95,7 @@
                 <div class="card-body">
                     <div class="label">En tránsito</div>
                     <div class="value">{{ number_format($resumenEjecutivo->transito,0,',','.') }}</div>
-                    <div class="meta">Remitido todavía sin recepción</div>
+                    <div class="meta">Remisión existente sin fecha_recepcion</div>
                 </div>
             </div>
         </div>
