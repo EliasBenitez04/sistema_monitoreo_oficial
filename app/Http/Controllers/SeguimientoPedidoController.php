@@ -227,6 +227,9 @@ class SeguimientoPedidoController extends Controller
                 : 0;
 
             $pedido->ots_confirmadas = $otsConfirmadas;
+            $pedido->ots_con_remision = $efectivo
+                ? (int) $efectivo->ots_con_remision
+                : 0;
             $pedido->completo_locales = $completo;
             $pedido->ultima_confirmacion_efectiva =
                 $efectivo->ultima_primera_confirmacion ?? null;
@@ -1248,6 +1251,7 @@ class SeguimientoPedidoController extends Controller
                 $remitido = 0;
                 $recibido = 0;
                 $completas = 0;
+                $otsConRemision = 0;
 
                 foreach ($filas as $fila) {
                     $cantidad += (int) $fila->cantidad_orden;
@@ -1266,6 +1270,10 @@ class SeguimientoPedidoController extends Controller
                         (int) $c->remitido_original;
                     $recibido +=
                         (int) $c->recibido_original;
+
+                    if ((int) $c->remitido_original > 0) {
+                        $otsConRemision++;
+                    }
 
                     if ($c->estado_conciliacion === 'CONFIRMADO') {
                         $completas++;
@@ -1291,6 +1299,7 @@ class SeguimientoPedidoController extends Controller
                     'remitido' => $remitido,
                     'recibido' => $recibido,
                     'completas' => $completas,
+                    'ots_con_remision' => $otsConRemision,
                     'ultima_primera_confirmacion' =>
                         $recepciones->isNotEmpty()
                             ? $recepciones->max()
