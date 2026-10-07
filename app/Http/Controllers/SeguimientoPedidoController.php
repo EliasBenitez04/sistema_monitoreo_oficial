@@ -1270,9 +1270,28 @@ class SeguimientoPedidoController extends Controller
             return false;
         }
 
-        return auth()->user()
-            ->getDirectPermissions()
-            ->contains('name', 'seguimiento auditoria privada');
+        $usuario = auth()->user();
+
+        $permiso = DB::table('permissions')
+            ->where('name', 'seguimiento auditoria privada')
+            ->where('guard_name', 'web')
+            ->first();
+
+        if (!$permiso) {
+            return false;
+        }
+
+        return DB::table('model_has_permissions')
+            ->where('permission_id', $permiso->id)
+            ->where(
+                'model_type',
+                $usuario->getMorphClass()
+            )
+            ->where(
+                'model_id',
+                $usuario->getKey()
+            )
+            ->exists();
     }
 
     /**
