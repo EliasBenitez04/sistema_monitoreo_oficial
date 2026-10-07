@@ -171,6 +171,13 @@ class MaestroCodigoController extends Controller
                 );
             }
 
+            /*
+             * La carga masiva cambia una parte importante de la tabla.
+             * ANALYZE actualiza estadísticas del optimizador de PostgreSQL
+             * para que filtros e índices se utilicen correctamente enseguida.
+             */
+            DB::statement('ANALYZE maestro_codigos');
+
             $resumen = $importador->resumen();
 
             return response()->json([
