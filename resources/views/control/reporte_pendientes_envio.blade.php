@@ -127,7 +127,7 @@
             <div class="cc-kpi"><div class="label">Plan logístico</div><div class="value">{{ number_format($resumen->planificado,0,',','.') }}</div><div class="meta">distribución planificada</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label">Remitido real</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Casa Central/Matriz → destino</div></div>
+            <div class="cc-kpi"><div class="label">Remitido real</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Salida efectiva conciliada</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label">Recibido</div><div class="value">{{ number_format($resumen->recibido,0,',','.') }}</div><div class="meta">confirmado por fecha_recepcion</div></div>
