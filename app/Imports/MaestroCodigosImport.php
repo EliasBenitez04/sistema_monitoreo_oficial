@@ -244,6 +244,21 @@ class MaestroCodigosImport
             return;
         }
 
+        $cantidadProcesada = count($lote);
+
+        /*
+         * PostgreSQL no permite que una misma sentencia ON CONFLICT actualice
+         * dos veces la misma clave. Si el Excel repite un código dentro del
+         * lote, conservamos la última aparición.
+         */
+        $unicos = [];
+
+        foreach ($lote as $registro) {
+            $unicos[$registro['cod_articulo']] = $registro;
+        }
+
+        $lote = array_values($unicos);
+
         /*
          * 1000 registros por sentencia = pocas consultas y un número de
          * parámetros seguro para PostgreSQL 9.5.
@@ -284,9 +299,8 @@ class MaestroCodigosImport
             ]
         );
 
-        $cantidad = count($lote);
-        $this->procesadas += $cantidad;
-        $this->guardadas += $cantidad;
+        $this->procesadas += $cantidadProcesada;
+        $this->guardadas += count($lote);
 
         $porcentaje = $this->total && $this->total > 0
             ? min(99, round(($this->procesadas / $this->total) * 100, 1))
@@ -566,6 +580,7 @@ class MaestroCodigosImport
 
         foreach ($valores as $indice => $valor) {
             $texto = trim($this->normalizarUtf8((string) $valor));
+            $texto = preg_replace('/^\\xEF\\xBB\\xBF/', '', $texto);
 
             if ($texto === '') {
                 $resultado[$indice] = '';
