@@ -23,8 +23,8 @@
 
     if ($auditoriaPrivada) {
         $kpisCabecera = array_merge($kpisCabecera, [
-            ['Remitido efectivo', number_format($resumen->enviado,0,',','.'), 'truck'],
-            ['Confirmado efectivo', number_format($resumen->recibido,0,',','.'), 'store'],
+            ['Remitido · con remisión', number_format($resumen->enviado,0,',','.'), 'truck'],
+            ['Confirmado · con recepción', number_format($resumen->recibido,0,',','.'), 'store'],
             ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double'],
         ]);
     }
@@ -252,8 +252,8 @@
             <div class="col-md"><small class="text-muted d-block">Producto Terminado</small><strong>{{ number_format($ot->producto_terminado,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_pt ? date('d/m/Y', strtotime($ot->fecha_pt)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª salida: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. movimiento: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
             @if($auditoriaPrivada)
-                <div class="col-md"><small class="text-muted d-block">Remitido efectivo</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
-                <div class="col-md"><small class="text-muted d-block">Confirmado efectivo</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+                <div class="col-md"><small class="text-muted d-block">Remitido · con remisión</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+                <div class="col-md"><small class="text-muted d-block">Confirmado · con recepción</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
             @endif
         </div>
 
