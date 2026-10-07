@@ -20,6 +20,10 @@
     .cc-badge.primary{background:#eff6ff;color:#1d4ed8}
     .cc-badge.success{background:#f0fdf4;color:#15803d}
     .cc-action{font-size:10px;font-weight:900;color:#334155;white-space:nowrap}
+    .cc-season-box{border:1px solid #ced4da;border-radius:.25rem;background:#fff;padding:7px 10px;min-height:38px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .cc-season-option{margin:0;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#475569;white-space:nowrap}
+    .cc-season-option input{margin:0}
+    .cc-filter-badge{display:inline-block;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;margin-right:4px}
     @media print{
         .no-print{display:none!important}
         .cc-card,.cc-kpi{box-shadow:none!important}
@@ -56,22 +60,51 @@
         <div class="card-body">
             <form method="GET">
                 <div class="row align-items-end">
-                    <div class="col-md-3 mb-2">
+                    <div class="col-lg-2 col-md-4 mb-2">
                         <label class="small font-weight-bold">PT desde</label>
                         <input type="date" name="fecha_desde" value="{{ $fechaDesde }}" class="form-control">
                     </div>
-                    <div class="col-md-3 mb-2">
+                    <div class="col-lg-2 col-md-4 mb-2">
                         <label class="small font-weight-bold">PT hasta</label>
                         <input type="date" name="fecha_hasta" value="{{ $fechaHasta }}" class="form-control">
                     </div>
-                    <div class="col-md-4 mb-2">
+                    <div class="col-lg-3 col-md-4 mb-2">
                         <label class="small font-weight-bold">OT / código / descripción</label>
                         <input type="text" name="buscar" value="{{ $buscar }}" class="form-control">
                     </div>
-                    <div class="col-md-2 mb-2">
-                        <button class="btn btn-primary btn-block">
-                            <i class="fas fa-search mr-1"></i>Consultar
-                        </button>
+                    <div class="col-lg-3 col-md-8 mb-2">
+                        <label class="small font-weight-bold d-block">
+                            Temporada
+                            <span class="text-muted font-weight-normal">(podés marcar varias)</span>
+                        </label>
+                        <div class="cc-season-box">
+                            @forelse($temporadasDisponibles as $temporada)
+                                <label class="cc-season-option">
+                                    <input type="checkbox"
+                                           name="temporada[]"
+                                           value="{{ $temporada }}"
+                                           {{ in_array($temporada, $temporadas, true) ? 'checked' : '' }}>
+                                    <span>{{ $temporada }}</span>
+                                </label>
+                            @empty
+                                <span class="text-muted small">Sin temporadas cargadas</span>
+                            @endforelse
+                        </div>
+                        <small class="text-muted">
+                            Sin marcar = todas. “AMBOS” se trata como una temporada independiente.
+                        </small>
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-2">
+                        <div class="d-flex">
+                            <a href="{{ route('control.terminacion.reporte-pendientes-envio', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta]) }}"
+                               class="btn btn-light border mr-1"
+                               title="Limpiar filtros">
+                                <i class="fas fa-eraser"></i>
+                            </a>
+                            <button class="btn btn-primary flex-fill">
+                                <i class="fas fa-search mr-1"></i>Consultar
+                            </button>
+                        </div>
                     </div>
                 </div>
             </form>
@@ -131,6 +164,14 @@
                 <div class="cc-sub">
                     Período PT {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}
                     al {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}
+                    @if(!empty($temporadas))
+                        <span class="ml-1">· Temporada:</span>
+                        @foreach($temporadas as $temporada)
+                            <span class="cc-filter-badge">{{ $temporada }}</span>
+                        @endforeach
+                    @else
+                        <span class="ml-1">· Todas las temporadas</span>
+                    @endif
                 </div>
             </div>
             <span class="badge badge-primary p-2">
