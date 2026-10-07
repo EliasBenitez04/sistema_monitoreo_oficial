@@ -10,6 +10,7 @@ use App\Models\StockVentasSucursal;
 use App\Models\RedistribucionConfig;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\LoteRedistribucionExport;
@@ -80,12 +81,19 @@ class RedistribucionSugeridaController extends Controller
             ->orderBy('linea')
             ->pluck('linea');
 
-        $temporadas = StockVentasSucursal::query()
-            ->whereNotNull('temporada')
-            ->where('temporada', '<>', '')
-            ->distinct()
-            ->orderBy('temporada')
-            ->pluck('temporada');
+        /*
+         * TEMPORADA sale del maestro de códigos.
+         * StockVentasSucursal aporta únicamente hechos de stock/venta.
+         */
+        $temporadas = Schema::hasTable('maestro_codigos')
+            ? DB::table('maestro_codigos')
+                ->whereNotNull('temporada')
+                ->whereRaw("TRIM(COALESCE(temporada, '')) <> ''")
+                ->selectRaw('UPPER(TRIM(temporada)) as temporada')
+                ->distinct()
+                ->orderBy('temporada')
+                ->pluck('temporada')
+            : collect();
 
         /*
          * Sucursales
@@ -404,10 +412,23 @@ class RedistribucionSugeridaController extends Controller
                 if (!empty($gruposSeleccionados)) {
                     $query->whereIn('grupo_plan', $gruposSeleccionados);
                 }
-                foreach (['linea', 'temporada'] as $filtro) {
-                    if ($request->filled($filtro)) {
-                        $query->where($filtro, $request->input($filtro));
-                    }
+                /*
+                 * Línea todavía conserva su funcionamiento actual.
+                 * Temporada, en cambio, se resuelve exclusivamente contra
+                 * maestro_codigos por código de artículo.
+                 */
+                if ($request->filled('linea')) {
+                    $query->where(
+                        'linea',
+                        $request->input('linea')
+                    );
+                }
+
+                if ($request->filled('temporada')) {
+                    $this->aplicarFiltroTemporadaMaestro(
+                        $query,
+                        $request->input('temporada')
+                    );
                 }
                 $datos = $query->select(['codigo', 'sucursal_id', 'cant_vta', 'stock_actual'])
                     ->orderBy('codigo')->orderBy('sucursal_id')->lockForUpdate()->toBase()->get();
@@ -1381,8 +1402,8 @@ class RedistribucionSugeridaController extends Controller
             }
 
             if ($request->filled('temporada')) {
-                $query->where(
-                    'temporada',
+                $this->aplicarFiltroTemporadaMaestro(
+                    $query,
                     $request->temporada
                 );
             }
@@ -3551,6 +3572,44 @@ class RedistribucionSugeridaController extends Controller
                 'Error al importar remisiones de redistribución: ' . $e->getMessage()
             );
         }
+    }
+
+
+    /**
+     * Aplica la temporada oficial del maestro de códigos a una consulta
+     * de stock/ventas sin depender de stock_ventas_sucursales.temporada.
+     *
+     * El vínculo es:
+     * stock_ventas_sucursales.codigo = maestro_codigos.cod_articulo
+     */
+    private function aplicarFiltroTemporadaMaestro(
+        $query,
+        $temporada
+    ) {
+        $temporada = strtoupper(trim((string) $temporada));
+
+        if ($temporada === '') {
+            return $query;
+        }
+
+        if (!Schema::hasTable('maestro_codigos')) {
+            throw new \RuntimeException(
+                'No existe maestro_codigos. Ejecute las migraciones e importe el maestro antes de filtrar por temporada.'
+            );
+        }
+
+        return $query->whereExists(function ($sub) use ($temporada) {
+            $sub->select(DB::raw(1))
+                ->from('maestro_codigos as mc')
+                ->whereColumn(
+                    'mc.cod_articulo',
+                    'stock_ventas_sucursales.codigo'
+                )
+                ->whereRaw(
+                    "UPPER(TRIM(COALESCE(mc.temporada, ''))) = ?",
+                    [$temporada]
+                );
+        });
     }
 
 }
