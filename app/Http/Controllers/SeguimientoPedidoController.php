@@ -1166,11 +1166,27 @@ class SeguimientoPedidoController extends Controller
             ]);
         }
 
-        $salidasLogisticaValidas = $kpisOt->pluck('fecha_envio')->filter();
-        $recepcionesValidas = $kpisOt->pluck('fecha_recepcion')->filter();
-        $diasValidos = $kpisOt->pluck('dias')->filter(function ($dias) {
-            return $dias !== null && $dias >= 0;
-        });
+        /*
+         * Los movimientos históricos se muestran en la tabla, pero no forman
+         * parte del tiempo de atención del pedido actual.
+         */
+        $kpisPedidoActual = $kpisOt
+            ->reject(function ($kpi) {
+                return !empty($kpi->movimiento_historico);
+            })
+            ->values();
+
+        $salidasLogisticaValidas =
+            $kpisPedidoActual->pluck('fecha_envio')->filter();
+
+        $recepcionesValidas =
+            $kpisPedidoActual->pluck('fecha_recepcion')->filter();
+
+        $diasValidos = $kpisPedidoActual
+            ->pluck('dias')
+            ->filter(function ($dias) {
+                return $dias !== null && $dias >= 0;
+            });
 
         $primerEnvioLogistica = $salidasLogisticaValidas->min();
         $ultimoEnvioLogistica = $salidasLogisticaValidas->max();
