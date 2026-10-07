@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Spatie\Permission\PermissionRegistrar;
 
 class UsuarioController extends Controller
 {
@@ -201,27 +202,83 @@ class UsuarioController extends Controller
 
         /*
          * Permiso privado por USUARIO, no por rol.
-         * Esto evita que otros administradores hereden la auditoría.
+         *
+         * Se persiste directamente en model_has_permissions para evitar que
+         * una migración pendiente o caché de Spatie deje el switch sin efecto.
          */
+        $auditoriaSolicitada = $request->boolean(
+            'seguimiento_auditoria_privada'
+        );
+
         $permisoAuditoria = DB::table('permissions')
             ->where('name', 'seguimiento auditoria privada')
             ->where('guard_name', 'web')
             ->first();
 
-        if ($permisoAuditoria) {
-            if ($request->boolean('seguimiento_auditoria_privada')) {
-                $usuario->givePermissionTo(
-                    'seguimiento auditoria privada'
-                );
-            } else {
-                $usuario->revokePermissionTo(
-                    'seguimiento auditoria privada'
-                );
-            }
+        if (!$permisoAuditoria) {
+            $permisoId = DB::table('permissions')->insertGetId([
+                'name' => 'seguimiento auditoria privada',
+                'guard_name' => 'web',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $permisoAuditoria = DB::table('permissions')
+                ->where('id', $permisoId)
+                ->first();
         }
 
-        alert()->success('Éxito', 'Registro actualizado correctamente');
-        return redirect(route('usuarios.index'));
+        $modelType = $usuario->getMorphClass();
+
+        DB::transaction(function () use (
+            $auditoriaSolicitada,
+            $permisoAuditoria,
+            $usuario,
+            $modelType
+        ) {
+            DB::table('model_has_permissions')
+                ->where('permission_id', $permisoAuditoria->id)
+                ->where('model_type', $modelType)
+                ->where('model_id', $usuario->getKey())
+                ->delete();
+
+            if ($auditoriaSolicitada) {
+                DB::table('model_has_permissions')->insert([
+                    'permission_id' => $permisoAuditoria->id,
+                    'model_type' => $modelType,
+                    'model_id' => $usuario->getKey(),
+                ]);
+            }
+        });
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $usuario->unsetRelation('permissions');
+
+        $auditoriaGuardada = DB::table('model_has_permissions')
+            ->where('permission_id', $permisoAuditoria->id)
+            ->where('model_type', $modelType)
+            ->where('model_id', $usuario->getKey())
+            ->exists();
+
+        if ($auditoriaGuardada !== $auditoriaSolicitada) {
+            alert()->error(
+                'Error',
+                'No se pudo actualizar el permiso de auditoría privada.'
+            );
+
+            return redirect()
+                ->route('usuarios.edit', [$usuario->id]);
+        }
+
+        alert()->success(
+            'Éxito',
+            $auditoriaGuardada
+                ? 'Usuario actualizado. Auditoría privada ACTIVADA.'
+                : 'Usuario actualizado. Auditoría privada DESACTIVADA.'
+        );
+
+        return redirect()
+            ->route('usuarios.edit', [$usuario->id]);
     }
 
     public function destroy($id)
