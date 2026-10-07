@@ -54,7 +54,7 @@
             </div>
             <div class="col-lg col-md-4 col-6 mb-3 mb-lg-0">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">Última OT confirmada</small>
+                    <small class="text-muted d-block text-uppercase">Última 1ª confirmación de OT</small>
                     <strong>{{ $resumen->ultima_confirmacion ? date('d/m/Y', strtotime($resumen->ultima_confirmacion)) : '-' }}</strong>
                     @if($resumen->dias_confirmacion_total !== null)
                         <div class="small text-success">{{ $resumen->dias_confirmacion_total }} días desde pedido</div>
@@ -76,13 +76,21 @@
             </div>
             <div class="col-lg col-md-6 col-12">
                 <div class="kpi-tiempo">
-                    <small class="text-muted d-block text-uppercase">Promedio por local</small>
+                    <small class="text-muted d-block text-uppercase">Promedio por OT</small>
                     <strong class="h4 mb-0">{{ $resumen->dias_promedio_confirmacion !== null ? number_format($resumen->dias_promedio_confirmacion, 1, ',', '.') . ' días' : '-' }}</strong>
-                    <div class="small text-muted">promedio por OT confirmada</div>
+                    <div class="small text-muted">pedido → 1ª recepción de cada OT</div>
                 </div>
             </div>
         </div>
     </div>
+</div>
+
+<div class="alert alert-light border py-2 mb-4">
+    <i class="fas fa-info-circle text-info mr-1"></i>
+    <strong>Importante:</strong>
+    el KPI de tiempo usa la <strong>primera recepción válida</strong> de cada OT.
+    En cambio, una <strong>OT completa</strong> exige que toda la cantidad efectiva
+    haya sido remitida y recibida. Son dos indicadores distintos.
 </div>
 
 @if(($resumen->movimientos_anteriores_omitidos ?? 0) > 0)
@@ -106,7 +114,7 @@
                         <th>Entrada a Terminación</th>
                         <th>Entrada a Logística</th>
                         <th>Remisión</th>
-                        <th>Confirmación del local</th>
+                        <th>1ª confirmación del local</th>
                         <th>Tiempo desde pedido</th>
                         <th>Estado KPI</th>
                     </tr>
@@ -137,7 +145,10 @@
                         </td>
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
-                                <span class="badge badge-success">CONFIRMADO</span>
+                                <span class="badge badge-success">1ª RECEPCIÓN</span>
+                                <div class="small mt-1 {{ $otKpi->estado_seguimiento === 'COMPLETO' ? 'text-success' : 'text-warning' }}">
+                                    Cierre: {{ $otKpi->estado_seguimiento }}
+                                </div>
                             @elseif($otKpi->kpi_estado === 'REMISIONADO')
                                 <span class="badge badge-warning">
                                     <i class="fas fa-file-invoice mr-1"></i>REMISIONADO
@@ -185,6 +196,20 @@
     </div>
     <div id="detalle-ot-{{ $ot->id_ot }}" class="collapse seguimiento-detalle">
     <div class="card-body">
+        @if(($ot->cierre_remitido_reconocido ?? 0) > 0)
+            <div class="alert alert-success py-2 mb-3">
+                <i class="fas fa-check-double mr-1"></i>
+                <strong>Complemento/cierre reconocido:</strong>
+                {{ number_format($ot->cierre_remitido_reconocido,0,',','.') }}
+                prenda(s) adicionales completaron saldo logístico pendiente.
+                @if(($ot->cierre_recibido_reconocido ?? 0) > 0)
+                    Confirmadas:
+                    {{ number_format($ot->cierre_recibido_reconocido,0,',','.') }}.
+                @endif
+                Los re-movimientos posteriores siguen visibles sólo como auditoría.
+            </div>
+        @endif
+
         <div class="row text-center mb-4">
             <div class="col-md"><small class="text-muted d-block">Orden</small><strong>{{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
             <div class="col-md"><small class="text-muted d-block">Ingreso Terminación</small><strong>{{ number_format($ot->ingreso_terminacion,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_ingreso ? date('d/m/Y', strtotime($ot->fecha_ingreso)) : '-' }}</div></div>
