@@ -123,9 +123,31 @@ class UsuarioController extends Controller
         $estado = ["ACTIVO" => "ACTIVO", "INACTIVO" => "INACTIVO"];
         $sucursal = DB::table('sucursal')->pluck('suc_descri', 'cod_suc');
 
-        $auditoriaSeguimiento = $usuario
-            ->getDirectPermissions()
-            ->contains('name', 'seguimiento auditoria privada');
+        $permisoAuditoria = DB::table('permissions')
+            ->where('name', 'seguimiento auditoria privada')
+            ->where('guard_name', 'web')
+            ->first();
+
+        $auditoriaSeguimiento = false;
+
+        if ($permisoAuditoria) {
+            $auditoriaSeguimiento = DB::table(
+                'model_has_permissions'
+            )
+                ->where(
+                    'permission_id',
+                    $permisoAuditoria->id
+                )
+                ->where(
+                    'model_type',
+                    $usuario->getMorphClass()
+                )
+                ->where(
+                    'model_id',
+                    $usuario->getKey()
+                )
+                ->exists();
+        }
 
         return view('usuarios.edit')
             ->with('usuario', $usuario)
