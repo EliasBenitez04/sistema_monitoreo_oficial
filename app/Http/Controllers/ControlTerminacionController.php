@@ -885,6 +885,52 @@ class ControlTerminacionController extends Controller
         $buscar = trim((string) $request->input('buscar', ''));
 
         /*
+         * TEMPORADA
+         *
+         * Filtro multiselección. Cada valor es independiente: VERANO,
+         * INVIERNO, AMBOS u otra temporada existente. Sin selección = TODAS.
+         */
+        $temporadas = collect((array) $request->input('temporada', []))
+            ->map(function ($temporada) {
+                return strtoupper(trim((string) $temporada));
+            })
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $temporadasDisponibles = collect();
+        $codigosTemporada = collect();
+
+        if (Schema::hasTable('stock_ventas_sucursales')) {
+            $temporadasDisponibles = DB::table('stock_ventas_sucursales')
+                ->whereNotNull('temporada')
+                ->whereRaw("TRIM(COALESCE(temporada, '')) <> ''")
+                ->selectRaw('UPPER(TRIM(temporada)) as temporada')
+                ->distinct()
+                ->orderBy('temporada')
+                ->pluck('temporada')
+                ->filter()
+                ->values();
+
+            if (!empty($temporadas)) {
+                $codigosTemporada = DB::table('stock_ventas_sucursales')
+                    ->whereIn(
+                        DB::raw('UPPER(TRIM(temporada))'),
+                        $temporadas
+                    )
+                    ->whereNotNull('codigo')
+                    ->pluck('codigo')
+                    ->map(function ($codigo) {
+                        return $this->normalizarCodigoBaseTemporada($codigo);
+                    })
+                    ->filter()
+                    ->unique()
+                    ->flip();
+            }
+        }
+
+        /*
          * El rango selecciona OTs que tuvieron Producto Terminado en el período.
          * La conciliación posterior toma el estado completo acumulado de cada OT.
          */
@@ -936,6 +982,19 @@ class ControlTerminacionController extends Controller
                 'o.estado'
             )
             ->get();
+
+        if (!empty($temporadas)) {
+            $otsPeriodo = $otsPeriodo
+                ->filter(function ($ot) use ($codigosTemporada) {
+                    $codigoBase = $this->normalizarCodigoBaseTemporada(
+                        $ot->codigo
+                    );
+
+                    return $codigoBase !== ''
+                        && $codigosTemporada->has($codigoBase);
+                })
+                ->values();
+        }
 
         $ids = $otsPeriodo
             ->pluck('id_ot')
@@ -1082,6 +1141,8 @@ class ControlTerminacionController extends Controller
             'fechaDesde',
             'fechaHasta',
             'buscar',
+            'temporadas',
+            'temporadasDisponibles',
             'reporteCompleto',
             'reportePendiente',
             'resumen'
@@ -1613,6 +1674,37 @@ class ControlTerminacionController extends Controller
             'totalVentaRecibida',
             'totalMargenBrutoRemitido',
             'porcentajeMargenBrutoRemitido'
+        ));
+    }
+
+    /**
+     * Normaliza el código de OT/variante para relacionarlo con temporada.
+     * 050617617 -> 050617617
+     * 050617617GR04 -> 050617617
+     * 50617617 -> 050617617
+     */
+    private function normalizarCodigoBaseTemporada($codigo): string
+    {
+        $valor = strtoupper(trim((string) $codigo));
+        $valor = ltrim($valor, "'’");
+        $valor = preg_replace('/\\s+/u', '', $valor);
+
+        if ($valor === '') {
+            return '';
+        }
+
+        if (preg_match('/^\\d{1,9}$/', $valor)) {
+            return str_pad($valor, 9, '0', STR_PAD_LEFT);
+        }
+
+        if (preg_match('/^(\\d{9})/', $valor, $m)) {
+            return $m[1];
+        }
+
+        $variante = $this->descomponerCodigoVariante($valor);
+
+        return strtoupper(trim(
+            (string) ($variante['codigo_base'] ?? '')
         ));
     }
 
