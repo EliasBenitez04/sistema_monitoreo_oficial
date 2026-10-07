@@ -157,7 +157,7 @@
             <div class="card ct-card ct-kpi h-100"><div class="card-body">
                 <div class="label"><i class="fas fa-file-invoice text-info mr-1"></i>Remitido real</div>
                 <div class="value">{{ number_format($totalRemitidoReal,0,',','.') }}</div>
-                <div class="meta">Salida original Casa Central / Matriz → destino</div>
+                <div class="meta">Salida efectiva conciliada · incluye complementos de cierre vinculados</div>
             </div></div>
         </div>
 
