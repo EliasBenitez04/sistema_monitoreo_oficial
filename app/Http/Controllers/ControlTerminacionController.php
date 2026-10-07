@@ -1036,8 +1036,16 @@ class ControlTerminacionController extends Controller
                     (int) $c->ingreso_terminacion;
                 $ot->producto_terminado =
                     (int) $c->producto_terminado;
+                // Objetivo logístico = todo el PT.
                 $ot->planificado =
                     (int) $c->planificado;
+
+                // Plan realmente asignado por sucursal/destino.
+                $ot->plan_detallado =
+                    (int) $c->plan_detallado;
+                $ot->plan_disponible =
+                    (int) $c->plan_disponible;
+
                 $ot->remitido_original =
                     (int) $c->remitido_original;
                 $ot->recibido_original =
@@ -1049,8 +1057,16 @@ class ControlTerminacionController extends Controller
                     (int) $c->sin_destino;
                 $ot->sin_destino_plan =
                     (int) $c->sin_destino_plan;
+                // Pendiente con destino ya asignado.
+                $ot->pendiente_remitir_plan =
+                    (int) $c->pendiente_remitir_plan;
+
+                // Pendiente total de salida = incluye lo todavía sin destino.
                 $ot->pendiente_remitir =
                     (int) $c->pendiente_remitir;
+                $ot->pendiente_real_salida =
+                    (int) $c->pendiente_real_salida;
+
                 $ot->en_transito =
                     (int) $c->en_transito;
 
@@ -1134,8 +1150,16 @@ class ControlTerminacionController extends Controller
                 ->sum('ingreso_terminacion'),
             'producto_terminado' => (int) $reporteCompleto
                 ->sum('producto_terminado'),
+            // Objetivo de salida = todo el PT.
             'planificado' => (int) $reporteCompleto
                 ->sum('planificado'),
+
+            // Distribución/destino realmente cargado.
+            'plan_detallado' => (int) $reporteCompleto
+                ->sum('plan_detallado'),
+            'plan_disponible' => (int) $reporteCompleto
+                ->sum('plan_disponible'),
+
             'remitido' => (int) $reporteCompleto
                 ->sum('remitido_original'),
             'recibido' => (int) $reporteCompleto
@@ -1145,8 +1169,16 @@ class ControlTerminacionController extends Controller
                 ->sum('falta_terminacion'),
             'sin_destino' => (int) $reporteCompleto
                 ->sum('sin_destino'),
+            // Con destino asignado pero todavía sin remisión.
+            'pendiente_remitir_plan' => (int) $reporteCompleto
+                ->sum('pendiente_remitir_plan'),
+
+            // Todo PT aún sin salida, incluyendo sin destino.
             'pendiente_remitir' => (int) $reporteCompleto
                 ->sum('pendiente_remitir'),
+            'pendiente_real_salida' => (int) $reporteCompleto
+                ->sum('pendiente_real_salida'),
+
             'en_transito' => (int) $reporteCompleto
                 ->sum('en_transito'),
             'hueco_plan_vs_real' => (int) $reporteCompleto
