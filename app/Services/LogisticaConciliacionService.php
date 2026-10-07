@@ -174,14 +174,32 @@ class LogisticaConciliacionService
                     (int) ($remision->recibido_original ?? 0)
                 );
 
-                $remitidoCierre = max(
+                /*
+                 * Un complemento sólo puede cerrar una OT que ya tuvo salida
+                 * central real. Nunca permitimos que una redistribución por sí
+                 * sola sustituya el despacho original.
+                 */
+                $saldoDespachoCentral = max(
                     0,
-                    (int) ($coberturaPlan->remitido_cierre ?? 0)
+                    $ptEfectivo - $remitidoCentralRaw
                 );
 
-                $recibidoCierre = max(
-                    0,
-                    (int) ($coberturaPlan->recibido_cierre ?? 0)
+                $remitidoCierre = $remitidoCentralRaw > 0
+                    ? min(
+                        $saldoDespachoCentral,
+                        max(
+                            0,
+                            (int) ($coberturaPlan->remitido_cierre ?? 0)
+                        )
+                    )
+                    : 0;
+
+                $recibidoCierre = min(
+                    $remitidoCierre,
+                    max(
+                        0,
+                        (int) ($coberturaPlan->recibido_cierre ?? 0)
+                    )
                 );
 
                 $remitidoRaw =
