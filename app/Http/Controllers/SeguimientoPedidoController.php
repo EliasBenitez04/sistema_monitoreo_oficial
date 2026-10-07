@@ -315,12 +315,28 @@ class SeguimientoPedidoController extends Controller
             'promedio_dias' => $dias->count() ? round($dias->avg(), 1) : null,
         ];
 
-        return view('seguimiento_pedidos.index', compact('pedidos', 'buscar', 'resumenGerencial'));
+        $auditoriaPrivada = $this->puedeVerAuditoriaPrivada();
+
+        return view(
+            'seguimiento_pedidos.index',
+            compact(
+                'pedidos',
+                'buscar',
+                'resumenGerencial',
+                'auditoriaPrivada'
+            )
+        );
     }
 
 
     public function informeGerencial(Request $request)
     {
+        abort_unless(
+            $this->puedeVerAuditoriaPrivada(),
+            403,
+            'No tenés permiso para ver la auditoría privada.'
+        );
+
         $hoy = Carbon::today();
 
         $pedidos = SeguimientoPedido::query()
@@ -482,6 +498,12 @@ class SeguimientoPedidoController extends Controller
 
     public function exportarInformeGerencialExcel(Request $request)
     {
+        abort_unless(
+            $this->puedeVerAuditoriaPrivada(),
+            403,
+            'No tenés permiso para exportar la auditoría privada.'
+        );
+
         $vista = $this->informeGerencial($request);
         $datos = method_exists($vista, 'getData') ? $vista->getData() : [];
         $pendientes = collect($datos['pendientes'] ?? []);
@@ -1223,7 +1245,34 @@ class SeguimientoPedidoController extends Controller
                 : null,
         ];
 
-        return view('seguimiento_pedidos.show', compact('pedido', 'ots', 'resumen'));
+        $auditoriaPrivada = $this->puedeVerAuditoriaPrivada();
+
+        return view(
+            'seguimiento_pedidos.show',
+            compact(
+                'pedido',
+                'ots',
+                'resumen',
+                'auditoriaPrivada'
+            )
+        );
+    }
+
+    /**
+     * Auditoría privada = permiso DIRECTO del usuario.
+     *
+     * No usamos can() porque un permiso heredado por rol haría visible la
+     * auditoría a todos los usuarios que compartan ese rol.
+     */
+    private function puedeVerAuditoriaPrivada(): bool
+    {
+        if (!auth()->check()) {
+            return false;
+        }
+
+        return auth()->user()
+            ->getDirectPermissions()
+            ->contains('name', 'seguimiento auditoria privada');
     }
 
     /**
