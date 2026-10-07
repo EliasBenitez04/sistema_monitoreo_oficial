@@ -1002,6 +1002,27 @@ class SeguimientoPedidoController extends Controller
                 return $origenCentral && !$destinoCentral;
             });
 
+            /*
+             * Conservamos una copia histórica antes de aplicar el filtro por
+             * fecha del pedido. Así una OT que ya había sido despachada puede
+             * mostrar sus fechas reales aunque no corresponda medirla como
+             * despacho de ESTE pedido.
+             */
+            $despachosCentralHistoricos = $despachosCentral
+                ->filter(function ($mov) {
+                    return !empty($mov->fecha_remision);
+                })
+                ->sortBy(function ($mov) {
+                    return $mov->fecha_remision . ' '
+                        . str_pad(
+                            (string) ($mov->numero_remision ?? ''),
+                            20,
+                            '0',
+                            STR_PAD_LEFT
+                        );
+                })
+                ->values();
+
             if ($fechaPedido) {
                 $movimientosAnteriores += $despachosCentral->filter(function ($mov) use ($fechaPedido) {
                     return !empty($mov->fecha_remision)
@@ -1045,28 +1066,56 @@ class SeguimientoPedidoController extends Controller
             $ot->kpi_fecha_recepcion = null;
             $ot->kpi_dias = null;
             $ot->kpi_dias_logistica = null;
+            $ot->kpi_movimiento_historico = false;
 
             if (!$primerDespacho) {
-                $tuvoDespachoAnterior = $fechaPedido && $movsOt->contains(function ($mov) use ($fechaPedido) {
-                    $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
-                    $destino = strtoupper(trim((string) (($mov->sucursal_logistica ?? null)
-                        ?: ($mov->sucursal_destino ?? null))));
+                $despachosPrevios = $fechaPedido
+                    ? $despachosCentralHistoricos->filter(
+                        function ($mov) use ($fechaPedido) {
+                            return Carbon::parse(
+                                $mov->fecha_remision
+                            )->startOfDay()->lt($fechaPedido);
+                        }
+                    )->values()
+                    : collect();
 
-                    $origenCentral = (int) ($mov->cod_sucursal_salida ?? 0) === 1
-                        || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true);
+                $primerDespachoPrevio = $despachosPrevios->first();
 
-                    $destinoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
-                        || in_array($destino, ['CASA CENTRAL', 'MATRIZ', ''], true);
+                $primeraRecepcionPrevia = $despachosPrevios
+                    ->pluck('fecha_recepcion')
+                    ->filter()
+                    ->map(function ($fecha) {
+                        return Carbon::parse($fecha)
+                            ->startOfDay()
+                            ->format('Y-m-d');
+                    })
+                    ->min();
 
-                    return $origenCentral
-                        && !$destinoCentral
-                        && !empty($mov->fecha_remision)
-                        && Carbon::parse($mov->fecha_remision)->startOfDay()->lt($fechaPedido);
-                });
+                $tuvoDespachoAnterior =
+                    $primerDespachoPrevio !== null;
 
-                $ot->kpi_estado = ($otDisponiblePreviamente && $tuvoDespachoAnterior)
-                    ? 'CONFIRMADO'
-                    : 'SIN DESPACHO DEL PEDIDO';
+                if ($tuvoDespachoAnterior) {
+                    /*
+                     * Mostrar evidencia histórica real. No se calcula tiempo
+                     * desde el pedido porque el despacho fue anterior y no
+                     * corresponde atribuírselo al pedido actual.
+                     */
+                    $ot->kpi_fecha_envio =
+                        $primerDespachoPrevio->fecha_remision;
+
+                    $ot->kpi_fecha_recepcion =
+                        $primeraRecepcionPrevia;
+
+                    $ot->kpi_movimiento_historico = true;
+
+                    $ot->kpi_estado =
+                        'DISPONIBLE PREVIAMENTE';
+                } else {
+                    $ot->kpi_movimiento_historico = false;
+
+                    $ot->kpi_estado =
+                        'SIN DESPACHO DEL PEDIDO';
+                }
             } else {
                 $recepcionValida = $despachosCentral
                     ->pluck('fecha_recepcion')
@@ -1112,6 +1161,8 @@ class SeguimientoPedidoController extends Controller
                 'dias' => $ot->kpi_dias,
                 'dias_logistica' => $ot->kpi_dias_logistica,
                 'estado' => $ot->kpi_estado,
+                'movimiento_historico' =>
+                    $ot->kpi_movimiento_historico,
             ]);
         }
 
