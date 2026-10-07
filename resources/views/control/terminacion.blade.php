@@ -197,17 +197,17 @@
             <div class="row">
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Costo remitido real</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Costo despacho central</div>
                         <div class="h5 font-weight-bold mb-1">Gs {{ number_format($totalCostoRemitido,0,',','.') }}</div>
                         <small class="text-muted">
-                            {{ number_format($totalRemitidoReal,0,',','.') }} prendas con salida original
+                            Valorización de las líneas originales con costo importado
                         </small>
                     </div>
                 </div>
 
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta remitido</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta despacho central</div>
                         <div class="h5 font-weight-bold mb-1 text-primary">Gs {{ number_format($totalVentaRemitida,0,',','.') }}</div>
                         <small class="text-muted">Según precio_venta importado en remisiones</small>
                     </div>
@@ -215,7 +215,7 @@
 
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Costo recibido local</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Costo recibido · despacho central</div>
                         <div class="h5 font-weight-bold mb-1">Gs {{ number_format($totalCostoRecibido,0,',','.') }}</div>
                         <small class="text-muted">
                             {{ number_format($totalRecepcionLocal,0,',','.') }} prendas confirmadas
@@ -225,7 +225,7 @@
 
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta recibido</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta recibido · despacho central</div>
                         <div class="h5 font-weight-bold mb-1 text-success">Gs {{ number_format($totalVentaRecibida,0,',','.') }}</div>
                         <small class="text-muted">Valor comercial de lo ya recibido por locales</small>
                     </div>
@@ -233,7 +233,7 @@
             </div>
 
             <div class="ct-flow mb-2">
-                <strong>Margen bruto teórico remitido:</strong>
+                <strong>Margen bruto teórico del despacho central:</strong>
                 Gs {{ number_format($totalMargenBrutoRemitido,0,',','.') }}
                 · {{ number_format($porcentajeMargenBrutoRemitido,1,',','.') }}% sobre el valor de venta.
                 <span class="text-muted">
