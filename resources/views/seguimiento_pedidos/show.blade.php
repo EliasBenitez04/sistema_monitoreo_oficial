@@ -131,11 +131,23 @@
                         <td>
                             @if($otKpi->kpi_fecha_envio)
                                 <strong>{{ date('d/m/Y', strtotime($otKpi->kpi_fecha_envio)) }}</strong>
+                                @if($otKpi->kpi_movimiento_historico ?? false)
+                                    <small class="d-block text-muted">previa al pedido</small>
+                                @endif
                             @else
                                 -
                             @endif
                         </td>
-                        <td>{{ $otKpi->kpi_fecha_recepcion ? date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) : '-' }}</td>
+                        <td>
+                            @if($otKpi->kpi_fecha_recepcion)
+                                {{ date('d/m/Y', strtotime($otKpi->kpi_fecha_recepcion)) }}
+                                @if($otKpi->kpi_movimiento_historico ?? false)
+                                    <small class="d-block text-muted">histórica</small>
+                                @endif
+                            @else
+                                -
+                            @endif
+                        </td>
                         <td>
                             @if($otKpi->kpi_dias !== null)
                                 <strong>{{ $otKpi->kpi_dias }} días</strong>
@@ -154,6 +166,13 @@
                                         Saldo cuantitativo: {{ $otKpi->estado_conciliacion }}
                                     </div>
                                 @endif
+                            @elseif($otKpi->kpi_estado === 'DISPONIBLE PREVIAMENTE')
+                                <span class="badge badge-info">
+                                    <i class="fas fa-history mr-1"></i>DISPONIBLE PREVIAMENTE
+                                </span>
+                                <div class="small mt-1 text-success">
+                                    Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
+                                </div>
                             @elseif($otKpi->kpi_estado === 'REMISIONADO')
                                 <span class="badge badge-warning">
                                     <i class="fas fa-file-invoice mr-1"></i>REMISIONADO
