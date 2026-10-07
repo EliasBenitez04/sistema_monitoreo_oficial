@@ -167,14 +167,20 @@ class SeguimientoPedidoController extends Controller
 
         $pedidos = $query->paginate(30)->appends($request->query());
 
-        $conciliadoPagina = $this->resumenConciliadoPedidos(
-            $pedidos->getCollection()
+        /*
+         * Una sola conciliación para toda la consulta. La misma colección
+         * alimenta la página visible y el resumen gerencial inferior.
+         */
+        $resumenBase = (clone $query)->get();
+
+        $conciliadoGeneral = $this->resumenConciliadoPedidos(
+            $resumenBase
         );
 
         $pedidos->getCollection()->transform(function ($pedido) use (
-            $conciliadoPagina
+            $conciliadoGeneral
         ) {
-            $efectivo = $conciliadoPagina->get((int) $pedido->id);
+            $efectivo = $conciliadoGeneral->get((int) $pedido->id);
 
             $inicio = $pedido->fecha_pedido
                 ? Carbon::parse($pedido->fecha_pedido)->startOfDay()
@@ -241,12 +247,6 @@ class SeguimientoPedidoController extends Controller
 
             return $pedido;
         });
-
-        $resumenBase = (clone $query)->get();
-
-        $conciliadoGeneral = $this->resumenConciliadoPedidos(
-            $resumenBase
-        );
 
         $resumenBase->transform(function ($pedido) use (
             $conciliadoGeneral
