@@ -19,6 +19,7 @@ use App\Http\Controllers\SeguimientoPedidoController;
 use App\Http\Controllers\SeguimientoPedidoProduccionController;
 use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
 use App\Http\Controllers\PedidosController;
+use App\Http\Controllers\MaestroCodigoController;
 
 
 /*
@@ -316,6 +317,33 @@ Route::post(
         'import'
     ]
 )->name('articulos.importar');
+
+
+/*
+|--------------------------------------------------------------------------
+| MAESTRO DE CÓDIGOS
+|--------------------------------------------------------------------------
+*/
+
+Route::get(
+    '/gestion/codigos',
+    [MaestroCodigoController::class, 'index']
+)->name('maestro-codigos.index');
+
+Route::get(
+    '/gestion/codigos/importar',
+    [MaestroCodigoController::class, 'importarForm']
+)->name('maestro-codigos.importar.form');
+
+Route::post(
+    '/gestion/codigos/importar',
+    [MaestroCodigoController::class, 'importar']
+)->name('maestro-codigos.importar');
+
+Route::get(
+    '/gestion/codigos/importar/progreso/{token}',
+    [MaestroCodigoController::class, 'progreso']
+)->name('maestro-codigos.progreso');
 
 
 /*
