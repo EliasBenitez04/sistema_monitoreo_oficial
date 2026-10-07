@@ -98,7 +98,7 @@ class ReporteSemanalLogisticaExport implements FromCollection, WithHeadings, Sho
             'Mayorista / Matriz Real',
             'Remitido Movimiento',
             'Pendiente Remitir',
-            'Recibido',
+            'Recibido (fecha recepción)',
             'En Tránsito',
             'Estado',
         ];
