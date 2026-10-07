@@ -167,39 +167,108 @@ class SeguimientoPedidoController extends Controller
 
         $pedidos = $query->paginate(30)->appends($request->query());
 
-        $pedidos->getCollection()->transform(function ($pedido) {
-            $inicio = $pedido->fecha_pedido ? Carbon::parse($pedido->fecha_pedido)->startOfDay() : null;
-            $fin = $pedido->ultima_confirmacion ? Carbon::parse($pedido->ultima_confirmacion)->startOfDay() : null;
+        $conciliadoPagina = $this->resumenConciliadoPedidos(
+            $pedidos->getCollection()
+        );
 
-            $cantidad = (int) $pedido->cantidad_total;
+        $pedidos->getCollection()->transform(function ($pedido) use (
+            $conciliadoPagina
+        ) {
+            $efectivo = $conciliadoPagina->get((int) $pedido->id);
+
+            $inicio = $pedido->fecha_pedido
+                ? Carbon::parse($pedido->fecha_pedido)->startOfDay()
+                : null;
+
+            $finEfectivo = $efectivo
+                && $efectivo->ultima_primera_confirmacion
+                ? Carbon::parse(
+                    $efectivo->ultima_primera_confirmacion
+                )->startOfDay()
+                : null;
+
+            $cantidad = $efectivo
+                ? (int) $efectivo->cantidad
+                : (int) $pedido->cantidad_total;
+
             $movLocales = (int) $pedido->movimientos_locales;
-            $confLocales = (int) $pedido->confirmado_locales;
-            $otsTotal = (int) $pedido->ots_total;
-            $otsConfirmadas = (int) $pedido->ots_confirmadas;
 
-            // El pedido sólo está COMPLETO cuando TODAS sus OTs tienen
-            // una confirmación local válida posterior a la fecha del pedido.
-            // Las cantidades enviadas/confirmadas sirven como avance, pero
-            // no reemplazan el estado individual de cada OT.
-            $completo = $otsTotal > 0 && $otsConfirmadas >= $otsTotal;
+            $otsTotal = $efectivo
+                ? (int) $efectivo->ots
+                : (int) $pedido->ots_total;
+
+            $otsConfirmadas = $efectivo
+                ? (int) $efectivo->completas
+                : 0;
+
+            $completo =
+                $otsTotal > 0
+                && $otsConfirmadas >= $otsTotal;
 
             $pedido->detalles_count = $otsTotal;
             $pedido->movimientos_locales = $movLocales;
-            $pedido->confirmado_locales = $confLocales;
+
+            $pedido->producto_terminado_efectivo = $efectivo
+                ? (int) $efectivo->producto_terminado
+                : (int) $pedido->producto_terminado;
+
+            $pedido->remitido_efectivo = $efectivo
+                ? (int) $efectivo->remitido
+                : 0;
+
+            $pedido->confirmado_efectivo = $efectivo
+                ? (int) $efectivo->recibido
+                : 0;
+
             $pedido->ots_confirmadas = $otsConfirmadas;
             $pedido->completo_locales = $completo;
+            $pedido->ultima_confirmacion_efectiva =
+                $efectivo->ultima_primera_confirmacion ?? null;
 
-            $pedido->dias_confirmacion = ($inicio && $fin && $completo)
-                ? $inicio->diffInDays($fin, false)
-                : null;
-            $pedido->dias_transcurridos = ($inicio && !$completo)
-                ? $inicio->diffInDays(Carbon::today(), false)
-                : null;
+            /*
+             * El tiempo del pedido termina en la PRIMERA recepción de la
+             * última OT que logró recepción, no en una redistribución tardía.
+             */
+            $pedido->dias_confirmacion =
+                ($inicio && $finEfectivo && $completo)
+                    ? $inicio->diffInDays($finEfectivo, false)
+                    : null;
+
+            $pedido->dias_transcurridos =
+                ($inicio && !$completo)
+                    ? $inicio->diffInDays(Carbon::today(), false)
+                    : null;
 
             return $pedido;
         });
 
         $resumenBase = (clone $query)->get();
+
+        $conciliadoGeneral = $this->resumenConciliadoPedidos(
+            $resumenBase
+        );
+
+        $resumenBase->transform(function ($pedido) use (
+            $conciliadoGeneral
+        ) {
+            $efectivo = $conciliadoGeneral->get((int) $pedido->id);
+
+            if (!$efectivo) {
+                return $pedido;
+            }
+
+            $pedido->cantidad_total = (int) $efectivo->cantidad;
+            $pedido->producto_terminado =
+                (int) $efectivo->producto_terminado;
+            $pedido->confirmado =
+                (int) $efectivo->recibido;
+            $pedido->ots_total =
+                (int) $efectivo->ots;
+            $pedido->ots_confirmadas =
+                (int) $efectivo->completas;
+
+            return $pedido;
+        });
 
         $totalPedidos = $resumenBase->count();
         $totalPrendas = (int) $resumenBase->sum('cantidad_total');
@@ -279,6 +348,10 @@ class SeguimientoPedidoController extends Controller
         }
 
         $idsOt = $ots->pluck('id_ot')->unique()->values()->all();
+
+        $conciliacionPorOt = $this->conciliacionService
+            ->conciliarPorIds($idsOt);
+
         $trazas = collect();
         $remisiones = collect();
 
@@ -308,18 +381,53 @@ class SeguimientoPedidoController extends Controller
                 ->keyBy('id_ot');
         }
 
-        $filas = $ots->map(function ($ot) use ($trazas, $remisiones, $hoy) {
-            $porProceso = collect($trazas->get($ot->id_ot, collect()))->keyBy('proceso');
-            $terminacion = $porProceso->get('TERMINACION - TERMINACION');
-            $pt = $porProceso->get('TERMINACION - PRODUCTO TERMINADO');
+        $filas = $ots->map(function ($ot) use (
+            $trazas,
+            $remisiones,
+            $conciliacionPorOt,
+            $hoy
+        ) {
+            $porProceso = collect(
+                $trazas->get($ot->id_ot, collect())
+            )->keyBy('proceso');
+
+            $terminacion = $porProceso->get(
+                'TERMINACION - TERMINACION'
+            );
+
+            $pt = $porProceso->get(
+                'TERMINACION - PRODUCTO TERMINADO'
+            );
+
             $recepcion = $remisiones->get($ot->id_ot);
+            $conciliacion = $conciliacionPorOt->get($ot->id_ot);
 
             $fechaTerminacion = $terminacion->primera_fecha ?? null;
             $fechaLogistica = $pt->ultima_fecha ?? null;
-            $fechaRecepcion = $recepcion->primera_recepcion ?? null;
+            $fechaRecepcion =
+                $conciliacion->ultima_recepcion
+                ?? $recepcion->primera_recepcion
+                ?? null;
 
-            if ($fechaRecepcion) {
+            $estadoConciliacion =
+                $conciliacion->estado_conciliacion ?? null;
+
+            if ($estadoConciliacion === 'CONFIRMADO') {
                 $etapa = 'CONFIRMADO';
+            } elseif ($estadoConciliacion === 'EN TRANSITO') {
+                $etapa = 'RECEPCION PARCIAL';
+            } elseif (in_array(
+                $estadoConciliacion,
+                [
+                    'SIN DESTINO',
+                    'PENDIENTE REMITIR',
+                    'PENDIENTE SALIDA',
+                ],
+                true
+            )) {
+                $etapa = 'LOGISTICA';
+            } elseif ($estadoConciliacion === 'FALTA TERMINACION') {
+                $etapa = 'TERMINACION';
             } elseif ($fechaLogistica) {
                 $etapa = 'LOGISTICA';
             } elseif ($fechaTerminacion) {
@@ -1007,6 +1115,178 @@ class SeguimientoPedidoController extends Controller
         ];
 
         return view('seguimiento_pedidos.show', compact('pedido', 'ots', 'resumen'));
+    }
+
+    /**
+     * Resume cada pedido usando la misma conciliación cuantitativa de
+     * Control Terminación y Dashboard Logística.
+     *
+     * "completas" exige estado CONFIRMADO de la OT; una primera recepción
+     * aislada ya no alcanza para declarar completo el pedido.
+     */
+    private function resumenConciliadoPedidos($pedidos)
+    {
+        $pedidos = collect($pedidos);
+
+        $idsPedido = $pedidos
+            ->pluck('id')
+            ->filter()
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->unique()
+            ->values();
+
+        if ($idsPedido->isEmpty()) {
+            return collect();
+        }
+
+        $detalles = DB::table('seguimiento_pedido_detalle as spd')
+            ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+            ->whereIn(
+                'spd.seguimiento_pedido_id',
+                $idsPedido->all()
+            )
+            ->select(
+                'spd.seguimiento_pedido_id',
+                'o.id_ot',
+                'o.cantidad_orden'
+            )
+            ->get();
+
+        $idsOt = $detalles
+            ->pluck('id_ot')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $conciliaciones = $this->conciliacionService
+            ->conciliarPorIds($idsOt);
+
+        /*
+         * KPI temporal: para cada OT buscamos su PRIMERA recepción válida
+         * posterior al pedido. Luego, por pedido, tomamos la más tardía de
+         * esas primeras recepciones.
+         */
+        $primerasRecepciones = DB::table(
+            'seguimiento_pedido_detalle as spd'
+        )
+            ->join(
+                'seguimiento_pedido as sp',
+                'sp.id',
+                '=',
+                'spd.seguimiento_pedido_id'
+            )
+            ->join(
+                'ot_logistica_remisiones as r',
+                'r.id_ot',
+                '=',
+                'spd.id_ot'
+            )
+            ->whereIn(
+                'spd.seguimiento_pedido_id',
+                $idsPedido->all()
+            )
+            ->whereNotNull('r.fecha_recepcion')
+            ->where(function ($origen) {
+                $origen->whereRaw(
+                    "UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')"
+                )->orWhere('r.cod_sucursal_salida', 1);
+            })
+            ->whereRaw(
+                "UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ', '')"
+            )
+            ->where(function ($fecha) {
+                $fecha->whereNull('sp.fecha_pedido')
+                    ->orWhereColumn(
+                        'r.fecha_remision',
+                        '>=',
+                        'sp.fecha_pedido'
+                    );
+            })
+            ->where(function ($fecha) {
+                $fecha->whereNull('sp.fecha_pedido')
+                    ->orWhereColumn(
+                        'r.fecha_recepcion',
+                        '>=',
+                        'sp.fecha_pedido'
+                    );
+            })
+            ->groupBy(
+                'spd.seguimiento_pedido_id',
+                'r.id_ot'
+            )
+            ->select(
+                'spd.seguimiento_pedido_id',
+                'r.id_ot',
+                DB::raw(
+                    'MIN(r.fecha_recepcion) as primera_recepcion'
+                )
+            )
+            ->get()
+            ->groupBy('seguimiento_pedido_id');
+
+        return $detalles
+            ->groupBy('seguimiento_pedido_id')
+            ->map(function ($filas, $idPedido) use (
+                $conciliaciones,
+                $primerasRecepciones
+            ) {
+                $cantidad = 0;
+                $productoTerminado = 0;
+                $remitido = 0;
+                $recibido = 0;
+                $completas = 0;
+
+                foreach ($filas as $fila) {
+                    $cantidad += (int) $fila->cantidad_orden;
+
+                    $c = $conciliaciones->get(
+                        (int) $fila->id_ot
+                    );
+
+                    if (!$c) {
+                        continue;
+                    }
+
+                    $productoTerminado +=
+                        (int) $c->producto_terminado;
+                    $remitido +=
+                        (int) $c->remitido_original;
+                    $recibido +=
+                        (int) $c->recibido_original;
+
+                    if ($c->estado_conciliacion === 'CONFIRMADO') {
+                        $completas++;
+                    }
+                }
+
+                $recepciones = collect(
+                    $primerasRecepciones->get(
+                        $idPedido,
+                        collect()
+                    )
+                )
+                    ->pluck('primera_recepcion')
+                    ->filter();
+
+                return (object) [
+                    'ots' => $filas
+                        ->pluck('id_ot')
+                        ->unique()
+                        ->count(),
+                    'cantidad' => $cantidad,
+                    'producto_terminado' => $productoTerminado,
+                    'remitido' => $remitido,
+                    'recibido' => $recibido,
+                    'completas' => $completas,
+                    'ultima_primera_confirmacion' =>
+                        $recepciones->isNotEmpty()
+                            ? $recepciones->max()
+                            : null,
+                ];
+            });
     }
 
     /**
