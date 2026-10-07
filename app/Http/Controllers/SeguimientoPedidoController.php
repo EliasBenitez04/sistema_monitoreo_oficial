@@ -929,9 +929,38 @@ class SeguimientoPedidoController extends Controller
                 }
             }
 
-            $ot->porcentaje_seguimiento = $ot->etapa_numero > 0
-                ? (int) round(($ot->etapa_numero / 5) * 100)
-                : 0;
+            /*
+             * ESTADO VISUAL OPERATIVO
+             *
+             * Para Seguimiento Terminación, una vez que existe cualquier
+             * recepción física confirmada la OT ya alcanzó RECEPCIÓN LOCAL.
+             * Los faltantes cuantitativos siguen en estado_conciliacion y en
+             * los KPI de cantidades, pero no degradan el estado/color visual.
+             */
+            $ot->tiene_recepcion_confirmada =
+                (int) $ot->movimientos_confirmados > 0;
+
+            $ot->estado_seguimiento_visual =
+                $ot->tiene_recepcion_confirmada
+                    ? 'RECIBIDO'
+                    : $ot->estado_seguimiento;
+
+            $ot->etapa_actual_visual =
+                $ot->tiene_recepcion_confirmada
+                    ? 'RECEPCION LOCAL'
+                    : $ot->etapa_actual;
+
+            $ot->etapa_numero_visual =
+                $ot->tiene_recepcion_confirmada
+                    ? 5
+                    : $ot->etapa_numero;
+
+            $ot->porcentaje_seguimiento =
+                $ot->etapa_numero_visual > 0
+                    ? (int) round(
+                        ($ot->etapa_numero_visual / 5) * 100
+                    )
+                    : 0;
         }
 
         /*
