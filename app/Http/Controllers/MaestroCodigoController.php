@@ -14,6 +14,7 @@ class MaestroCodigoController extends Controller
     public function __construct()
     {
         $this->middleware('auth');
+        $this->middleware('permission:pedido_compras index');
     }
 
     public function index(Request $request)
