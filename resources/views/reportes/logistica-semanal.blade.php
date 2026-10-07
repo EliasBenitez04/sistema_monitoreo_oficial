@@ -89,6 +89,14 @@
         </div>
     </div>
 
+    <div class="alert alert-light border py-2 mb-3">
+        <i class="fas fa-info-circle text-info mr-1"></i>
+        <strong>Regla de lectura:</strong>
+        Remitido = existe una remisión importada, aunque todavía no tenga recepción.
+        Recibido/Confirmado = la remisión ya tiene <code>fecha_recepcion</code>.
+        En tránsito = remitido todavía sin <code>fecha_recepcion</code>.
+    </div>
+
     @if(!$tablaRemisionesDisponible)
         <div class="alert alert-warning">
             <i class="fas fa-exclamation-triangle mr-1"></i>
@@ -271,7 +279,7 @@
 
         <div class="col-xl-2 col-md-4 col-6 mb-3">
             <div class="card rs-card rs-kpi h-100"><div class="card-body">
-                <div class="label">Recibido / tránsito</div>
+                <div class="label">Recibido / En tránsito</div>
                 <div class="value">{{ number_format($totales['recibido'], 0, ',', '.') }}</div>
                 <div class="meta">{{ number_format($totales['en_transito'], 0, ',', '.') }} en tránsito</div>
             </div></div>
