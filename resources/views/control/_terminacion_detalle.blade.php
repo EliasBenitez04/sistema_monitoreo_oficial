@@ -52,11 +52,11 @@
             </div>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Remitido</small>
+            <small class="d-block">Remitido · con remisión</small>
             <strong>{{ number_format($totalRemitido, 0, ',', '.') }}</strong>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Confirmado</small>
+            <small class="d-block">Confirmado · con recepción</small>
             <strong class="text-success">{{ number_format($totalRecibido, 0, ',', '.') }}</strong>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
