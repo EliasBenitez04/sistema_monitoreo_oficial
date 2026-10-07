@@ -114,8 +114,9 @@
     <div class="cc-rule mb-3">
         <strong>Lectura:</strong>
         <strong>Falta Terminación</strong> = Ingreso a Terminación − PT ·
-        <strong>Sin destino</strong> = PT sin plan/remisión suficiente ·
-        <strong>Pendiente remitir</strong> = Plan disponible − Remitido ·
+        <strong>Sin destino</strong> = PT todavía sin destino asignado ·
+        <strong>Pendiente remitir</strong> = Plan asignado − Remitido ·
+        <strong>Pendiente salida total</strong> = PT − Remitido ·
         <strong>En tránsito</strong> = Remitido − Recibido.
     </div>
 
@@ -124,7 +125,13 @@
             <div class="cc-kpi"><div class="label">Producto Terminado</div><div class="value">{{ number_format($resumen->producto_terminado,0,',','.') }}</div><div class="meta">de {{ number_format($resumen->ingreso_terminacion,0,',','.') }} que ingresaron a Terminación · OT original {{ number_format($resumen->objetivo,0,',','.') }}</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label">Plan logístico</div><div class="value">{{ number_format($resumen->planificado,0,',','.') }}</div><div class="meta">distribución planificada</div></div>
+            <div class="cc-kpi">
+                <div class="label">Plan asignado</div>
+                <div class="value">{{ number_format($resumen->plan_detallado,0,',','.') }}</div>
+                <div class="meta">
+                    de {{ number_format($resumen->planificado,0,',','.') }} de objetivo logístico
+                </div>
+            </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label">Remitido real</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Tiene remisión emitida/importada · no requiere recepción</div></div>
@@ -142,7 +149,15 @@
             <div class="cc-kpi"><div class="label text-warning">Sin destino</div><div class="value">{{ number_format($resumen->sin_destino,0,',','.') }}</div><div class="meta">PT sin asignación suficiente</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label text-info">Pendiente remitir</div><div class="value">{{ number_format($resumen->pendiente_remitir,0,',','.') }}</div><div class="meta">plan aún sin salida</div></div>
+            <div class="cc-kpi">
+                <div class="label text-info">Pendiente remitir</div>
+                <div class="value">{{ number_format($resumen->pendiente_remitir_plan,0,',','.') }}</div>
+                <div class="meta">
+                    con destino asignado ·
+                    {{ number_format($resumen->pendiente_real_salida,0,',','.') }}
+                    pendientes de salida en total
+                </div>
+            </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label text-primary">En tránsito</div><div class="value">{{ number_format($resumen->en_transito,0,',','.') }}</div><div class="meta">Tiene remisión pero todavía no tiene fecha_recepcion</div></div>
@@ -188,7 +203,7 @@
                         <th class="text-right">OT original</th>
                         <th class="text-right">Ingreso Term.</th>
                         <th class="text-right">PT</th>
-                        <th class="text-right">Plan</th>
+                        <th class="text-right">Plan asignado</th>
                         <th class="text-right">Remitido</th>
                         <th class="text-right">Recibido</th>
                         <th class="text-right">Falta Term.</th>
@@ -217,12 +232,28 @@
                         <td class="text-right">{{ number_format($item->objetivo,0,',','.') }}</td>
                         <td class="text-right">{{ number_format($item->ingreso_terminacion,0,',','.') }}</td>
                         <td class="text-right"><strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong></td>
-                        <td class="text-right">{{ number_format($item->planificado,0,',','.') }}</td>
+                        <td class="text-right">
+                            {{ number_format($item->plan_detallado,0,',','.') }}
+                            @if($item->plan_detallado !== $item->planificado)
+                                <br>
+                                <small class="text-muted">
+                                    objetivo {{ number_format($item->planificado,0,',','.') }}
+                                </small>
+                            @endif
+                        </td>
                         <td class="text-right">{{ number_format($item->remitido_original,0,',','.') }}</td>
                         <td class="text-right">{{ number_format($item->recibido_original,0,',','.') }}</td>
                         <td class="text-right text-danger">{{ number_format($item->falta_terminacion,0,',','.') }}</td>
                         <td class="text-right text-warning">{{ number_format($item->sin_destino,0,',','.') }}</td>
-                        <td class="text-right text-info">{{ number_format($item->pendiente_remitir,0,',','.') }}</td>
+                        <td class="text-right text-info">
+                            {{ number_format($item->pendiente_remitir_plan,0,',','.') }}
+                            @if($item->pendiente_remitir > $item->pendiente_remitir_plan)
+                                <br>
+                                <small class="text-muted">
+                                    total salida {{ number_format($item->pendiente_remitir,0,',','.') }}
+                                </small>
+                            @endif
+                        </td>
                         <td class="text-right text-primary">{{ number_format($item->en_transito,0,',','.') }}</td>
                         <td><span class="cc-badge {{ $estadoClase }}">{{ $item->estado_conciliacion }}</span></td>
                         <td><span class="cc-action">{{ $item->solicitud }}</span></td>
