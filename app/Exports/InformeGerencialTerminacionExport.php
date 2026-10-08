@@ -43,17 +43,21 @@ class InformeGerencialTerminacionExport implements FromCollection, WithHeadings,
     {
         $fechaProceso = null;
 
-        if ($fila->etapa_gerencial === 'LOGISTICA' && $fila->fecha_logistica) {
+        if ($fila->etapa_gerencial === 'RECEPCION PARCIAL' && $fila->fecha_recepcion) {
+            $fechaProceso = date('d/m/Y', strtotime($fila->fecha_recepcion));
+        } elseif ($fila->etapa_gerencial === 'LOGISTICA' && $fila->fecha_logistica) {
             $fechaProceso = date('d/m/Y', strtotime($fila->fecha_logistica));
         } elseif ($fila->etapa_gerencial === 'TERMINACION' && $fila->fecha_terminacion) {
             $fechaProceso = date('d/m/Y', strtotime($fila->fecha_terminacion));
         }
 
-        $etapa = $fila->etapa_gerencial === 'LOGISTICA'
-            ? 'LOGÍSTICA'
-            : ($fila->etapa_gerencial === 'TERMINACION'
-                ? 'TERMINACIÓN'
-                : 'SIN INICIAR');
+        $etapa = $fila->etapa_gerencial === 'RECEPCION PARCIAL'
+            ? 'RECEPCIÓN PARCIAL'
+            : ($fila->etapa_gerencial === 'LOGISTICA'
+                ? 'LOGÍSTICA'
+                : ($fila->etapa_gerencial === 'TERMINACION'
+                    ? 'TERMINACIÓN'
+                    : 'SIN INICIAR'));
 
         return [
             $fila->urgente ? 'URGENTE' : 'NORMAL',
