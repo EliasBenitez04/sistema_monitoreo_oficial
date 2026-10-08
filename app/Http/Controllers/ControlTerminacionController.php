@@ -209,6 +209,14 @@ class ControlTerminacionController extends Controller
                 $item->id_ot
             );
 
+            $item->cantidad_valorizada_remitida = $valorizacion
+                ? (int) $valorizacion->cantidad_remitida
+                : 0;
+
+            $item->cantidad_valorizada_recibida = $valorizacion
+                ? (int) $valorizacion->cantidad_recibida
+                : 0;
+
             $item->costo_remitido = $valorizacion
                 ? (float) $valorizacion->costo_remitido
                 : 0.0;
@@ -428,6 +436,12 @@ class ControlTerminacionController extends Controller
         $totalRecepcionLocal = (int) $produccionTerminada
             ->sum('recibido_efectivo');
 
+        $totalCantidadValorizadaRemitida = (int) $produccionTerminada
+            ->sum('cantidad_valorizada_remitida');
+
+        $totalCantidadValorizadaRecibida = (int) $produccionTerminada
+            ->sum('cantidad_valorizada_recibida');
+
         $totalCostoRemitido = (float) $produccionTerminada
             ->sum('costo_remitido');
 
@@ -556,6 +570,8 @@ class ControlTerminacionController extends Controller
             'totalTerminado',
             'totalEntregadoLogistica',
             'totalRecepcionLocal',
+            'totalCantidadValorizadaRemitida',
+            'totalCantidadValorizadaRecibida',
             'totalCostoRemitido',
             'totalVentaRemitida',
             'totalCostoRecibido',
