@@ -1,0 +1,511 @@
+@extends('layouts.app')
+
+@section('content')
+<section class="content-header">
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <h1><i class="fas fa-chart-line mr-2"></i>Ventas</h1>
+                <p class="text-muted mb-0">
+                    Resumen comercial, devoluciones, locales, productos y vendedores.
+                </p>
+            </div>
+            <a href="{{ route('ventas.importar.form') }}"
+               class="btn btn-success shadow-sm mt-2 mt-md-0">
+                <i class="fas fa-file-import mr-1"></i> Importar ventas
+            </a>
+        </div>
+    </div>
+</section>
+
+<section class="content">
+<div class="container-fluid">
+
+    @if($ultimaImportacion)
+        <div class="alert alert-light border py-2 mb-3">
+            <i class="fas fa-database text-info mr-1"></i>
+            <strong>Última importación:</strong>
+            {{ $ultimaImportacion->nombre_archivo }}
+            · {{ $ultimaImportacion->fecha_desde ? date('d/m/Y', strtotime($ultimaImportacion->fecha_desde)) : '-' }}
+            @if($ultimaImportacion->fecha_hasta && $ultimaImportacion->fecha_hasta !== $ultimaImportacion->fecha_desde)
+                al {{ date('d/m/Y', strtotime($ultimaImportacion->fecha_hasta)) }}
+            @endif
+            · {{ number_format($ultimaImportacion->filas_insertadas,0,',','.') }} nuevas
+            · {{ number_format($ultimaImportacion->filas_omitidas,0,',','.') }} omitidas/duplicadas
+        </div>
+    @endif
+
+    <div class="card card-outline card-primary shadow-sm mb-3">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-filter mr-1"></i> Filtros
+            </h3>
+        </div>
+        <div class="card-body pb-2">
+            <form method="GET" action="{{ route('ventas.index') }}">
+                <div class="row align-items-end">
+                    <div class="col-lg-2 col-md-4 mb-2">
+                        <label class="small font-weight-bold">Desde</label>
+                        <input type="date" name="desde" value="{{ $desde }}" class="form-control">
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-2">
+                        <label class="small font-weight-bold">Hasta</label>
+                        <input type="date" name="hasta" value="{{ $hasta }}" class="form-control">
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-2">
+                        <label class="small font-weight-bold">Local</label>
+                        <select name="local" class="form-control select2">
+                            <option value="">Todos</option>
+                            @foreach($locales as $item)
+                                <option value="{{ $item }}" {{ $local === $item ? 'selected' : '' }}>
+                                    {{ $item }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-2">
+                        <label class="small font-weight-bold">Vendedor</label>
+                        <select name="vendedor" class="form-control select2">
+                            <option value="">Todos</option>
+                            @foreach($vendedores as $item)
+                                <option value="{{ $item }}" {{ $vendedor === $item ? 'selected' : '' }}>
+                                    {{ $item }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-lg-1 col-md-4 mb-2">
+                        <label class="small font-weight-bold">Tipo</label>
+                        <select name="tipo" class="form-control">
+                            <option value="">Todos</option>
+                            @foreach($tipos as $item)
+                                <option value="{{ $item }}" {{ $tipo === $item ? 'selected' : '' }}>
+                                    {{ $item }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-8 mb-2">
+                        <label class="small font-weight-bold">Buscar</label>
+                        <input type="text"
+                               name="buscar"
+                               value="{{ $buscar }}"
+                               class="form-control"
+                               placeholder="Código, artículo, cliente o comprobante">
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center flex-wrap mt-1">
+                    <div class="small text-muted mb-2 mb-md-0">
+                        @if(!$todo && $desde && $hasta && $desde === $hasta)
+                            Mostrando el día {{ date('d/m/Y', strtotime($desde)) }}.
+                        @elseif($todo)
+                            Mostrando todo el histórico.
+                        @endif
+                    </div>
+                    <div>
+                        <a href="{{ route('ventas.index', ['todo' => 1]) }}"
+                           class="btn btn-light border mr-1">
+                            <i class="fas fa-history mr-1"></i> Todo
+                        </a>
+                        <a href="{{ route('ventas.index') }}"
+                           class="btn btn-light border mr-1">
+                            <i class="fas fa-calendar-day mr-1"></i> Último día
+                        </a>
+                        <button class="btn btn-primary">
+                            <i class="fas fa-search mr-1"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-xl-3 col-md-6">
+            <div class="small-box bg-white border-left border-success shadow-sm">
+                <div class="inner">
+                    <h3>Gs {{ number_format($resumen->venta_neta,0,',','.') }}</h3>
+                    <p>Venta neta</p>
+                    <small>
+                        Bruta Gs {{ number_format($resumen->venta_bruta,0,',','.') }}
+                        · devoluciones Gs {{ number_format($resumen->devoluciones_valor,0,',','.') }}
+                    </small>
+                </div>
+                <div class="icon"><i class="fas fa-cash-register text-success"></i></div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6">
+            <div class="small-box bg-white border-left border-primary shadow-sm">
+                <div class="inner">
+                    <h3>{{ number_format($resumen->unidades_netas,0,',','.') }}</h3>
+                    <p>Unidades netas</p>
+                    <small>
+                        {{ number_format($resumen->unidades_vendidas,0,',','.') }} vendidas
+                        · {{ number_format($resumen->unidades_devueltas,0,',','.') }} devueltas
+                    </small>
+                </div>
+                <div class="icon"><i class="fas fa-tshirt text-primary"></i></div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6">
+            <div class="small-box bg-white border-left border-info shadow-sm">
+                <div class="inner">
+                    <h3>{{ number_format($resumen->tickets,0,',','.') }}</h3>
+                    <p>Tickets de venta</p>
+                    <small>
+                        Ticket promedio Gs {{ number_format($resumen->ticket_promedio,0,',','.') }}
+                    </small>
+                </div>
+                <div class="icon"><i class="fas fa-receipt text-info"></i></div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6">
+            <div class="small-box bg-white border-left border-warning shadow-sm">
+                <div class="inner">
+                    <h3>Gs {{ number_format($resumen->descuento_otorgado,0,',','.') }}</h3>
+                    <p>Descuento otorgado</p>
+                    <small>
+                        {{ number_format($resumen->porcentaje_descuento,1,',','.') }}% sobre precio lista
+                    </small>
+                </div>
+                <div class="icon"><i class="fas fa-tags text-warning"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-lg-3 col-6">
+            <div class="ct-mini h-100">
+                <small class="text-muted text-uppercase font-weight-bold">Venta a lista</small>
+                <div class="h5 mb-0 font-weight-bold">
+                    Gs {{ number_format($resumen->venta_lista,0,',','.') }}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3 col-6">
+            <div class="ct-mini h-100">
+                <small class="text-muted text-uppercase font-weight-bold">Precio promedio/unidad</small>
+                <div class="h5 mb-0 font-weight-bold">
+                    Gs {{ number_format($resumen->precio_promedio_unidad,0,',','.') }}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-4 mt-2 mt-lg-0">
+            <div class="ct-mini h-100 text-center">
+                <small class="text-muted text-uppercase font-weight-bold">Locales</small>
+                <div class="h5 mb-0 font-weight-bold">{{ number_format($resumen->locales,0,',','.') }}</div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-4 mt-2 mt-lg-0">
+            <div class="ct-mini h-100 text-center">
+                <small class="text-muted text-uppercase font-weight-bold">Códigos</small>
+                <div class="h5 mb-0 font-weight-bold">{{ number_format($resumen->codigos,0,',','.') }}</div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-4 mt-2 mt-lg-0">
+            <div class="ct-mini h-100 text-center">
+                <small class="text-muted text-uppercase font-weight-bold">Vendedores</small>
+                <div class="h5 mb-0 font-weight-bold">{{ number_format($resumen->vendedores,0,',','.') }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-light border py-2 mb-3">
+        <strong>Lectura:</strong>
+        Venta neta = ventas positivas − notas de crédito/devoluciones.
+        Las filas con cantidad negativa se conservan y descuentan del resultado;
+        no se eliminan del histórico.
+    </div>
+
+    <div class="row">
+        <div class="col-xl-7">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-store mr-1"></i> Resultado por local
+                    </h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 ventas-table">
+                        <thead>
+                            <tr>
+                                <th>Local</th>
+                                <th class="text-right">Unid. netas</th>
+                                <th class="text-right">Dev.</th>
+                                <th class="text-right">Tickets</th>
+                                <th class="text-right">Ticket prom.</th>
+                                <th class="text-right">Venta neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($porLocal as $item)
+                                <tr>
+                                    <td><strong>{{ $item->local }}</strong></td>
+                                    <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
+                                    <td class="text-right {{ $item->devoluciones > 0 ? 'text-danger' : '' }}">
+                                        {{ number_format($item->devoluciones,0,',','.') }}
+                                    </td>
+                                    <td class="text-right">{{ number_format($item->tickets,0,',','.') }}</td>
+                                    <td class="text-right">Gs {{ number_format($item->ticket_promedio,0,',','.') }}</td>
+                                    <td class="text-right font-weight-bold text-success">
+                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="6" class="text-center text-muted py-3">Sin datos.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-5 mt-3 mt-xl-0">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-user-tie mr-1"></i> Top vendedores
+                    </h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 ventas-table">
+                        <thead>
+                            <tr>
+                                <th>Vendedor</th>
+                                <th class="text-right">Unid.</th>
+                                <th class="text-right">Tickets</th>
+                                <th class="text-right">Venta neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($porVendedor as $item)
+                                <tr>
+                                    <td><strong>{{ $item->vendedor }}</strong></td>
+                                    <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($item->tickets,0,',','.') }}</td>
+                                    <td class="text-right font-weight-bold">
+                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="4" class="text-center text-muted py-3">Sin datos.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-3">
+        <div class="col-xl-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-award mr-1"></i> Top productos
+                    </h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 ventas-table">
+                        <thead>
+                            <tr>
+                                <th>Código / artículo</th>
+                                <th>Grupo</th>
+                                <th>Temporada</th>
+                                <th class="text-right">Unid. netas</th>
+                                <th class="text-right">Venta neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($porProducto as $item)
+                                <tr>
+                                    <td>
+                                        <strong>{{ $item->codigo }}</strong><br>
+                                        <small class="text-muted">{{ $item->descripcion }}</small>
+                                    </td>
+                                    <td>{{ $item->grupo ?? '-' }}</td>
+                                    <td>
+                                        @if(!empty($item->temporada))
+                                            <span class="badge badge-info">{{ $item->temporada }}</span>
+                                        @else
+                                            -
+                                        @endif
+                                    </td>
+                                    <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
+                                    <td class="text-right font-weight-bold">
+                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5" class="text-center text-muted py-3">Sin datos.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 mt-3 mt-xl-0">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-calendar-alt mr-1"></i> Resumen por día
+                    </h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 ventas-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th class="text-right">Unid.</th>
+                                <th class="text-right">Venta neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($porDia as $item)
+                                <tr>
+                                    <td>{{ date('d/m/Y', strtotime($item->fecha)) }}</td>
+                                    <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
+                                    <td class="text-right font-weight-bold">
+                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                        @if($item->devoluciones > 0)
+                                            <small class="d-block text-danger">
+                                                Dev. Gs {{ number_format($item->devoluciones,0,',','.') }}
+                                            </small>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="3" class="text-center text-muted py-3">Sin datos.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mt-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h3 class="card-title float-none mb-0">
+                    <i class="fas fa-list mr-1"></i> Detalle de ventas
+                </h3>
+                <small class="text-muted">
+                    {{ number_format($ventas->total(),0,',','.') }} líneas con los filtros actuales
+                </small>
+            </div>
+            <span class="badge badge-light border p-2">
+                100 por página
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 ventas-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Local</th>
+                        <th>Código / descripción</th>
+                        <th>Cliente</th>
+                        <th>Vendedor</th>
+                        <th>Comprobante</th>
+                        <th class="text-right">Lista</th>
+                        <th class="text-right">Dto.</th>
+                        <th class="text-right">PVTA</th>
+                        <th class="text-right">Cant.</th>
+                        <th class="text-right">Importe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($ventas as $item)
+                        @php
+                            $importe = ((float) $item->cantidad) * ((float) $item->p_venta);
+                        @endphp
+                        <tr class="{{ $item->cantidad < 0 ? 'table-danger' : '' }}">
+                            <td>{{ date('d/m/Y', strtotime($item->fecha)) }}</td>
+                            <td><strong>{{ $item->local }}</strong></td>
+                            <td>
+                                <strong>{{ $item->codigo }}</strong><br>
+                                <small class="text-muted">{{ $item->descripcion }}</small>
+                                @if(!empty($item->grupo))
+                                    <small class="d-block text-info">
+                                        {{ $item->grupo }}{{ !empty($item->temporada) ? ' · '.$item->temporada : '' }}
+                                    </small>
+                                @endif
+                            </td>
+                            <td>
+                                {{ $item->cliente ?: '-' }}
+                                @if($item->cli_cod)
+                                    <small class="d-block text-muted">Cod. {{ $item->cli_cod }}</small>
+                                @endif
+                            </td>
+                            <td>{{ $item->vendedor ?: '-' }}</td>
+                            <td>
+                                <span class="badge {{ $item->tipo_comprobante === 'NCR' ? 'badge-danger' : 'badge-light border' }}">
+                                    {{ $item->comprobante }}
+                                </span>
+                            </td>
+                            <td class="text-right">Gs {{ number_format($item->p_lista,0,',','.') }}</td>
+                            <td class="text-right">Gs {{ number_format($item->descuento,0,',','.') }}</td>
+                            <td class="text-right">Gs {{ number_format($item->p_venta,0,',','.') }}</td>
+                            <td class="text-right font-weight-bold {{ $item->cantidad < 0 ? 'text-danger' : '' }}">
+                                {{ number_format($item->cantidad,0,',','.') }}
+                            </td>
+                            <td class="text-right font-weight-bold {{ $importe < 0 ? 'text-danger' : 'text-success' }}">
+                                Gs {{ number_format($importe,0,',','.') }}
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="11" class="text-center text-muted py-5">
+                                No hay ventas para los filtros seleccionados.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        @if($ventas->hasPages())
+            <div class="card-footer">
+                {{ $ventas->links() }}
+            </div>
+        @endif
+    </div>
+
+</div>
+</section>
+@endsection
+
+@push('page_css')
+<style>
+.border-left{border-left-width:4px!important}
+.small-box.bg-white .icon{top:8px;font-size:44px;opacity:.14}
+.small-box .inner h3{font-size:1.55rem}
+.ct-mini{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+    padding:12px;
+    box-shadow:0 2px 8px rgba(15,23,42,.04);
+}
+.ventas-table th{
+    background:#f8fafc;
+    color:#64748b;
+    font-size:.68rem;
+    text-transform:uppercase;
+    letter-spacing:.025em;
+    white-space:nowrap;
+    vertical-align:middle!important;
+}
+.ventas-table td{
+    font-size:.79rem;
+    vertical-align:middle!important;
+}
+</style>
+@endpush
