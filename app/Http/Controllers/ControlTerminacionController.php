@@ -1738,14 +1738,20 @@ class ControlTerminacionController extends Controller
          * - Plan detallado = suma distribuida por sucursales.
          * - Sin asignar = PT - plan detallado.
          */
-        $totalPlanDetallado = (int) $detalles->sum('cantidad');
+        $totalPlanDetalladoRaw = (int) $detalles->sum('cantidad');
 
+        /*
+         * PRODUCTO TERMINADO manda.
+         * El plan efectivo jamás puede superar el PT.
+         */
         $totalPlan = $conciliacion
-            ? (int) $conciliacion->plan_objetivo
-            : max(
-                (int) $ot->cantidad_orden,
-                $totalPlanDetallado
-            );
+            ? (int) $conciliacion->producto_terminado
+            : (int) $ot->cantidad_orden;
+
+        $totalPlanDetallado = min(
+            $totalPlan,
+            $totalPlanDetalladoRaw
+        );
 
         $totalSinAsignar = max(
             0,
@@ -1753,13 +1759,12 @@ class ControlTerminacionController extends Controller
         );
 
         /*
-         * Auditoría del plan:
-         * ot_logistica_detalle puede conservar distribuciones/reasignaciones
-         * posteriores y por eso superar el objetivo físico de la OT.
+         * Todo lo que quede por encima del PT es movimiento/auditoría,
+         * nunca plan efectivo.
          */
         $totalExcesoPlan = max(
             0,
-            $totalPlanDetallado - $totalPlan
+            $totalPlanDetalladoRaw - $totalPlan
         );
 
         $totalRemitido = $conciliacion
@@ -1873,6 +1878,7 @@ class ControlTerminacionController extends Controller
             'remisionesSinDetalle',
             'totalPlan',
             'totalPlanDetallado',
+            'totalPlanDetalladoRaw',
             'totalSinAsignar',
             'totalExcesoPlan',
             'totalRemitido',
