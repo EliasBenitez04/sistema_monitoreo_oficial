@@ -59,11 +59,19 @@ class VentaController extends Controller
                  COALESCE(SUM(v.cantidad), 0) as unidades_netas,
                  COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END), 0) as unidades_vendidas,
                  COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) ELSE 0 END), 0) as unidades_devueltas,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.p_venta) ELSE 0 END), 0) as venta_bruta,
-                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * ABS(v.p_venta) ELSE 0 END), 0) as devoluciones_valor,
-                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.p_lista) ELSE 0 END), 0) as venta_lista,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.descuento) ELSE 0 END), 0) as descuento_otorgado,
+
+                 /*
+                  * PLISTA, DTO y PVTA ya son totales por línea en el export.
+                  * Las NCR llegan firmadas en negativo, por lo tanto se suman
+                  * directamente sin volver a multiplicar por CANTIDAD.
+                  */
+                 COALESCE(SUM(v.p_lista), 0) as venta_lista,
+                 COALESCE(SUM(v.descuento), 0) as descuento_otorgado,
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta,
+
+                 COALESCE(SUM(CASE WHEN v.p_venta > 0 THEN v.p_venta ELSE 0 END), 0) as venta_positiva,
+                 COALESCE(SUM(CASE WHEN v.p_venta < 0 THEN ABS(v.p_venta) ELSE 0 END), 0) as devoluciones_valor,
+
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
                  COUNT(DISTINCT v.codigo) as codigos,
                  COUNT(DISTINCT v.local) as locales,
@@ -73,14 +81,14 @@ class VentaController extends Controller
 
         $resumen->ticket_promedio =
             (int) $resumen->tickets > 0
-                ? (float) $resumen->venta_bruta
+                ? (float) $resumen->venta_neta
                     / (int) $resumen->tickets
                 : 0;
 
         $resumen->precio_promedio_unidad =
             (int) $resumen->unidades_vendidas > 0
-                ? (float) $resumen->venta_bruta
-                    / (int) $resumen->unidades_vendidas
+                ? (float) $resumen->venta_neta
+                    / (int) $resumen->unidades_netas
                 : 0;
 
         $resumen->porcentaje_descuento =
@@ -100,8 +108,9 @@ class VentaController extends Controller
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
                  COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END), 0) as unidades_vendidas,
                  COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) ELSE 0 END), 0) as devoluciones,
-                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.p_venta) ELSE 0 END), 0) as venta_bruta,
+                 COALESCE(SUM(v.p_lista), 0) as venta_lista,
+                 COALESCE(SUM(v.descuento), 0) as descuento,
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante END) as tickets"
             )
             ->groupBy('v.local')
@@ -110,7 +119,7 @@ class VentaController extends Controller
             ->map(function ($item) {
                 $item->ticket_promedio =
                     (int) $item->tickets > 0
-                        ? (float) $item->venta_bruta
+                        ? (float) $item->venta_neta
                             / (int) $item->tickets
                         : 0;
 
@@ -123,7 +132,7 @@ class VentaController extends Controller
             ->select('v.vendedor')
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
-                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
             )
             ->groupBy('v.vendedor')
@@ -160,7 +169,7 @@ class VentaController extends Controller
             )
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
-                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta"
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta"
             )
             ->groupBy(
                 'v.codigo',
@@ -185,8 +194,8 @@ class VentaController extends Controller
             ->select('v.fecha')
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
-                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
-                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * ABS(v.p_venta) ELSE 0 END), 0) as devoluciones,
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.p_venta < 0 THEN ABS(v.p_venta) ELSE 0 END), 0) as devoluciones,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
             )
             ->groupBy('v.fecha')
