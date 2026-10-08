@@ -31,7 +31,19 @@
                 al {{ date('d/m/Y', strtotime($ultimaImportacion->fecha_hasta)) }}
             @endif
             · {{ number_format($ultimaImportacion->filas_insertadas,0,',','.') }} nuevas
-            · {{ number_format($ultimaImportacion->filas_omitidas,0,',','.') }} omitidas/duplicadas
+            · {{ number_format($ultimaImportacion->filas_duplicadas ?? 0,0,',','.') }} duplicadas
+            · {{ number_format($ultimaImportacion->filas_invalidas ?? 0,0,',','.') }} inválidas
+            @php
+                $sinClasificarUltima = max(
+                    0,
+                    (int) $ultimaImportacion->filas_omitidas
+                        - (int) ($ultimaImportacion->filas_duplicadas ?? 0)
+                        - (int) ($ultimaImportacion->filas_invalidas ?? 0)
+                );
+            @endphp
+            @if($sinClasificarUltima > 0)
+                · {{ number_format($sinClasificarUltima,0,',','.') }} omitidas históricas sin clasificar
+            @endif
         </div>
     @endif
 
