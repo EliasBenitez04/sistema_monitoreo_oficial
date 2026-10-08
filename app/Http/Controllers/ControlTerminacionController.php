@@ -1076,6 +1076,39 @@ class ControlTerminacionController extends Controller
                 $ot->hueco_plan_vs_real =
                     (int) $c->hueco_plan_vs_real;
 
+                /*
+                 * Diagnósticos explícitos para detectar de dónde salen las
+                 * diferencias del resumen.
+                 */
+                $ot->diferencia_pt_ingreso =
+                    $ot->producto_terminado
+                    - $ot->ingreso_terminacion;
+
+                $ot->exceso_pt_sobre_ingreso = max(
+                    0,
+                    $ot->diferencia_pt_ingreso
+                );
+
+                $ot->faltante_pt_vs_ingreso = max(
+                    0,
+                    -$ot->diferencia_pt_ingreso
+                );
+
+                $ot->hueco_plan_bruto =
+                    (int) $c->sin_destino_plan;
+
+                $ot->cubierto_sin_plan_por_remision = max(
+                    0,
+                    $ot->hueco_plan_bruto
+                    - $ot->sin_destino
+                );
+
+                $ot->exceso_plan_sobre_pt = max(
+                    0,
+                    $ot->plan_detallado
+                    - $ot->producto_terminado
+                );
+
                 $ot->destinos = (int) $c->destinos;
 
                 $ot->ultima_fecha_pt =
@@ -1112,6 +1145,39 @@ class ControlTerminacionController extends Controller
                 return $ot;
             })
             ->filter()
+            ->values();
+
+        /*
+         * DIAGNÓSTICO DE DIFERENCIAS
+         *
+         * Producción:
+         *   PT > Ingreso  => revisar trazabilidad/importación de Terminación.
+         *   Ingreso > PT  => producción todavía no completada.
+         *
+         * Logística:
+         *   PT > Plan     => detalle logístico insuficiente.
+         *   Parte del hueco puede quedar explicada por una remisión real.
+         */
+        $diagnosticoProduccion = $reporteCompleto
+            ->filter(function ($ot) {
+                return $ot->diferencia_pt_ingreso !== 0;
+            })
+            ->sortByDesc(function ($ot) {
+                return abs($ot->diferencia_pt_ingreso);
+            })
+            ->values();
+
+        $diagnosticoPlan = $reporteCompleto
+            ->filter(function ($ot) {
+                return $ot->hueco_plan_bruto > 0
+                    || $ot->exceso_plan_sobre_pt > 0;
+            })
+            ->sortByDesc(function ($ot) {
+                return max(
+                    $ot->hueco_plan_bruto,
+                    $ot->exceso_plan_sobre_pt
+                );
+            })
             ->values();
 
         $reportePendiente = $reporteCompleto
@@ -1199,6 +1265,26 @@ class ControlTerminacionController extends Controller
                 - (int) $resumen->sin_destino
         );
 
+        $resumen->diferencia_pt_ingreso =
+            (int) $resumen->producto_terminado
+            - (int) $resumen->ingreso_terminacion;
+
+        $resumen->ots_diferencia_produccion =
+            $diagnosticoProduccion->count();
+
+        $resumen->ots_diferencia_plan =
+            $diagnosticoPlan->count();
+
+        $resumen->exceso_pt_sobre_ingreso = (int)
+            $diagnosticoProduccion->sum(
+                'exceso_pt_sobre_ingreso'
+            );
+
+        $resumen->faltante_pt_vs_ingreso = (int)
+            $diagnosticoProduccion->sum(
+                'faltante_pt_vs_ingreso'
+            );
+
         /*
          * Control de conservación física:
          * PT = Remitido + Pendiente con destino + Sin destino.
@@ -1220,6 +1306,8 @@ class ControlTerminacionController extends Controller
             'temporadasDisponibles',
             'reporteCompleto',
             'reportePendiente',
+            'diagnosticoProduccion',
+            'diagnosticoPlan',
             'resumen'
         );
     }
