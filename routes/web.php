@@ -20,6 +20,7 @@ use App\Http\Controllers\SeguimientoPedidoProduccionController;
 use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
 use App\Http\Controllers\PedidosController;
 use App\Http\Controllers\MaestroCodigoController;
+use App\Http\Controllers\VentaController;
 
 
 /*
@@ -317,6 +318,33 @@ Route::post(
         'import'
     ]
 )->name('articulos.importar');
+
+
+/*
+|--------------------------------------------------------------------------
+| VENTAS
+|--------------------------------------------------------------------------
+*/
+
+Route::get(
+    '/ventas',
+    [VentaController::class, 'index']
+)->name('ventas.index');
+
+Route::get(
+    '/ventas/importar',
+    [VentaController::class, 'importarForm']
+)->name('ventas.importar.form');
+
+Route::post(
+    '/ventas/importar',
+    [VentaController::class, 'importar']
+)->name('ventas.importar');
+
+Route::get(
+    '/ventas/importar/progreso/{token}',
+    [VentaController::class, 'progreso']
+)->name('ventas.progreso');
 
 
 /*
