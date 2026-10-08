@@ -125,12 +125,19 @@ class LogisticaConciliacionService
 
                 $movimientos = collect($trazabilidad->get($idOt, collect()));
 
-                $ingreso = $movimientos->firstWhere(
+                $preIngresoTerminacion = $movimientos->firstWhere(
                     'proceso',
                     self::PROCESO_INGRESO_TERMINACION
                 );
 
-                $terminacion = $movimientos->firstWhere(
+                /*
+                 * Este es el hito físico usado por la conciliación:
+                 * TERMINACION - TERMINACION (95).
+                 *
+                 * Aunque el proceso 90 se llame INGRESO TERMINACION, en el
+                 * flujo real es una etapa previa y no sustituye al 95.
+                 */
+                $ingreso = $movimientos->firstWhere(
                     'proceso',
                     self::PROCESO_TERMINACION
                 );
@@ -163,14 +170,17 @@ class LogisticaConciliacionService
                  * Los movimientos pueden ser incrementales:
                  * 319 + 1 reparada = 320.
                  */
+                $preIngresoRaw = max(
+                    0,
+                    (int) ($preIngresoTerminacion->cantidad ?? 0)
+                );
+
+                /*
+                 * Ingreso físico a Terminación = proceso 95.
+                 */
                 $ingresoRaw = max(
                     0,
                     (int) ($ingreso->cantidad ?? 0)
-                );
-
-                $terminacionRaw = max(
-                    0,
-                    (int) ($terminacion->cantidad ?? 0)
                 );
 
                 $ptRaw = max(
@@ -188,13 +198,13 @@ class LogisticaConciliacionService
                  * repetición completa no convierte una OT de 1.398 en 2.796,
                  * pero los incrementos reales sí pueden completar el objetivo.
                  */
+                $preIngresoEfectivo = $objetivo > 0
+                    ? min($objetivo, $preIngresoRaw)
+                    : $preIngresoRaw;
+
                 $ingresoEfectivo = $objetivo > 0
                     ? min($objetivo, $ingresoRaw)
                     : $ingresoRaw;
-
-                $terminacionEfectivo = $objetivo > 0
-                    ? min($objetivo, $terminacionRaw)
-                    : $terminacionRaw;
 
                 $ptEfectivo = $objetivo > 0
                     ? min($objetivo, $ptRaw)
@@ -340,11 +350,15 @@ class LogisticaConciliacionService
 
                         'objetivo' => $objetivo,
 
+                        // Etapa 90: informativa / previa.
+                        'pre_ingreso_terminacion_raw' => $preIngresoRaw,
+                        'pre_ingreso_terminacion' => $preIngresoEfectivo,
+
+                        // Etapa 95: ingreso físico real usado por conciliación.
                         'ingreso_terminacion_raw' => $ingresoRaw,
                         'ingreso_terminacion' => $ingresoEfectivo,
-
-                        'terminacion_raw' => $terminacionRaw,
-                        'terminacion' => $terminacionEfectivo,
+                        'terminacion_raw' => $ingresoRaw,
+                        'terminacion' => $ingresoEfectivo,
 
                         'producto_terminado_raw' => $ptRaw,
                         'producto_terminado' => $ptEfectivo,
@@ -394,15 +408,20 @@ class LogisticaConciliacionService
 
                         'estado_conciliacion' => $estado,
 
+                        'primera_fecha_pre_ingreso' =>
+                            $preIngresoTerminacion->primera_fecha ?? null,
+                        'ultima_fecha_pre_ingreso' =>
+                            $preIngresoTerminacion->ultima_fecha ?? null,
+
+                        // Fechas físicas de Terminación (proceso 95).
                         'primera_fecha_ingreso' =>
                             $ingreso->primera_fecha ?? null,
                         'ultima_fecha_ingreso' =>
                             $ingreso->ultima_fecha ?? null,
-
                         'primera_fecha_terminacion' =>
-                            $terminacion->primera_fecha ?? null,
+                            $ingreso->primera_fecha ?? null,
                         'ultima_fecha_terminacion' =>
-                            $terminacion->ultima_fecha ?? null,
+                            $ingreso->ultima_fecha ?? null,
 
                         'primera_fecha_pt' =>
                             $pt->primera_fecha ?? null,
