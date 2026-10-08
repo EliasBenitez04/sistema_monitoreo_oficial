@@ -1947,6 +1947,8 @@ class ControlTerminacionController extends Controller
             'totalVentaRemitida',
             'totalCostoRecibido',
             'totalVentaRecibida',
+            'cantidadValorizadaRemitida',
+            'cantidadValorizadaRecibida',
             'totalMargenBrutoRemitido',
             'porcentajeMargenBrutoRemitido'
         ));
