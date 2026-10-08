@@ -38,35 +38,80 @@
 
     <div class="row mb-3">
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Plan logística</small>
+            <small class="d-block">Objetivo logística</small>
             <strong>{{ number_format($totalPlan, 0, ',', '.') }}</strong>
             <div class="mt-1">
-                <small class="{{ $totalSinAsignar > 0 ? 'text-warning' : 'text-success' }}">
-                    {{ number_format($totalPlanDetallado, 0, ',', '.') }} distribuidas
-                    @if($totalSinAsignar > 0)
+                @if($totalExcesoPlan > 0)
+                    <small class="text-info">
+                        Detalle histórico {{ number_format($totalPlanDetallado, 0, ',', '.') }}
+                        · +{{ number_format($totalExcesoPlan, 0, ',', '.') }} sobre objetivo
+                    </small>
+                @elseif($totalSinAsignar > 0)
+                    <small class="text-warning">
+                        Plan asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
                         · {{ number_format($totalSinAsignar, 0, ',', '.') }} sin asignar
-                    @else
-                        · plan completo
+                    </small>
+                @else
+                    <small class="text-success">
+                        Plan asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
+                        · completo
+                    </small>
+                @endif
+            </div>
+        </div></div>
+        <div class="col-lg col-6 mb-2"><div class="td-kpi">
+            <small class="d-block">Remitido efectivo</small>
+            <strong>{{ number_format($totalRemitido, 0, ',', '.') }}</strong>
+            <div class="mt-1">
+                <small class="text-muted">
+                    Movimiento físico {{ number_format($totalRemitidoFisico, 0, ',', '.') }}
+                    @if($totalRemovido > 0)
+                        · +{{ number_format($totalRemovido, 0, ',', '.') }} re-movidas
                     @endif
                 </small>
             </div>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Remitido · con remisión</small>
-            <strong>{{ number_format($totalRemitido, 0, ',', '.') }}</strong>
-        </div></div>
-        <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Confirmado · con recepción</small>
+            <small class="d-block">Confirmado efectivo</small>
             <strong class="text-success">{{ number_format($totalRecibido, 0, ',', '.') }}</strong>
+            <div class="mt-1">
+                <small class="text-muted">
+                    Recepciones físicas {{ number_format($totalRecibidoFisico, 0, ',', '.') }}
+                    @if($totalConfirmadoExtra > 0)
+                        · +{{ number_format($totalConfirmadoExtra, 0, ',', '.') }} auditoría
+                    @endif
+                </small>
+            </div>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
             <small class="d-block">En tránsito</small>
             <strong class="text-primary">{{ number_format($totalEnTransito, 0, ',', '.') }}</strong>
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Pendiente remitir</small>
+            <small class="d-block">Pendiente físico</small>
             <strong class="{{ $totalPendiente > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($totalPendiente, 0, ',', '.') }}</strong>
+            <div class="mt-1">
+                <small class="{{ $totalPendientePlanDestino > 0 ? 'text-warning' : 'text-muted' }}">
+                    Pendiente por destino histórico:
+                    {{ number_format($totalPendientePlanDestino, 0, ',', '.') }}
+                </small>
+            </div>
         </div></div>
+    </div>
+
+    <div class="alert alert-light border py-2 small mb-3">
+        <strong>Cuadre de esta OT:</strong>
+        objetivo {{ number_format($totalPlan,0,',','.') }}
+        = {{ number_format($totalRemitido,0,',','.') }} remitido efectivo
+        + {{ number_format($totalPendiente,0,',','.') }} pendiente físico.
+        <br>
+        <span class="text-muted">
+            Auditoría histórica:
+            {{ number_format($totalPlanDetallado,0,',','.') }} de plan detallado
+            = {{ number_format($totalRemitidoFisico,0,',','.') }} movimientos remitidos
+            + {{ number_format($totalPendientePlanDestino,0,',','.') }} pendiente por destino.
+            Los excedentes/re-movimientos no aumentan el avance efectivo por encima de la OT.
+        </span>
     </div>
 
     <div class="td-section-label mb-2">Valorización de las remisiones de la OT</div>
@@ -111,7 +156,8 @@
     <div class="alert alert-light border py-2 small">
         <i class="fas fa-info-circle text-info mr-1"></i>
         Los importes salen de <strong>costo_unitario</strong> y <strong>precio_venta</strong>
-        de cada código/variante realmente remitido. No se estima el valor de prendas todavía no remitidas.
+        de cada movimiento físico realmente remitido. Por eso la valorización puede incluir
+        reenvíos/re-movimientos de auditoría aunque el avance efectivo esté limitado a la cantidad de la OT.
     </div>
 
     <div class="table-responsive">
