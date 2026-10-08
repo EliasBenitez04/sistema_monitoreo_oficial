@@ -10,8 +10,9 @@
                     Informe Gerencial de Terminación
                 </h1>
                 <p class="text-muted mb-0">
-                    Pedidos T: pendientes que requieren seguimiento desde Terminación
-                    hasta la confirmación local.
+                    Pedidos T: OTs pendientes que todavía no tienen ninguna
+                    confirmación local. Con la primera recepción confirmada,
+                    la OT sale de este listado.
                 </p>
             </div>
 
@@ -84,9 +85,9 @@
                         <h3>
                             {{ $resumen->en_logistica + $resumen->recepcion_parcial }}
                         </h3>
-                        <p>OT en Logística / Recepción</p>
+                        <p>OT en Logística sin confirmación</p>
                         <small class="text-muted">
-                            {{ $resumen->recepcion_parcial }} con recepción parcial
+                            ninguna recepción local registrada
                         </small>
                     </div>
 
@@ -102,7 +103,7 @@
                 {{ number_format($resumen->prendas, 0, ',', '.') }}
                 prendas de saldo pendiente real
             </strong>
-            en {{ $resumen->ots }} OT con diferencia.
+            en {{ $resumen->ots }} OT sin confirmación local.
 
             <span class="text-danger ml-2">
                 <i class="fas fa-circle mr-1"></i>
@@ -112,6 +113,7 @@
 
             <span class="text-muted ml-2">
                 La cantidad original de la OT ya no se usa como pendiente.
+                Si aparece una primera fecha_recepcion, la OT deja de mostrarse aquí.
             </span>
         </div>
 
