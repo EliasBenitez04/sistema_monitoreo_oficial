@@ -720,11 +720,18 @@ class VentaController extends Controller
     {
         abort_unless(
             Schema::hasTable('ventas')
-                && Schema::hasTable(
-                    'ventas_importaciones'
+                && Schema::hasTable('ventas_importaciones')
+                && Schema::hasTable('ventas_importacion_omitidas')
+                && Schema::hasColumn(
+                    'ventas_importaciones',
+                    'filas_duplicadas'
+                )
+                && Schema::hasColumn(
+                    'ventas_importaciones',
+                    'filas_invalidas'
                 ),
             503,
-            'Falta ejecutar php artisan migrate para crear el módulo de ventas.'
+            'Falta ejecutar php artisan migrate para completar el módulo de ventas.'
         );
     }
 }
