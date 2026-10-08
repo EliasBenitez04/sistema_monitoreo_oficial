@@ -1169,6 +1169,14 @@ class ControlTerminacionController extends Controller
                 ->sum('falta_terminacion'),
             'sin_destino' => (int) $reporteCompleto
                 ->sum('sin_destino'),
+
+            /*
+             * Hueco bruto del plan antes de considerar que una remisión real
+             * también demuestra destino aunque falte detalle logístico.
+             */
+            'sin_destino_plan' => (int) $reporteCompleto
+                ->sum('sin_destino_plan'),
+
             // Con destino asignado pero todavía sin remisión.
             'pendiente_remitir_plan' => (int) $reporteCompleto
                 ->sum('pendiente_remitir_plan'),
@@ -1184,6 +1192,25 @@ class ControlTerminacionController extends Controller
             'hueco_plan_vs_real' => (int) $reporteCompleto
                 ->sum('hueco_plan_vs_real'),
         ];
+
+        $resumen->cubierto_sin_plan_por_remision = max(
+            0,
+            (int) $resumen->sin_destino_plan
+                - (int) $resumen->sin_destino
+        );
+
+        /*
+         * Control de conservación física:
+         * PT = Remitido + Pendiente con destino + Sin destino.
+         */
+        $resumen->cuadre_fisico =
+            (int) $resumen->remitido
+            + (int) $resumen->pendiente_remitir_plan
+            + (int) $resumen->sin_destino;
+
+        $resumen->diferencia_cuadre =
+            (int) $resumen->producto_terminado
+            - (int) $resumen->cuadre_fisico;
 
         return compact(
             'fechaDesde',
