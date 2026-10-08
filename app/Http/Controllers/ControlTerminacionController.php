@@ -600,6 +600,8 @@ class ControlTerminacionController extends Controller
             'totalVentaRemitida',
             'totalCostoRecibido',
             'totalVentaRecibida',
+            'cantidadValorizadaRemitida',
+            'cantidadValorizadaRecibida',
             'totalMargenBrutoRemitido',
             'porcentajeMargenBrutoRemitido',
             'totalFaltaTerminacion',
@@ -1818,47 +1820,98 @@ class ControlTerminacionController extends Controller
         );
 
         /*
-         * Total económico general de la OT.
-         * Se calcula sobre las líneas físicas originales para no duplicar
-         * importes cuando COMERCIAL MATRIZ se reparte visualmente entre
-         * AYALA y MODELO MUESTRA.
+         * VALORIZACIÓN EFECTIVA
+         *
+         * PRODUCTO TERMINADO manda también económicamente.
+         * Las remisiones físicas pueden superar el PT por reenvíos o
+         * re-movimientos, pero esos excedentes son auditoría y NO vuelven a
+         * valorizarse como prendas nuevas.
+         *
+         * Se consumen las remisiones en orden cronológico hasta completar el
+         * volumen efectivo reconocido. Si la última línea excede el saldo,
+         * sólo se valoriza la porción necesaria.
          */
-        $totalCostoRemitido = (float)
-            $remisionesOriginales->sum(
-                function ($remision) {
-                    return (float) $remision->cantidad
-                        * (float) $remision->costo_unitario;
-                }
-            );
+        $valorizarHasta = function (
+            $remisiones,
+            int $limite
+        ) {
+            $restante = max(0, $limite);
+            $cantidad = 0;
+            $costo = 0.0;
+            $venta = 0.0;
 
-        $totalVentaRemitida = (float)
-            $remisionesOriginales->sum(
-                function ($remision) {
-                    return (float) $remision->cantidad
-                        * (float) $remision->precio_venta;
+            foreach ($remisiones as $remision) {
+                if ($restante <= 0) {
+                    break;
                 }
-            );
+
+                $cantidadLinea = max(
+                    0,
+                    (int) $remision->cantidad
+                );
+
+                if ($cantidadLinea <= 0) {
+                    continue;
+                }
+
+                $cantidadValorizada = min(
+                    $restante,
+                    $cantidadLinea
+                );
+
+                $cantidad += $cantidadValorizada;
+
+                $costo +=
+                    $cantidadValorizada
+                    * (float) $remision->costo_unitario;
+
+                $venta +=
+                    $cantidadValorizada
+                    * (float) $remision->precio_venta;
+
+                $restante -= $cantidadValorizada;
+            }
+
+            return (object) [
+                'cantidad' => $cantidad,
+                'costo' => $costo,
+                'venta' => $venta,
+            ];
+        };
+
+        $valorizacionRemitida = $valorizarHasta(
+            $remisionesOriginales,
+            $totalRemitido
+        );
 
         $remisionesRecibidas = $remisionesOriginales
             ->filter(function ($remision) {
                 return !empty($remision->fecha_recepcion);
-            });
+            })
+            ->values();
 
-        $totalCostoRecibido = (float)
-            $remisionesRecibidas->sum(
-                function ($remision) {
-                    return (float) $remision->cantidad
-                        * (float) $remision->costo_unitario;
-                }
-            );
+        $valorizacionRecibida = $valorizarHasta(
+            $remisionesRecibidas,
+            $totalRecibido
+        );
 
-        $totalVentaRecibida = (float)
-            $remisionesRecibidas->sum(
-                function ($remision) {
-                    return (float) $remision->cantidad
-                        * (float) $remision->precio_venta;
-                }
-            );
+        $totalCostoRemitido =
+            (float) $valorizacionRemitida->costo;
+
+        $totalVentaRemitida =
+            (float) $valorizacionRemitida->venta;
+
+        $totalCostoRecibido =
+            (float) $valorizacionRecibida->costo;
+
+        $totalVentaRecibida =
+            (float) $valorizacionRecibida->venta;
+
+        $cantidadValorizadaRemitida =
+            (int) $valorizacionRemitida->cantidad;
+
+        $cantidadValorizadaRecibida =
+            (int) $valorizacionRecibida->cantidad;
 
         $totalMargenBrutoRemitido =
             $totalVentaRemitida - $totalCostoRemitido;
