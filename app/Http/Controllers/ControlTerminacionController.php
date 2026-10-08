@@ -42,7 +42,7 @@ class ControlTerminacionController extends Controller
             $estados = [$estados];
         }
 
-        $procesoEntradaTerminacion = 'TERMINACION - INGRESO TERMINACION';
+        $procesoEntradaTerminacion = 'TERMINACION - TERMINACION';
         $procesoProductoTerminado = 'TERMINACION - PRODUCTO TERMINADO';
         $hoy = now()->startOfDay();
 
@@ -50,10 +50,11 @@ class ControlTerminacionController extends Controller
          * REGLA DEL FLUJO
          *
          * TERMINACION - INGRESO TERMINACION:
-         *     ingreso de la prenda al área de Terminación.
+         *     etapa previa del flujo.
          *
          * TERMINACION - TERMINACION:
-         *     proceso propio de Terminación; no es la entrada.
+         *     ingreso físico real a Terminación y referencia para comparar
+         *     contra Producto Terminado.
          *
          * TERMINACION - PRODUCTO TERMINADO:
          *     salida de Terminación y entrega/entrada a Logística.
@@ -654,12 +655,12 @@ class ControlTerminacionController extends Controller
 
         /*
          * 1) ENTRADA A TERMINACIÓN
-         * TERMINACION - INGRESO TERMINACION representa lo que ingresa
-         * físicamente al área.
+         * TERMINACION - TERMINACION representa lo que ingresa
+         * físicamente al área para esta conciliación.
          */
         $entradaQuery = DB::table('ot_trazabilidad as t')
             ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
-            ->where('t.proceso', 'TERMINACION - INGRESO TERMINACION')
+            ->where('t.proceso', 'TERMINACION - TERMINACION')
             ->whereBetween('t.fecha_proceso', [$fechaDesde, $fechaHasta]);
 
         $aplicarBusquedaOt($entradaQuery);
