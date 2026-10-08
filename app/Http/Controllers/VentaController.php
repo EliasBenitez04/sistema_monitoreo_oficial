@@ -59,11 +59,11 @@ class VentaController extends Controller
                  COALESCE(SUM(v.cantidad), 0) as unidades_netas,
                  COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END), 0) as unidades_vendidas,
                  COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) ELSE 0 END), 0) as unidades_devueltas,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.p_venta ELSE 0 END), 0) as venta_bruta,
-                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * v.p_venta ELSE 0 END), 0) as devoluciones_valor,
-                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.p_lista ELSE 0 END), 0) as venta_lista,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.descuento ELSE 0 END), 0) as descuento_otorgado,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.p_venta) ELSE 0 END), 0) as venta_bruta,
+                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * ABS(v.p_venta) ELSE 0 END), 0) as devoluciones_valor,
+                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.p_lista) ELSE 0 END), 0) as venta_lista,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.descuento) ELSE 0 END), 0) as descuento_otorgado,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
                  COUNT(DISTINCT v.codigo) as codigos,
                  COUNT(DISTINCT v.local) as locales,
@@ -100,8 +100,8 @@ class VentaController extends Controller
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
                  COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END), 0) as unidades_vendidas,
                  COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) ELSE 0 END), 0) as devoluciones,
-                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
-                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.p_venta ELSE 0 END), 0) as venta_bruta,
+                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * ABS(v.p_venta) ELSE 0 END), 0) as venta_bruta,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante END) as tickets"
             )
             ->groupBy('v.local')
@@ -123,7 +123,7 @@ class VentaController extends Controller
             ->select('v.vendedor')
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
-                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
+                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
             )
             ->groupBy('v.vendedor')
@@ -160,7 +160,7 @@ class VentaController extends Controller
             )
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
-                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta"
+                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta"
             )
             ->groupBy(
                 'v.codigo',
@@ -185,8 +185,8 @@ class VentaController extends Controller
             ->select('v.fecha')
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
-                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
-                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * v.p_venta ELSE 0 END), 0) as devoluciones,
+                 COALESCE(SUM(v.cantidad * ABS(v.p_venta)), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * ABS(v.p_venta) ELSE 0 END), 0) as devoluciones,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
             )
             ->groupBy('v.fecha')
