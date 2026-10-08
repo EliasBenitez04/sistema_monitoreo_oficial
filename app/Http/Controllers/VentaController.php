@@ -465,6 +465,62 @@ class VentaController extends Controller
         );
     }
 
+    public function omitidasImportacion(int $id)
+    {
+        $this->asegurarTablas();
+
+        $importacion = DB::table('ventas_importaciones')
+            ->where('id', $id)
+            ->first();
+
+        abort_unless(
+            $importacion,
+            404,
+            'Importación no encontrada.'
+        );
+
+        $omitidas = DB::table('ventas_importacion_omitidas')
+            ->where('importacion_id', $id)
+            ->orderByRaw(
+                "CASE WHEN tipo = 'INVALIDA' THEN 0 ELSE 1 END"
+            )
+            ->orderBy('fila')
+            ->orderBy('id')
+            ->get();
+
+        $sinClasificar = max(
+            0,
+            (int) $importacion->filas_omitidas
+                - (int) ($importacion->filas_duplicadas ?? 0)
+                - (int) ($importacion->filas_invalidas ?? 0)
+        );
+
+        return response()->json([
+            'importacion' => [
+                'id' => (int) $importacion->id,
+                'archivo' => $importacion->nombre_archivo,
+                'procesadas' => (int) $importacion->filas_procesadas,
+                'insertadas' => (int) $importacion->filas_insertadas,
+                'omitidas' => (int) $importacion->filas_omitidas,
+                'duplicadas' => (int) ($importacion->filas_duplicadas ?? 0),
+                'invalidas' => (int) ($importacion->filas_invalidas ?? 0),
+                'sin_clasificar' => $sinClasificar,
+            ],
+            'omitidas' => $omitidas->map(function ($item) {
+                return [
+                    'fila' => $item->fila !== null
+                        ? (int) $item->fila
+                        : null,
+                    'tipo' => $item->tipo,
+                    'codigo' => $item->codigo,
+                    'comprobante' => $item->comprobante,
+                    'local' => $item->local,
+                    'motivo' => $item->motivo,
+                ];
+            })->values(),
+        ]);
+    }
+
     public function importar(Request $request)
     {
         $this->asegurarTablas();
@@ -579,6 +635,8 @@ class VentaController extends Controller
                     'procesadas' => 0,
                     'insertadas' => 0,
                     'omitidas' => 0,
+                    'duplicadas' => 0,
+                    'invalidas' => 0,
                     'total' => null,
                     'porcentaje' => null,
                 ]
