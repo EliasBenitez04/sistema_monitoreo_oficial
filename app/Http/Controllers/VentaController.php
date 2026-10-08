@@ -1,0 +1,506 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Imports\VentasImport;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+
+class VentaController extends Controller
+{
+    public function __construct()
+    {
+        $this->middleware('auth');
+        $this->middleware('permission:pedido_compras index');
+    }
+
+    public function index(Request $request)
+    {
+        $this->asegurarTablas();
+
+        $fechaMaxima = DB::table('ventas')->max('fecha');
+
+        $todo = $request->boolean('todo');
+        $desde = $request->input('desde');
+        $hasta = $request->input('hasta');
+
+        /*
+         * Por defecto mostramos el último día importado.
+         * Con ?todo=1 se consulta todo el histórico.
+         */
+        if (!$todo && !$desde && !$hasta && $fechaMaxima) {
+            $desde = $fechaMaxima;
+            $hasta = $fechaMaxima;
+        }
+
+        $local = trim((string) $request->input('local', ''));
+        $vendedor = trim((string) $request->input('vendedor', ''));
+        $tipo = trim((string) $request->input('tipo', ''));
+        $buscar = trim((string) $request->input('buscar', ''));
+
+        $base = DB::table('ventas as v');
+
+        $this->aplicarFiltros(
+            $base,
+            $desde,
+            $hasta,
+            $local,
+            $vendedor,
+            $tipo,
+            $buscar
+        );
+
+        $resumen = (clone $base)
+            ->selectRaw(
+                "COUNT(*) as lineas,
+                 COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END), 0) as unidades_vendidas,
+                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) ELSE 0 END), 0) as unidades_devueltas,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.p_venta ELSE 0 END), 0) as venta_bruta,
+                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * v.p_venta ELSE 0 END), 0) as devoluciones_valor,
+                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.p_lista ELSE 0 END), 0) as venta_lista,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.descuento ELSE 0 END), 0) as descuento_otorgado,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
+                 COUNT(DISTINCT v.codigo) as codigos,
+                 COUNT(DISTINCT v.local) as locales,
+                 COUNT(DISTINCT v.vendedor) as vendedores"
+            )
+            ->first();
+
+        $resumen->ticket_promedio =
+            (int) $resumen->tickets > 0
+                ? (float) $resumen->venta_bruta
+                    / (int) $resumen->tickets
+                : 0;
+
+        $resumen->precio_promedio_unidad =
+            (int) $resumen->unidades_vendidas > 0
+                ? (float) $resumen->venta_bruta
+                    / (int) $resumen->unidades_vendidas
+                : 0;
+
+        $resumen->porcentaje_descuento =
+            (float) $resumen->venta_lista > 0
+                ? round(
+                    ((float) $resumen->descuento_otorgado
+                        / (float) $resumen->venta_lista) * 100,
+                    1
+                )
+                : 0;
+
+        $porLocal = (clone $base)
+            ->select(
+                'v.local'
+            )
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END), 0) as unidades_vendidas,
+                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) ELSE 0 END), 0) as devoluciones,
+                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad * v.p_venta ELSE 0 END), 0) as venta_bruta,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante END) as tickets"
+            )
+            ->groupBy('v.local')
+            ->orderByDesc('venta_neta')
+            ->get()
+            ->map(function ($item) {
+                $item->ticket_promedio =
+                    (int) $item->tickets > 0
+                        ? (float) $item->venta_bruta
+                            / (int) $item->tickets
+                        : 0;
+
+                return $item;
+            });
+
+        $porVendedor = (clone $base)
+            ->whereNotNull('v.vendedor')
+            ->where('v.vendedor', '<>', '')
+            ->select('v.vendedor')
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
+            )
+            ->groupBy('v.vendedor')
+            ->orderByDesc('venta_neta')
+            ->limit(15)
+            ->get();
+
+        $queryProductos = clone $base;
+
+        if (Schema::hasTable('maestro_codigos')) {
+            $queryProductos->leftJoin(
+                'maestro_codigos as mc',
+                'mc.cod_articulo',
+                '=',
+                'v.codigo'
+            );
+        }
+
+        $porProducto = $queryProductos
+            ->select(
+                'v.codigo',
+                'v.descripcion'
+            )
+            ->when(
+                Schema::hasTable('maestro_codigos'),
+                function ($q) {
+                    $q->addSelect(
+                        'mc.grupo',
+                        'mc.grupo_plan',
+                        'mc.temporada',
+                        'mc.linea'
+                    );
+                }
+            )
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta"
+            )
+            ->groupBy(
+                'v.codigo',
+                'v.descripcion'
+            )
+            ->when(
+                Schema::hasTable('maestro_codigos'),
+                function ($q) {
+                    $q->groupBy(
+                        'mc.grupo',
+                        'mc.grupo_plan',
+                        'mc.temporada',
+                        'mc.linea'
+                    );
+                }
+            )
+            ->orderByDesc('venta_neta')
+            ->limit(20)
+            ->get();
+
+        $porDia = (clone $base)
+            ->select('v.fecha')
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(v.cantidad * v.p_venta), 0) as venta_neta,
+                 COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN ABS(v.cantidad) * v.p_venta ELSE 0 END), 0) as devoluciones,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
+            )
+            ->groupBy('v.fecha')
+            ->orderBy('v.fecha')
+            ->get();
+
+        $detalleQuery = DB::table('ventas as v');
+
+        if (Schema::hasTable('maestro_codigos')) {
+            $detalleQuery->leftJoin(
+                'maestro_codigos as mc',
+                'mc.cod_articulo',
+                '=',
+                'v.codigo'
+            );
+        }
+
+        $this->aplicarFiltros(
+            $detalleQuery,
+            $desde,
+            $hasta,
+            $local,
+            $vendedor,
+            $tipo,
+            $buscar
+        );
+
+        $detalleQuery->select(
+            'v.*'
+        );
+
+        if (Schema::hasTable('maestro_codigos')) {
+            $detalleQuery->addSelect(
+                'mc.grupo',
+                'mc.grupo_plan',
+                'mc.temporada',
+                'mc.linea'
+            );
+        }
+
+        $ventas = $detalleQuery
+            ->orderByDesc('v.fecha')
+            ->orderByDesc('v.id')
+            ->paginate(100)
+            ->appends($request->query());
+
+        $locales = DB::table('ventas')
+            ->whereNotNull('local')
+            ->where('local', '<>', '')
+            ->distinct()
+            ->orderBy('local')
+            ->pluck('local');
+
+        $vendedores = DB::table('ventas')
+            ->whereNotNull('vendedor')
+            ->where('vendedor', '<>', '')
+            ->distinct()
+            ->orderBy('vendedor')
+            ->pluck('vendedor');
+
+        $tipos = DB::table('ventas')
+            ->whereNotNull('tipo_comprobante')
+            ->where('tipo_comprobante', '<>', '')
+            ->distinct()
+            ->orderBy('tipo_comprobante')
+            ->pluck('tipo_comprobante');
+
+        $ultimaImportacion = DB::table(
+            'ventas_importaciones'
+        )
+            ->orderByDesc('id')
+            ->first();
+
+        return view('ventas.index', compact(
+            'ventas',
+            'resumen',
+            'porLocal',
+            'porVendedor',
+            'porProducto',
+            'porDia',
+            'locales',
+            'vendedores',
+            'tipos',
+            'ultimaImportacion',
+            'fechaMaxima',
+            'desde',
+            'hasta',
+            'local',
+            'vendedor',
+            'tipo',
+            'buscar',
+            'todo'
+        ));
+    }
+
+    public function importarForm()
+    {
+        $this->asegurarTablas();
+
+        $ultimasImportaciones = DB::table(
+            'ventas_importaciones'
+        )
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get();
+
+        return view(
+            'ventas.importar',
+            compact('ultimasImportaciones')
+        );
+    }
+
+    public function importar(Request $request)
+    {
+        $this->asegurarTablas();
+
+        $request->validate([
+            'archivo' =>
+                'required|file|mimes:xlsx,csv,txt|max:204800',
+            'import_token' =>
+                'required|string|max:100',
+        ]);
+
+        @set_time_limit(0);
+        @ini_set('max_execution_time', '0');
+        @ini_set('max_input_time', '-1');
+        @ini_set('memory_limit', '1024M');
+        @ignore_user_abort(true);
+
+        DB::disableQueryLog();
+
+        $archivo = $request->file('archivo');
+
+        $token = preg_replace(
+            '/[^A-Za-z0-9_-]/',
+            '',
+            (string) $request->input('import_token')
+        );
+
+        if ($token === '') {
+            $token = Str::random(40);
+        }
+
+        $importacionId = DB::table(
+            'ventas_importaciones'
+        )->insertGetId([
+            'nombre_archivo' =>
+                $archivo->getClientOriginalName(),
+            'archivo_hash' => hash_file(
+                'sha256',
+                $archivo->getRealPath()
+            ),
+            'usuario_id' =>
+                auth()->id(),
+            'estado' => 'PROCESANDO',
+            'mensaje' => 'Importación iniciada.',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $importador = new VentasImport(
+            $importacionId,
+            $token
+        );
+
+        try {
+            $extension = strtolower(
+                $archivo->getClientOriginalExtension()
+            );
+
+            if ($extension === 'xlsx') {
+                $importador->importarXlsx(
+                    $archivo->getRealPath()
+                );
+            } else {
+                $importador->importarCsv(
+                    $archivo->getRealPath()
+                );
+            }
+
+            DB::statement('ANALYZE ventas');
+
+            $resumen = $importador->resumen();
+
+            return response()->json([
+                'success' => true,
+                'message' =>
+                    'Ventas importadas correctamente.',
+                'resumen' => $resumen,
+                'redirect' => route('ventas.index', [
+                    'desde' => $resumen['fecha_desde'],
+                    'hasta' => $resumen['fecha_hasta'],
+                ]),
+            ]);
+        } catch (\Throwable $e) {
+            $importador->marcarError(
+                $e->getMessage()
+            );
+
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function progreso($token)
+    {
+        $token = preg_replace(
+            '/[^A-Za-z0-9_-]/',
+            '',
+            (string) $token
+        );
+
+        return response()->json(
+            Cache::get(
+                'ventas_import_' . $token,
+                [
+                    'estado' => 'ESPERANDO',
+                    'mensaje' =>
+                        'Esperando inicio de importación...',
+                    'procesadas' => 0,
+                    'insertadas' => 0,
+                    'omitidas' => 0,
+                    'total' => null,
+                    'porcentaje' => null,
+                ]
+            )
+        );
+    }
+
+    private function aplicarFiltros(
+        $query,
+        $desde,
+        $hasta,
+        string $local,
+        string $vendedor,
+        string $tipo,
+        string $buscar
+    ): void {
+        if ($desde) {
+            $query->whereDate(
+                'v.fecha',
+                '>=',
+                $desde
+            );
+        }
+
+        if ($hasta) {
+            $query->whereDate(
+                'v.fecha',
+                '<=',
+                $hasta
+            );
+        }
+
+        if ($local !== '') {
+            $query->where(
+                'v.local',
+                $local
+            );
+        }
+
+        if ($vendedor !== '') {
+            $query->where(
+                'v.vendedor',
+                $vendedor
+            );
+        }
+
+        if ($tipo !== '') {
+            $query->where(
+                'v.tipo_comprobante',
+                $tipo
+            );
+        }
+
+        if ($buscar !== '') {
+            $query->where(function ($q) use ($buscar) {
+                $q->where(
+                    'v.codigo',
+                    'ilike',
+                    '%' . $buscar . '%'
+                )
+                    ->orWhere(
+                        'v.descripcion',
+                        'ilike',
+                        '%' . $buscar . '%'
+                    )
+                    ->orWhere(
+                        'v.cliente',
+                        'ilike',
+                        '%' . $buscar . '%'
+                    )
+                    ->orWhere(
+                        'v.comprobante',
+                        'ilike',
+                        '%' . $buscar . '%'
+                    );
+            });
+        }
+    }
+
+    private function asegurarTablas(): void
+    {
+        abort_unless(
+            Schema::hasTable('ventas')
+                && Schema::hasTable(
+                    'ventas_importaciones'
+                ),
+            503,
+            'Falta ejecutar php artisan migrate para crear el módulo de ventas.'
+        );
+    }
+}
