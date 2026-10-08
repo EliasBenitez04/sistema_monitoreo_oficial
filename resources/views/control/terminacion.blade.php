@@ -190,54 +190,58 @@
         <div class="card-header bg-white">
             <strong><i class="fas fa-coins text-warning mr-1"></i>Valorización económica</strong>
             <div class="ct-subtitle">
-                Costo y valor a precio de venta de las remisiones originales vinculadas a las OTs del período.
+                Costo y valor efectivo de las remisiones originales, limitado por el Producto Terminado reconocido en cada OT.
             </div>
         </div>
         <div class="card-body pb-2">
             <div class="row">
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Costo despacho central</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Costo efectivo remitido</div>
                         <div class="h5 font-weight-bold mb-1">Gs {{ number_format($totalCostoRemitido,0,',','.') }}</div>
                         <small class="text-muted">
-                            Valorización de las líneas originales con costo importado
+                            {{ number_format($totalCantidadValorizadaRemitida,0,',','.') }} prendas valorizadas · limitado por PT
                         </small>
                     </div>
                 </div>
 
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta despacho central</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Valor efectivo a precio de venta</div>
                         <div class="h5 font-weight-bold mb-1 text-primary">Gs {{ number_format($totalVentaRemitida,0,',','.') }}</div>
-                        <small class="text-muted">Según precio_venta importado en remisiones</small>
+                        <small class="text-muted">
+                            {{ number_format($totalCantidadValorizadaRemitida,0,',','.') }} prendas efectivas · precio_venta importado
+                        </small>
                     </div>
                 </div>
 
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Costo recibido · despacho central</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Costo efectivo recibido</div>
                         <div class="h5 font-weight-bold mb-1">Gs {{ number_format($totalCostoRecibido,0,',','.') }}</div>
                         <small class="text-muted">
-                            {{ number_format($totalRecepcionLocal,0,',','.') }} prendas confirmadas
+                            {{ number_format($totalCantidadValorizadaRecibida,0,',','.') }} prendas valorizadas con recepción
                         </small>
                     </div>
                 </div>
 
                 <div class="col-xl-3 col-md-6 mb-3">
                     <div class="ct-mini">
-                        <div class="small text-uppercase text-muted font-weight-bold">Valor venta recibido · despacho central</div>
+                        <div class="small text-uppercase text-muted font-weight-bold">Valor efectivo recibido</div>
                         <div class="h5 font-weight-bold mb-1 text-success">Gs {{ number_format($totalVentaRecibida,0,',','.') }}</div>
-                        <small class="text-muted">Valor comercial de lo ya recibido por locales</small>
+                        <small class="text-muted">
+                            Valor comercial de {{ number_format($totalCantidadValorizadaRecibida,0,',','.') }} prendas efectivamente recibidas
+                        </small>
                     </div>
                 </div>
             </div>
 
             <div class="ct-flow mb-2">
-                <strong>Margen bruto teórico del despacho central:</strong>
+                <strong>Margen bruto teórico efectivo:</strong>
                 Gs {{ number_format($totalMargenBrutoRemitido,0,',','.') }}
                 · {{ number_format($porcentajeMargenBrutoRemitido,1,',','.') }}% sobre el valor de venta.
                 <span class="text-muted">
-                    Se calcula como precio de venta menos costo; no representa utilidad neta ni venta ya cobrada.
+                    Se calcula sólo sobre las prendas efectivas valorizadas (tope PT) como precio de venta menos costo; no representa utilidad neta ni venta ya cobrada.
                 </span>
             </div>
         </div>
