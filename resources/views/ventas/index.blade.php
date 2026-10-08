@@ -327,10 +327,20 @@
                         </thead>
                         <tbody>
                             @forelse($porProducto as $item)
-                                <tr>
+                                <tr class="venta-producto-row"
+                                    data-codigo="{{ $item->codigo }}"
+                                    title="Ver sucursales y vendedores">
                                     <td>
-                                        <strong>{{ $item->codigo }}</strong><br>
-                                        <small class="text-muted">{{ $item->descripcion }}</small>
+                                        <button type="button"
+                                                class="btn btn-link p-0 text-left venta-producto-detalle"
+                                                data-codigo="{{ $item->codigo }}">
+                                            <strong>{{ $item->codigo }}</strong><br>
+                                            <small class="text-muted">{{ $item->descripcion }}</small>
+                                            <small class="d-block text-primary mt-1">
+                                                <i class="fas fa-search mr-1"></i>
+                                                Ver quién lo vendió
+                                            </small>
+                                        </button>
                                     </td>
                                     <td>{{ $item->grupo ?? '-' }}</td>
                                     <td>
@@ -485,6 +495,131 @@
     </div>
 
 </div>
+
+<div class="modal fade"
+     id="ventaProductoModal"
+     tabindex="-1"
+     role="dialog"
+     aria-labelledby="ventaProductoModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="ventaProductoModalLabel">
+                        Detalle del producto
+                    </h5>
+                    <small class="text-muted" id="ventaProductoSubtitulo">-</small>
+                </div>
+                <button type="button"
+                        class="close"
+                        data-dismiss="modal"
+                        aria-label="Cerrar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div id="ventaProductoLoading"
+                     class="text-center text-muted py-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                    <div>Cargando detalle...</div>
+                </div>
+
+                <div id="ventaProductoContenido" class="d-none">
+                    <div class="row mb-3">
+                        <div class="col-lg-3 col-6 mb-2">
+                            <div class="vp-kpi">
+                                <small>Cantidad neta</small>
+                                <strong id="vpCantidad">0</strong>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6 mb-2">
+                            <div class="vp-kpi">
+                                <small>PLISTA</small>
+                                <strong id="vpLista">Gs 0</strong>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6 mb-2">
+                            <div class="vp-kpi">
+                                <small>DTO</small>
+                                <strong id="vpDto">Gs 0</strong>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6 mb-2">
+                            <div class="vp-kpi">
+                                <small>PVTA</small>
+                                <strong class="text-success" id="vpVenta">Gs 0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border py-2 small mb-3"
+                         id="vpMeta"></div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>
+                            <i class="fas fa-store mr-1"></i>
+                            Sucursal y vendedor
+                        </strong>
+                        <span class="badge badge-light border" id="vpCantidadFilas">0 registros</span>
+                    </div>
+
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm table-hover mb-0 ventas-table">
+                            <thead>
+                                <tr>
+                                    <th>Sucursal</th>
+                                    <th>Vendedor</th>
+                                    <th class="text-right">Cantidad</th>
+                                    <th class="text-right">PLISTA</th>
+                                    <th class="text-right">DTO</th>
+                                    <th class="text-right">PVTA</th>
+                                    <th class="text-right">Tickets</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vpDetalleBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-3">
+                        <button class="btn btn-sm btn-light border"
+                                type="button"
+                                data-toggle="collapse"
+                                data-target="#vpComprobantesCollapse"
+                                aria-expanded="false">
+                            <i class="fas fa-receipt mr-1"></i>
+                            Ver comprobantes
+                        </button>
+
+                        <div class="collapse mt-2" id="vpComprobantesCollapse">
+                            <div class="table-responsive border rounded">
+                                <table class="table table-sm table-hover mb-0 ventas-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Sucursal</th>
+                                            <th>Vendedor</th>
+                                            <th>Comprobante</th>
+                                            <th class="text-right">Cantidad</th>
+                                            <th class="text-right">PLISTA</th>
+                                            <th class="text-right">DTO</th>
+                                            <th class="text-right">PVTA</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="vpComprobantesBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="ventaProductoError"
+                     class="alert alert-danger d-none mb-0"></div>
+            </div>
+        </div>
+    </div>
+</div>
 </section>
 @endsection
 
@@ -512,6 +647,28 @@
 .ventas-table td{
     font-size:.79rem;
     vertical-align:middle!important;
+}
+.venta-producto-row{cursor:pointer}
+.venta-producto-row:hover{background:#f8fbff}
+.venta-producto-detalle{text-decoration:none!important;line-height:1.2}
+.vp-kpi{
+    height:100%;
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+    background:#fff;
+    padding:12px;
+}
+.vp-kpi small{
+    display:block;
+    color:#64748b;
+    font-size:.68rem;
+    font-weight:700;
+    text-transform:uppercase;
+}
+.vp-kpi strong{
+    display:block;
+    margin-top:3px;
+    font-size:1.15rem;
 }
 </style>
 @endpush
