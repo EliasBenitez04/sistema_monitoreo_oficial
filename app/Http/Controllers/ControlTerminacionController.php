@@ -1386,6 +1386,55 @@ class ControlTerminacionController extends Controller
                 ->get();
         }
 
+        /*
+         * Cantidad efectiva valorizable por línea física.
+         *
+         * Los movimientos se conservan completos para auditoría, pero el
+         * dinero oficial sólo puede reconocer hasta remitido/recibido efectivo
+         * de la OT (ambos ya capados por Producto Terminado).
+         */
+        $restanteValorizableRemitido = $conciliacion
+            ? max(0, (int) $conciliacion->remitido_original)
+            : max(0, (int) $remisionesOriginales->sum('cantidad'));
+
+        $restanteValorizableRecibido = $conciliacion
+            ? max(0, (int) $conciliacion->recibido_original)
+            : max(
+                0,
+                (int) $remisionesOriginales
+                    ->filter(function ($remision) {
+                        return !empty($remision->fecha_recepcion);
+                    })
+                    ->sum('cantidad')
+            );
+
+        foreach ($remisionesOriginales as $remisionOriginal) {
+            $cantidadFisica = max(
+                0,
+                (int) $remisionOriginal->cantidad
+            );
+
+            $remisionOriginal->cantidad_efectiva_valorizada = min(
+                $restanteValorizableRemitido,
+                $cantidadFisica
+            );
+
+            $restanteValorizableRemitido -=
+                $remisionOriginal->cantidad_efectiva_valorizada;
+
+            $remisionOriginal->cantidad_recibida_efectiva_valorizada = 0;
+
+            if (!empty($remisionOriginal->fecha_recepcion)) {
+                $remisionOriginal->cantidad_recibida_efectiva_valorizada = min(
+                    $restanteValorizableRecibido,
+                    $cantidadFisica
+                );
+
+                $restanteValorizableRecibido -=
+                    $remisionOriginal->cantidad_recibida_efectiva_valorizada;
+            }
+        }
+
         if ($detalles->isNotEmpty() && $remisionesOriginales->isNotEmpty()) {
             $detallesPorId = $detalles->keyBy('id');
 
@@ -1457,6 +1506,25 @@ class ControlTerminacionController extends Controller
                 if ($destinoNormalizado === 'MATRIZ'
                     && $detallesMatriz->isNotEmpty()) {
                     $cantidadRestante = $cantidadOriginal;
+
+                    $efectivaRestanteLinea = max(
+                        0,
+                        (int) (
+                            $remisionOriginal
+                                ->cantidad_efectiva_valorizada
+                            ?? 0
+                        )
+                    );
+
+                    $recibidaEfectivaRestanteLinea = max(
+                        0,
+                        (int) (
+                            $remisionOriginal
+                                ->cantidad_recibida_efectiva_valorizada
+                            ?? 0
+                        )
+                    );
+
                     $asignoAlgo = false;
 
                     foreach ($detallesMatriz as $candidato) {
@@ -1482,6 +1550,25 @@ class ControlTerminacionController extends Controller
 
                         $remisionVisual = clone $remisionOriginal;
                         $remisionVisual->cantidad = $cantidadAsignar;
+
+                        $remisionVisual->cantidad_efectiva_valorizada = min(
+                            $efectivaRestanteLinea,
+                            $cantidadAsignar
+                        );
+
+                        $efectivaRestanteLinea -=
+                            $remisionVisual->cantidad_efectiva_valorizada;
+
+                        $remisionVisual
+                            ->cantidad_recibida_efectiva_valorizada = min(
+                                $recibidaEfectivaRestanteLinea,
+                                $cantidadAsignar
+                            );
+
+                        $recibidaEfectivaRestanteLinea -=
+                            $remisionVisual
+                                ->cantidad_recibida_efectiva_valorizada;
+
                         $remisionVisual->id_detalle_visual =
                             $idCandidato;
 
@@ -1506,6 +1593,25 @@ class ControlTerminacionController extends Controller
 
                         $remisionVisual = clone $remisionOriginal;
                         $remisionVisual->cantidad = $cantidadRestante;
+
+                        $remisionVisual->cantidad_efectiva_valorizada = min(
+                            $efectivaRestanteLinea,
+                            $cantidadRestante
+                        );
+
+                        $efectivaRestanteLinea -=
+                            $remisionVisual->cantidad_efectiva_valorizada;
+
+                        $remisionVisual
+                            ->cantidad_recibida_efectiva_valorizada = min(
+                                $recibidaEfectivaRestanteLinea,
+                                $cantidadRestante
+                            );
+
+                        $recibidaEfectivaRestanteLinea -=
+                            $remisionVisual
+                                ->cantidad_recibida_efectiva_valorizada;
+
                         $remisionVisual->id_detalle_visual =
                             $idCandidato;
                         $remisionVisual->exceso_plan = true;
@@ -1663,45 +1769,57 @@ class ControlTerminacionController extends Controller
                     - (int) $detalle->cantidad
             );
 
+            $detalle->cantidad_valorizada = (int)
+                $detalle->remisiones->sum(
+                    'cantidad_efectiva_valorizada'
+                );
+
+            $detalle->cantidad_recibida_valorizada = (int)
+                $detalle->remisiones->sum(
+                    'cantidad_recibida_efectiva_valorizada'
+                );
+
             $detalle->costo_remitido = (float)
                 $detalle->remisiones->sum(
                     function ($remision) {
-                        return (float) $remision->cantidad
-                            * (float) $remision->costo_unitario;
+                        return (float) (
+                            $remision->cantidad_efectiva_valorizada
+                            ?? 0
+                        ) * (float) $remision->costo_unitario;
                     }
                 );
 
             $detalle->venta_remitida = (float)
                 $detalle->remisiones->sum(
                     function ($remision) {
-                        return (float) $remision->cantidad
-                            * (float) $remision->precio_venta;
+                        return (float) (
+                            $remision->cantidad_efectiva_valorizada
+                            ?? 0
+                        ) * (float) $remision->precio_venta;
                     }
                 );
 
             $detalle->costo_recibido = (float)
-                $detalle->remisiones
-                    ->filter(function ($remision) {
-                        return !empty(
-                            $remision->fecha_recepcion
-                        );
-                    })
-                    ->sum(function ($remision) {
-                        return (float) $remision->cantidad
-                            * (float) $remision->costo_unitario;
-                    });
+                $detalle->remisiones->sum(
+                    function ($remision) {
+                        return (float) (
+                            $remision
+                                ->cantidad_recibida_efectiva_valorizada
+                            ?? 0
+                        ) * (float) $remision->costo_unitario;
+                    }
+                );
 
             $detalle->venta_recibida = (float)
-                $detalle->remisiones
-                    ->filter(function ($remision) {
-                        return !empty(
-                            $remision->fecha_recepcion
-                        );
-                    })
-                    ->sum(function ($remision) {
-                        return (float) $remision->cantidad
-                            * (float) $remision->precio_venta;
-                    });
+                $detalle->remisiones->sum(
+                    function ($remision) {
+                        return (float) (
+                            $remision
+                                ->cantidad_recibida_efectiva_valorizada
+                            ?? 0
+                        ) * (float) $remision->precio_venta;
+                    }
+                );
 
             $detalle->margen_bruto =
                 $detalle->venta_remitida
