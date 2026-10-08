@@ -1752,6 +1752,16 @@ class ControlTerminacionController extends Controller
             $totalPlan - $totalPlanDetallado
         );
 
+        /*
+         * Auditoría del plan:
+         * ot_logistica_detalle puede conservar distribuciones/reasignaciones
+         * posteriores y por eso superar el objetivo físico de la OT.
+         */
+        $totalExcesoPlan = max(
+            0,
+            $totalPlanDetallado - $totalPlan
+        );
+
         $totalRemitido = $conciliacion
             ? (int) $conciliacion->remitido_original
             : (int) $detalles->sum('cantidad_remitida');
@@ -1759,6 +1769,38 @@ class ControlTerminacionController extends Controller
         $totalRecibido = $conciliacion
             ? (int) $conciliacion->recibido_original
             : (int) $detalles->sum('cantidad_recibida');
+
+        /*
+         * Movimiento físico bruto para auditoría. Puede superar la OT por
+         * reenvíos/re-movimientos. El avance efectivo de arriba permanece
+         * limitado al PT.
+         */
+        $totalRemitidoFisico = (int) $remisionesOriginales
+            ->sum('cantidad');
+
+        $totalRecibidoFisico = (int) $remisionesOriginales
+            ->filter(function ($remision) {
+                return !empty($remision->fecha_recepcion);
+            })
+            ->sum('cantidad');
+
+        $totalRemovido = max(
+            0,
+            $totalRemitidoFisico - $totalRemitido
+        );
+
+        $totalConfirmadoExtra = max(
+            0,
+            $totalRecibidoFisico - $totalRecibido
+        );
+
+        /*
+         * Pendiente del PLAN por destino. Es distinto del pendiente físico
+         * efectivo de la OT: una reasignación extra puede completar el volumen
+         * total aunque un destino histórico todavía figure pendiente.
+         */
+        $totalPendientePlanDestino = (int) $detalles
+            ->sum('pendiente_remitir');
 
         $totalEnTransito = max(
             0,
@@ -1832,7 +1874,13 @@ class ControlTerminacionController extends Controller
             'totalPlan',
             'totalPlanDetallado',
             'totalSinAsignar',
+            'totalExcesoPlan',
             'totalRemitido',
+            'totalRemitidoFisico',
+            'totalRecibidoFisico',
+            'totalRemovido',
+            'totalConfirmadoExtra',
+            'totalPendientePlanDestino',
             'totalRecibido',
             'totalEnTransito',
             'totalPendiente',
