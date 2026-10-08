@@ -126,10 +126,9 @@
             <div class="small-box bg-white border-left border-success shadow-sm">
                 <div class="inner">
                     <h3>Gs {{ number_format($resumen->venta_neta,0,',','.') }}</h3>
-                    <p>Venta neta</p>
+                    <p>Venta neta (PVTA)</p>
                     <small>
-                        Bruta Gs {{ number_format($resumen->venta_bruta,0,',','.') }}
-                        · devoluciones Gs {{ number_format($resumen->devoluciones_valor,0,',','.') }}
+                        Total final del reporte · NCR ya descontadas
                     </small>
                 </div>
                 <div class="icon"><i class="fas fa-cash-register text-success"></i></div>
@@ -167,9 +166,9 @@
             <div class="small-box bg-white border-left border-warning shadow-sm">
                 <div class="inner">
                     <h3>Gs {{ number_format($resumen->descuento_otorgado,0,',','.') }}</h3>
-                    <p>Descuento otorgado</p>
+                    <p>Descuento neto (DTO)</p>
                     <small>
-                        {{ number_format($resumen->porcentaje_descuento,1,',','.') }}% sobre precio lista
+                        {{ number_format($resumen->porcentaje_descuento,1,',','.') }}% sobre PLISTA neta
                     </small>
                 </div>
                 <div class="icon"><i class="fas fa-tags text-warning"></i></div>
@@ -215,10 +214,10 @@
     </div>
 
     <div class="alert alert-light border py-2 mb-3">
-        <strong>Lectura:</strong>
-        Venta neta = ventas positivas − notas de crédito/devoluciones.
-        Las filas con cantidad negativa se conservan y descuentan del resultado;
-        no se eliminan del histórico.
+        <strong>Lectura del export:</strong>
+        PLISTA, DTO y PVTA ya vienen como <strong>totales de cada línea</strong>.
+        Se suman directamente y no se vuelven a multiplicar por CANTIDAD.
+        Las NCR ya vienen con importes negativos y se descuentan automáticamente.
     </div>
 
     <div class="row">
@@ -234,25 +233,31 @@
                         <thead>
                             <tr>
                                 <th>Local</th>
-                                <th class="text-right">Unid. netas</th>
-                                <th class="text-right">Dev.</th>
+                                <th class="text-right">Cantidad</th>
+                                <th class="text-right">PLISTA</th>
+                                <th class="text-right">DTO</th>
+                                <th class="text-right">PVTA</th>
                                 <th class="text-right">Tickets</th>
-                                <th class="text-right">Ticket prom.</th>
-                                <th class="text-right">Venta neta</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse($porLocal as $item)
                                 <tr>
                                     <td><strong>{{ $item->local }}</strong></td>
-                                    <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
-                                    <td class="text-right {{ $item->devoluciones > 0 ? 'text-danger' : '' }}">
-                                        {{ number_format($item->devoluciones,0,',','.') }}
+                                    <td class="text-right font-weight-bold">
+                                        {{ number_format($item->unidades_netas,0,',','.') }}
                                     </td>
-                                    <td class="text-right">{{ number_format($item->tickets,0,',','.') }}</td>
-                                    <td class="text-right">Gs {{ number_format($item->ticket_promedio,0,',','.') }}</td>
+                                    <td class="text-right">
+                                        Gs {{ number_format($item->venta_lista,0,',','.') }}
+                                    </td>
+                                    <td class="text-right">
+                                        Gs {{ number_format($item->descuento,0,',','.') }}
+                                    </td>
                                     <td class="text-right font-weight-bold text-success">
                                         Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                    </td>
+                                    <td class="text-right">
+                                        {{ number_format($item->tickets,0,',','.') }}
                                     </td>
                                 </tr>
                             @empty
@@ -414,20 +419,18 @@
                         <th>Cliente</th>
                         <th>Vendedor</th>
                         <th>Comprobante</th>
-                        <th class="text-right">Lista</th>
-                        <th class="text-right">Dto.</th>
+                        <th class="text-right">PLISTA</th>
+                        <th class="text-right">DTO</th>
                         <th class="text-right">PVTA</th>
                         <th class="text-right">Cant.</th>
-                        <th class="text-right">Importe</th>
+                        <th class="text-right">Total línea</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($ventas as $item)
                         @php
-                            // El signo comercial lo define CANTIDAD.
-                            // Las NCR del export pueden traer también PVTA negativo.
-                            $importe = ((float) $item->cantidad)
-                                * abs((float) $item->p_venta);
+                            // PVTA ya es el importe total de la línea del export.
+                            $importe = (float) $item->p_venta;
                         @endphp
                         <tr class="{{ $item->cantidad < 0 ? 'table-danger' : '' }}">
                             <td>{{ date('d/m/Y', strtotime($item->fecha)) }}</td>
