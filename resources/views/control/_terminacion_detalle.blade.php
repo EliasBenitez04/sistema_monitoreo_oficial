@@ -38,23 +38,24 @@
 
     <div class="row mb-3">
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
-            <small class="d-block">Objetivo logística</small>
+            <small class="d-block">Plan según Producto Terminado</small>
             <strong>{{ number_format($totalPlan, 0, ',', '.') }}</strong>
             <div class="mt-1">
-                @if($totalExcesoPlan > 0)
-                    <small class="text-info">
-                        Detalle histórico {{ number_format($totalPlanDetallado, 0, ',', '.') }}
-                        · +{{ number_format($totalExcesoPlan, 0, ',', '.') }} sobre objetivo
-                    </small>
-                @elseif($totalSinAsignar > 0)
+                @if($totalSinAsignar > 0)
                     <small class="text-warning">
-                        Plan asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
+                        Asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
                         · {{ number_format($totalSinAsignar, 0, ',', '.') }} sin asignar
                     </small>
                 @else
                     <small class="text-success">
-                        Plan asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
+                        Asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
                         · completo
+                    </small>
+                @endif
+                @if($totalExcesoPlan > 0)
+                    <small class="d-block text-info">
+                        +{{ number_format($totalExcesoPlan, 0, ',', '.') }}
+                        movimiento(s) adicional(es) de auditoría fuera del PT
                     </small>
                 @endif
             </div>
@@ -106,11 +107,12 @@
         + {{ number_format($totalPendiente,0,',','.') }} pendiente físico.
         <br>
         <span class="text-muted">
-            Auditoría histórica:
-            {{ number_format($totalPlanDetallado,0,',','.') }} de plan detallado
-            = {{ number_format($totalRemitidoFisico,0,',','.') }} movimientos remitidos
-            + {{ number_format($totalPendientePlanDestino,0,',','.') }} pendiente por destino.
-            Los excedentes/re-movimientos no aumentan el avance efectivo por encima de la OT.
+            Auditoría de movimientos:
+            {{ number_format($totalPlanDetalladoRaw,0,',','.') }} registros logísticos acumulados,
+            {{ number_format($totalRemitidoFisico,0,',','.') }} movimientos remitidos
+            y {{ number_format($totalPendientePlanDestino,0,',','.') }} pendiente histórico por destino.
+            Estos movimientos no aumentan el plan ni el avance efectivo por encima de
+            {{ number_format($totalPlan,0,',','.') }} PT.
         </span>
     </div>
 
@@ -164,7 +166,7 @@
         <table class="table table-sm table-hover mb-0 td-table">
             <thead class="thead-light">
                 <tr>
-                    <th>Plan logística</th>
+                    <th>Destino / movimiento</th>
                     <th>Destino real</th>
                     <th>Código variante</th>
                     <th>Salida</th>
@@ -202,7 +204,7 @@
                                     </div>
                                     <div class="td-subtotal-box">
                                         <span class="td-subtotal-item">
-                                            <span class="td-subtotal-label">Plan</span>
+                                            <span class="td-subtotal-label">Registro</span>
                                             <span class="td-subtotal-value">{{ number_format($detalle->cantidad, 0, ',', '.') }}</span>
                                         </span>
                                         <span class="td-subtotal-item">
