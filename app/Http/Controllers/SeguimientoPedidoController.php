@@ -378,7 +378,7 @@ class SeguimientoPedidoController extends Controller
             $trazas = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $idsOt)
                 ->whereIn('proceso', [
-                    'TERMINACION - INGRESO TERMINACION',
+                    'TERMINACION - TERMINACION',
                     'TERMINACION - PRODUCTO TERMINADO',
                 ])
                 ->select(
@@ -411,7 +411,7 @@ class SeguimientoPedidoController extends Controller
             )->keyBy('proceso');
 
             $terminacion = $porProceso->get(
-                'TERMINACION - INGRESO TERMINACION'
+                'TERMINACION - TERMINACION'
             );
 
             $pt = $porProceso->get(
@@ -585,7 +585,7 @@ class SeguimientoPedidoController extends Controller
             $trazas = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $idsOt)
                 ->whereIn('proceso', [
-                    'TERMINACION - INGRESO TERMINACION',
+                    'TERMINACION - TERMINACION',
                     'TERMINACION - PRODUCTO TERMINADO',
                     'LOGISTICA - LOGISTICA Y DISTRIBUCION',
                 ])
@@ -777,7 +777,7 @@ class SeguimientoPedidoController extends Controller
             $porProceso = collect($trazas->get($ot->id_ot, collect()))->keyBy('proceso');
 
             $entrada = $porProceso->get(
-                'TERMINACION - INGRESO TERMINACION'
+                'TERMINACION - TERMINACION'
             );
             $pt = $porProceso->get('TERMINACION - PRODUCTO TERMINADO');
             $salidaLogistica = $porProceso->get('LOGISTICA - LOGISTICA Y DISTRIBUCION');
