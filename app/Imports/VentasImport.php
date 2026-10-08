@@ -5,6 +5,7 @@ namespace App\Imports;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 
@@ -16,6 +17,8 @@ class VentasImport
     private int $procesadas = 0;
     private int $insertadas = 0;
     private int $omitidas = 0;
+    private int $duplicadas = 0;
+    private int $invalidas = 0;
     private ?int $total = null;
 
     private ?string $fechaDesde = null;
@@ -157,6 +160,16 @@ class VentasImport
                     $sharedStrings
                 );
 
+                $numeroFila = null;
+
+                if (preg_match(
+                    '/<row\\b[^>]*\\br="(\\d+)"/i',
+                    $xmlFila,
+                    $mFila
+                )) {
+                    $numeroFila = (int) $mFila[1];
+                }
+
                 if (empty($encabezados)) {
                     $encabezados =
                         $this->normalizarEncabezados($valores);
@@ -175,12 +188,14 @@ class VentasImport
                         $valores[$indice] ?? null;
                 }
 
-                $registro = $this->normalizarRegistro($fila);
+                $registro = $this->normalizarRegistro(
+                    $fila,
+                    $numeroFila
+                );
 
                 $this->procesadas++;
 
                 if (!$registro) {
-                    $this->omitidas++;
                     continue;
                 }
 
@@ -239,6 +254,7 @@ class VentasImport
         $lote = [];
 
         foreach ($archivo as $valores) {
+            $numeroFila = $archivo->key() + 1;
             if (!is_array($valores)
                 || $this->filaVacia($valores)) {
                 continue;
@@ -266,12 +282,14 @@ class VentasImport
                     $valores[$indice] ?? null;
             }
 
-            $registro = $this->normalizarRegistro($fila);
+            $registro = $this->normalizarRegistro(
+                $fila,
+                $numeroFila
+            );
 
             $this->procesadas++;
 
             if (!$registro) {
-                $this->omitidas++;
                 continue;
             }
 
@@ -298,6 +316,8 @@ class VentasImport
                 'filas_procesadas' => $this->procesadas,
                 'filas_insertadas' => $this->insertadas,
                 'filas_omitidas' => $this->omitidas,
+                'filas_duplicadas' => $this->duplicadas,
+                'filas_invalidas' => $this->invalidas,
                 'estado' => 'ERROR',
                 'mensaje' => mb_substr($mensaje, 0, 5000),
                 'updated_at' => now(),
@@ -309,6 +329,8 @@ class VentasImport
             'procesadas' => $this->procesadas,
             'insertadas' => $this->insertadas,
             'omitidas' => $this->omitidas,
+            'duplicadas' => $this->duplicadas,
+            'invalidas' => $this->invalidas,
             'total' => $this->total,
         ]);
     }
@@ -319,6 +341,8 @@ class VentasImport
             'procesadas' => $this->procesadas,
             'insertadas' => $this->insertadas,
             'omitidas' => $this->omitidas,
+            'duplicadas' => $this->duplicadas,
+            'invalidas' => $this->invalidas,
             'total' => $this->total,
             'fecha_desde' => $this->fechaDesde,
             'fecha_hasta' => $this->fechaHasta,
@@ -338,25 +362,35 @@ class VentasImport
             ->pluck('hash_linea')
             ->flip();
 
-        $nuevos = array_values(
-            array_filter(
-                $lote,
-                function ($registro) use ($existentes) {
-                    return !$existentes->has(
-                        $registro['hash_linea']
-                    );
-                }
-            )
-        );
+        $nuevos = [];
 
-        $duplicados = count($lote) - count($nuevos);
+        foreach ($lote as $registro) {
+            $filaArchivo = $registro['_fila_importacion'] ?? null;
+            unset($registro['_fila_importacion']);
+
+            if ($existentes->has($registro['hash_linea'])) {
+                $this->duplicadas++;
+                $this->omitidas++;
+
+                $this->registrarOmitida(
+                    'DUPLICADA',
+                    $filaArchivo,
+                    $registro['codigo'] ?? null,
+                    $registro['comprobante'] ?? null,
+                    $registro['local'] ?? null,
+                    'La misma línea de venta ya existe en la base de datos.'
+                );
+
+                continue;
+            }
+
+            $nuevos[] = $registro;
+        }
 
         if (!empty($nuevos)) {
             DB::table('ventas')->insert($nuevos);
             $this->insertadas += count($nuevos);
         }
-
-        $this->omitidas += $duplicados;
 
         DB::table('ventas_importaciones')
             ->where('id', $this->importacionId)
@@ -366,6 +400,8 @@ class VentasImport
                 'filas_procesadas' => $this->procesadas,
                 'filas_insertadas' => $this->insertadas,
                 'filas_omitidas' => $this->omitidas,
+                'filas_duplicadas' => $this->duplicadas,
+                'filas_invalidas' => $this->invalidas,
                 'updated_at' => now(),
             ]);
 
@@ -385,6 +421,8 @@ class VentasImport
             'procesadas' => $this->procesadas,
             'insertadas' => $this->insertadas,
             'omitidas' => $this->omitidas,
+            'duplicadas' => $this->duplicadas,
+            'invalidas' => $this->invalidas,
             'total' => $this->total,
             'porcentaje' => $porcentaje,
         ]);
@@ -402,6 +440,8 @@ class VentasImport
                 'filas_procesadas' => $this->procesadas,
                 'filas_insertadas' => $this->insertadas,
                 'filas_omitidas' => $this->omitidas,
+                'filas_duplicadas' => $this->duplicadas,
+                'filas_invalidas' => $this->invalidas,
                 'estado' => 'COMPLETADO',
                 'mensaje' => 'Importación completada.',
                 'updated_at' => now(),
@@ -413,12 +453,28 @@ class VentasImport
             'procesadas' => $this->procesadas,
             'insertadas' => $this->insertadas,
             'omitidas' => $this->omitidas,
+            'duplicadas' => $this->duplicadas,
+            'invalidas' => $this->invalidas,
             'total' => $this->total,
             'porcentaje' => 100,
         ]);
+
+        Log::info('IMPORTACION VENTAS COMPLETADA', [
+            'importacion_id' => $this->importacionId,
+            'procesadas' => $this->procesadas,
+            'insertadas' => $this->insertadas,
+            'duplicadas' => $this->duplicadas,
+            'invalidas' => $this->invalidas,
+            'omitidas_total' => $this->omitidas,
+            'fecha_desde' => $this->fechaDesde,
+            'fecha_hasta' => $this->fechaHasta,
+        ]);
     }
 
-    private function normalizarRegistro(array $fila): ?array
+    private function normalizarRegistro(
+        array $fila,
+        ?int $numeroFila = null
+    ): ?array
     {
         $local = $this->limpiarTexto(
             $fila['local'] ?? null
@@ -440,11 +496,41 @@ class VentasImport
             $fila['comprobante'] ?? null
         );
 
-        if (!$local
-            || !$codigo
-            || !$fecha
-            || $cantidad === null
-            || !$comprobante) {
+        $errores = [];
+
+        if (!$local) {
+            $errores[] = 'LOCAL vacío';
+        }
+
+        if (!$codigo) {
+            $errores[] = 'CODIGO vacío';
+        }
+
+        if (!$fecha) {
+            $errores[] = 'FECHA vacía o inválida';
+        }
+
+        if ($cantidad === null) {
+            $errores[] = 'CANTIDAD vacía o inválida';
+        }
+
+        if (!$comprobante) {
+            $errores[] = 'COMPROBANTE vacío';
+        }
+
+        if (!empty($errores)) {
+            $this->invalidas++;
+            $this->omitidas++;
+
+            $this->registrarOmitida(
+                'INVALIDA',
+                $numeroFila,
+                $codigo,
+                $comprobante,
+                $local,
+                implode(' · ', $errores)
+            );
+
             return null;
         }
 
@@ -519,6 +605,7 @@ class VentasImport
         $ahora = now();
 
         return [
+            '_fila_importacion' => $numeroFila,
             'importacion_id' => $this->importacionId,
             'local' => $local,
             'codigo' => $codigo,
@@ -537,6 +624,40 @@ class VentasImport
             'created_at' => $ahora,
             'updated_at' => $ahora,
         ];
+    }
+
+    /**
+     * Persiste y registra en laravel.log cada fila que no se inserta.
+     */
+    private function registrarOmitida(
+        string $tipo,
+        ?int $fila,
+        ?string $codigo,
+        ?string $comprobante,
+        ?string $local,
+        string $motivo
+    ): void {
+        DB::table('ventas_importacion_omitidas')->insert([
+            'importacion_id' => $this->importacionId,
+            'fila' => $fila,
+            'tipo' => $tipo,
+            'codigo' => $codigo,
+            'comprobante' => $comprobante,
+            'local' => $local,
+            'motivo' => $motivo,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Log::warning('IMPORTACION VENTAS - FILA OMITIDA', [
+            'importacion_id' => $this->importacionId,
+            'tipo' => $tipo,
+            'fila' => $fila,
+            'codigo' => $codigo,
+            'comprobante' => $comprobante,
+            'local' => $local,
+            'motivo' => $motivo,
+        ]);
     }
 
     private function validarEncabezados(
@@ -1048,6 +1169,8 @@ class VentasImport
             'procesadas' => $this->procesadas,
             'insertadas' => $this->insertadas,
             'omitidas' => $this->omitidas,
+            'duplicadas' => $this->duplicadas,
+            'invalidas' => $this->invalidas,
             'total' => $this->total,
             'porcentaje' => null,
             'actualizado_en' => now()->format('H:i:s'),
