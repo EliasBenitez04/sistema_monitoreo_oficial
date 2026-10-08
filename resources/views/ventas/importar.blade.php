@@ -146,34 +146,46 @@
                     </div>
 
                     <div class="row text-center">
-                        <div class="col-md-3 col-6 mb-2">
+                        <div class="col-lg-2 col-4 mb-2">
                             <div class="import-stat">
                                 <small>Procesadas</small>
                                 <strong id="stat-procesadas">0</strong>
                             </div>
                         </div>
-                        <div class="col-md-3 col-6 mb-2">
+                        <div class="col-lg-2 col-4 mb-2">
                             <div class="import-stat">
                                 <small>Total</small>
                                 <strong id="stat-total">-</strong>
                             </div>
                         </div>
-                        <div class="col-md-3 col-6 mb-2">
+                        <div class="col-lg-2 col-4 mb-2">
                             <div class="import-stat">
                                 <small>Nuevas</small>
-                                <strong id="stat-insertadas">0</strong>
+                                <strong class="text-success" id="stat-insertadas">0</strong>
                             </div>
                         </div>
-                        <div class="col-md-3 col-6 mb-2">
+                        <div class="col-lg-2 col-4 mb-2">
                             <div class="import-stat">
-                                <small>Omitidas</small>
+                                <small>Duplicadas</small>
+                                <strong class="text-warning" id="stat-duplicadas">0</strong>
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-4 mb-2">
+                            <div class="import-stat">
+                                <small>Inválidas</small>
+                                <strong class="text-danger" id="stat-invalidas">0</strong>
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-4 mb-2">
+                            <div class="import-stat">
+                                <small>Omitidas total</small>
                                 <strong id="stat-omitidas">0</strong>
                             </div>
                         </div>
                     </div>
 
                     <div class="small text-muted text-center mt-2">
-                        Las omitidas incluyen filas inválidas y ventas ya importadas anteriormente.
+                        Omitidas total = duplicadas + inválidas. Cada caso queda guardado en auditoría y en laravel.log.
                     </div>
                 </div>
             </div>
@@ -191,9 +203,10 @@
                         <thead>
                             <tr>
                                 <th>Archivo</th>
-                                <th>Período</th>
                                 <th class="text-right">Nuevas</th>
-                                <th>Estado</th>
+                                <th class="text-right">Duplic.</th>
+                                <th class="text-right">Invál.</th>
+                                <th>Auditoría</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -205,24 +218,46 @@
                                             {{ date('d/m/Y H:i', strtotime($item->created_at)) }}
                                         </small>
                                     </td>
-                                    <td class="text-nowrap">
-                                        {{ $item->fecha_desde ? date('d/m/Y', strtotime($item->fecha_desde)) : '-' }}
-                                        @if($item->fecha_hasta && $item->fecha_hasta !== $item->fecha_desde)
-                                            <br>{{ date('d/m/Y', strtotime($item->fecha_hasta)) }}
-                                        @endif
-                                    </td>
-                                    <td class="text-right">
+                                    <td class="text-right text-success font-weight-bold">
                                         {{ number_format($item->filas_insertadas,0,',','.') }}
                                     </td>
-                                    <td>
-                                        <span class="badge {{ $item->estado === 'COMPLETADO' ? 'badge-success' : ($item->estado === 'ERROR' ? 'badge-danger' : 'badge-warning') }}">
-                                            {{ $item->estado }}
-                                        </span>
+                                    <td class="text-right text-warning font-weight-bold">
+                                        {{ number_format($item->filas_duplicadas ?? 0,0,',','.') }}
+                                    </td>
+                                    <td class="text-right text-danger font-weight-bold">
+                                        {{ number_format($item->filas_invalidas ?? 0,0,',','.') }}
+                                    </td>
+                                    <td class="text-nowrap">
+                                        @php
+                                            $clasificadas = (int) ($item->filas_duplicadas ?? 0)
+                                                + (int) ($item->filas_invalidas ?? 0);
+                                            $sinClasificar = max(
+                                                0,
+                                                (int) $item->filas_omitidas - $clasificadas
+                                            );
+                                        @endphp
+
+                                        @if($item->filas_omitidas > 0)
+                                            <button type="button"
+                                                    class="btn btn-xs btn-outline-secondary ver-omitidas"
+                                                    data-id="{{ $item->id }}"
+                                                    data-archivo="{{ $item->nombre_archivo }}">
+                                                <i class="fas fa-search mr-1"></i>
+                                                Ver {{ number_format($item->filas_omitidas,0,',','.') }}
+                                            </button>
+                                            @if($sinClasificar > 0)
+                                                <small class="d-block text-muted mt-1">
+                                                    {{ number_format($sinClasificar,0,',','.') }} históricas sin clasificar
+                                                </small>
+                                            @endif
+                                        @else
+                                            <span class="badge badge-success">Sin omisiones</span>
+                                        @endif
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-4">
+                                    <td colspan="5" class="text-center text-muted py-4">
                                         Todavía no hay importaciones.
                                     </td>
                                 </tr>
@@ -230,6 +265,84 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade"
+     id="omitidasModal"
+     tabindex="-1"
+     role="dialog"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0">Auditoría de filas omitidas</h5>
+                    <small class="text-muted" id="omitidasArchivo">-</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div id="omitidasLoading" class="text-center py-5 text-muted">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                    <div>Cargando auditoría...</div>
+                </div>
+
+                <div id="omitidasContenido" class="d-none">
+                    <div class="row text-center mb-3">
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="import-stat">
+                                <small>Procesadas</small>
+                                <strong id="auditProcesadas">0</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="import-stat">
+                                <small>Nuevas</small>
+                                <strong class="text-success" id="auditNuevas">0</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="import-stat">
+                                <small>Duplicadas</small>
+                                <strong class="text-warning" id="auditDuplicadas">0</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-6 mb-2">
+                            <div class="import-stat">
+                                <small>Inválidas</small>
+                                <strong class="text-danger" id="auditInvalidas">0</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="omitidasHistoricas"
+                         class="alert alert-warning py-2 d-none"></div>
+
+                    <div class="table-responsive border rounded">
+                        <table class="table table-sm table-hover mb-0 ventas-import-table">
+                            <thead>
+                                <tr>
+                                    <th>Fila</th>
+                                    <th>Tipo</th>
+                                    <th>Local</th>
+                                    <th>Código</th>
+                                    <th>Comprobante</th>
+                                    <th>Motivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="omitidasBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="omitidasError"
+                     class="alert alert-danger d-none mb-0"></div>
             </div>
         </div>
     </div>
@@ -295,6 +408,8 @@
     const procesadas = document.getElementById('stat-procesadas');
     const total = document.getElementById('stat-total');
     const insertadas = document.getElementById('stat-insertadas');
+    const duplicadas = document.getElementById('stat-duplicadas');
+    const invalidas = document.getElementById('stat-invalidas');
     const omitidas = document.getElementById('stat-omitidas');
 
     let tokenActual = null;
@@ -359,6 +474,8 @@
 
         procesadas.textContent = numero(data.procesadas);
         insertadas.textContent = numero(data.insertadas);
+        duplicadas.textContent = numero(data.duplicadas);
+        invalidas.textContent = numero(data.invalidas);
         omitidas.textContent = numero(data.omitidas);
         total.textContent = data.total
             ? numero(data.total)
@@ -406,6 +523,134 @@
             .then(aplicar)
             .catch(() => {});
     }
+
+    const omitidasUrl = @json(
+        route(
+            'ventas.importaciones.omitidas',
+            ['id' => '__ID__']
+        )
+    );
+
+    function esc(valor) {
+        return String(valor ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function abrirOmitidas(id, archivoNombre) {
+        document.getElementById('omitidasArchivo').textContent =
+            archivoNombre || ('Importación #' + id);
+
+        document.getElementById('omitidasLoading')
+            .classList.remove('d-none');
+        document.getElementById('omitidasContenido')
+            .classList.add('d-none');
+        document.getElementById('omitidasError')
+            .classList.add('d-none');
+        document.getElementById('omitidasHistoricas')
+            .classList.add('d-none');
+
+        $('#omitidasModal').modal('show');
+
+        fetch(
+            omitidasUrl.replace('__ID__', id),
+            {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                cache: 'no-store'
+            }
+        )
+            .then(async function (response) {
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.message || 'No se pudo cargar la auditoría.'
+                    );
+                }
+
+                return data;
+            })
+            .then(function (data) {
+                const imp = data.importacion || {};
+                const filas = Array.isArray(data.omitidas)
+                    ? data.omitidas
+                    : [];
+
+                document.getElementById('auditProcesadas')
+                    .textContent = numero(imp.procesadas);
+                document.getElementById('auditNuevas')
+                    .textContent = numero(imp.insertadas);
+                document.getElementById('auditDuplicadas')
+                    .textContent = numero(imp.duplicadas);
+                document.getElementById('auditInvalidas')
+                    .textContent = numero(imp.invalidas);
+
+                const historicas = document.getElementById(
+                    'omitidasHistoricas'
+                );
+
+                if (Number(imp.sin_clasificar || 0) > 0) {
+                    historicas.textContent =
+                        numero(imp.sin_clasificar)
+                        + ' omisiones pertenecen a una importación anterior a esta mejora y no tienen motivo individual guardado.';
+                    historicas.classList.remove('d-none');
+                }
+
+                document.getElementById('omitidasBody').innerHTML =
+                    filas.length
+                        ? filas.map(function (item) {
+                            const badge = item.tipo === 'DUPLICADA'
+                                ? 'badge-warning'
+                                : 'badge-danger';
+
+                            return ''
+                                + '<tr>'
+                                + '<td>' + esc(item.fila || '-') + '</td>'
+                                + '<td><span class="badge ' + badge + '">'
+                                    + esc(item.tipo) + '</span></td>'
+                                + '<td>' + esc(item.local || '-') + '</td>'
+                                + '<td><strong>' + esc(item.codigo || '-') + '</strong></td>'
+                                + '<td>' + esc(item.comprobante || '-') + '</td>'
+                                + '<td>' + esc(item.motivo || '-') + '</td>'
+                                + '</tr>';
+                        }).join('')
+                        : '<tr><td colspan="6" class="text-center text-muted py-4">'
+                            + 'No hay detalle individual guardado para esta importación.'
+                            + '</td></tr>';
+
+                document.getElementById('omitidasLoading')
+                    .classList.add('d-none');
+                document.getElementById('omitidasContenido')
+                    .classList.remove('d-none');
+            })
+            .catch(function (error) {
+                document.getElementById('omitidasLoading')
+                    .classList.add('d-none');
+
+                const caja = document.getElementById('omitidasError');
+                caja.textContent =
+                    error.message || 'No se pudo cargar la auditoría.';
+                caja.classList.remove('d-none');
+            });
+    }
+
+    document.addEventListener('click', function (event) {
+        const boton = event.target.closest('.ver-omitidas');
+
+        if (!boton) {
+            return;
+        }
+
+        abrirOmitidas(
+            boton.dataset.id,
+            boton.dataset.archivo
+        );
+    });
 
     form.addEventListener('submit', function (event) {
         event.preventDefault();
@@ -492,6 +737,10 @@
                         respuesta.resumen.procesadas,
                     insertadas:
                         respuesta.resumen.insertadas,
+                    duplicadas:
+                        respuesta.resumen.duplicadas,
+                    invalidas:
+                        respuesta.resumen.invalidas,
                     omitidas:
                         respuesta.resumen.omitidas,
                     total:
@@ -506,9 +755,12 @@
                         '<strong>'
                         + numero(respuesta.resumen.insertadas)
                         + '</strong> líneas nuevas.<br>'
-                        + '<span class="text-muted">'
-                        + numero(respuesta.resumen.omitidas)
-                        + ' omitidas/duplicadas.</span>',
+                        + '<span class="text-warning">'
+                        + numero(respuesta.resumen.duplicadas)
+                        + ' duplicadas</span> · '
+                        + '<span class="text-danger">'
+                        + numero(respuesta.resumen.invalidas)
+                        + ' inválidas</span>',
                     confirmButtonText: 'Ver ventas'
                 }).then(function () {
                     window.location.href =
