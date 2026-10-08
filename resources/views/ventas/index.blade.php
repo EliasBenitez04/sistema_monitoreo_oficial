@@ -672,3 +672,333 @@
 }
 </style>
 @endpush
+
+@push('page_scripts')
+<script>
+(function () {
+    const urlPlantilla = @json(
+        route(
+            'ventas.producto.detalle',
+            ['codigo' => '__CODIGO__']
+        )
+    );
+
+    const filtrosActuales = {
+        desde: @json($desde),
+        hasta: @json($hasta),
+        local: @json($local),
+        vendedor: @json($vendedor),
+        tipo: @json($tipo),
+        buscar: @json($buscar)
+    };
+
+    const nf = new Intl.NumberFormat('es-PY');
+
+    function gs(valor) {
+        return 'Gs ' + nf.format(
+            Math.round(Number(valor || 0))
+        );
+    }
+
+    function num(valor) {
+        return nf.format(Number(valor || 0));
+    }
+
+    function esc(valor) {
+        return String(valor ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function construirUrl(codigo) {
+        let url = urlPlantilla.replace(
+            '__CODIGO__',
+            encodeURIComponent(codigo)
+        );
+
+        const params = new URLSearchParams();
+
+        Object.entries(filtrosActuales).forEach(
+            function (entrada) {
+                const clave = entrada[0];
+                const valor = entrada[1];
+
+                if (
+                    valor !== null
+                    && valor !== undefined
+                    && valor !== ''
+                ) {
+                    params.set(clave, valor);
+                }
+            }
+        );
+
+        const qs = params.toString();
+
+        return qs ? url + '?' + qs : url;
+    }
+
+    function limpiarModal() {
+        document.getElementById(
+            'ventaProductoLoading'
+        ).classList.remove('d-none');
+
+        document.getElementById(
+            'ventaProductoContenido'
+        ).classList.add('d-none');
+
+        document.getElementById(
+            'ventaProductoError'
+        ).classList.add('d-none');
+
+        document.getElementById(
+            'vpDetalleBody'
+        ).innerHTML = '';
+
+        document.getElementById(
+            'vpComprobantesBody'
+        ).innerHTML = '';
+
+        $('#vpComprobantesCollapse').collapse('hide');
+    }
+
+    function filaDetalle(item) {
+        const claseVenta =
+            Number(item.p_venta) < 0
+                ? 'text-danger'
+                : 'text-success';
+
+        return ''
+            + '<tr>'
+            + '<td><strong>' + esc(item.local) + '</strong></td>'
+            + '<td>' + esc(item.vendedor) + '</td>'
+            + '<td class="text-right font-weight-bold">'
+                + num(item.cantidad)
+                + '</td>'
+            + '<td class="text-right">' + gs(item.p_lista) + '</td>'
+            + '<td class="text-right">' + gs(item.descuento) + '</td>'
+            + '<td class="text-right font-weight-bold '
+                + claseVenta + '">'
+                + gs(item.p_venta)
+                + '</td>'
+            + '<td class="text-right">' + num(item.tickets) + '</td>'
+            + '</tr>';
+    }
+
+    function filaComprobante(item) {
+        const claseVenta =
+            Number(item.p_venta) < 0
+                ? 'text-danger'
+                : '';
+
+        return ''
+            + '<tr>'
+            + '<td>' + esc(item.fecha) + '</td>'
+            + '<td>' + esc(item.local) + '</td>'
+            + '<td>' + esc(item.vendedor) + '</td>'
+            + '<td><strong>'
+                + esc(item.comprobante)
+                + '</strong></td>'
+            + '<td class="text-right">'
+                + num(item.cantidad)
+                + '</td>'
+            + '<td class="text-right">' + gs(item.p_lista) + '</td>'
+            + '<td class="text-right">' + gs(item.descuento) + '</td>'
+            + '<td class="text-right font-weight-bold '
+                + claseVenta + '">'
+                + gs(item.p_venta)
+                + '</td>'
+            + '</tr>';
+    }
+
+    function abrirDetalle(codigo) {
+        limpiarModal();
+
+        document.getElementById(
+            'ventaProductoModalLabel'
+        ).textContent = 'Detalle del producto';
+
+        document.getElementById(
+            'ventaProductoSubtitulo'
+        ).textContent = codigo;
+
+        $('#ventaProductoModal').modal('show');
+
+        fetch(
+            construirUrl(codigo),
+            {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                cache: 'no-store'
+            }
+        )
+            .then(async function (response) {
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.message
+                            || 'No se pudo cargar el detalle.'
+                    );
+                }
+
+                return data;
+            })
+            .then(function (data) {
+                const p = data.producto || {};
+
+                document.getElementById(
+                    'ventaProductoModalLabel'
+                ).textContent = p.codigo || codigo;
+
+                document.getElementById(
+                    'ventaProductoSubtitulo'
+                ).textContent = p.descripcion || '-';
+
+                document.getElementById(
+                    'vpCantidad'
+                ).textContent = num(p.cantidad);
+
+                document.getElementById(
+                    'vpLista'
+                ).textContent = gs(p.p_lista);
+
+                document.getElementById(
+                    'vpDto'
+                ).textContent = gs(p.descuento);
+
+                document.getElementById(
+                    'vpVenta'
+                ).textContent = gs(p.p_venta);
+
+                const meta = [];
+
+                if (p.grupo) {
+                    meta.push(
+                        '<strong>Grupo:</strong> '
+                        + esc(p.grupo)
+                    );
+                }
+
+                if (p.temporada) {
+                    meta.push(
+                        '<strong>Temporada:</strong> '
+                        + esc(p.temporada)
+                    );
+                }
+
+                if (p.linea) {
+                    meta.push(
+                        '<strong>Línea:</strong> '
+                        + esc(p.linea)
+                    );
+                }
+
+                meta.push(
+                    '<strong>Tickets:</strong> '
+                    + num(p.tickets)
+                );
+
+                document.getElementById(
+                    'vpMeta'
+                ).innerHTML = meta.join(
+                    ' &nbsp;·&nbsp; '
+                );
+
+                const detalle = Array.isArray(data.detalle)
+                    ? data.detalle
+                    : [];
+
+                document.getElementById(
+                    'vpCantidadFilas'
+                ).textContent =
+                    detalle.length
+                    + ' combinación'
+                    + (detalle.length === 1 ? '' : 'es');
+
+                document.getElementById(
+                    'vpDetalleBody'
+                ).innerHTML = detalle.length
+                    ? detalle.map(filaDetalle).join('')
+                    : '<tr><td colspan="7" '
+                        + 'class="text-center text-muted py-3">'
+                        + 'Sin detalle para los filtros actuales.'
+                        + '</td></tr>';
+
+                const comprobantes =
+                    Array.isArray(data.comprobantes)
+                        ? data.comprobantes
+                        : [];
+
+                document.getElementById(
+                    'vpComprobantesBody'
+                ).innerHTML = comprobantes.length
+                    ? comprobantes.map(
+                        filaComprobante
+                    ).join('')
+                    : '<tr><td colspan="8" '
+                        + 'class="text-center text-muted py-3">'
+                        + 'Sin comprobantes.'
+                        + '</td></tr>';
+
+                document.getElementById(
+                    'ventaProductoLoading'
+                ).classList.add('d-none');
+
+                document.getElementById(
+                    'ventaProductoContenido'
+                ).classList.remove('d-none');
+            })
+            .catch(function (error) {
+                document.getElementById(
+                    'ventaProductoLoading'
+                ).classList.add('d-none');
+
+                const caja = document.getElementById(
+                    'ventaProductoError'
+                );
+
+                caja.textContent =
+                    error.message
+                    || 'No se pudo cargar el detalle.';
+
+                caja.classList.remove('d-none');
+            });
+    }
+
+    document.addEventListener(
+        'click',
+        function (event) {
+            const boton = event.target.closest(
+                '.venta-producto-detalle'
+            );
+
+            if (boton) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                abrirDetalle(
+                    boton.dataset.codigo
+                );
+
+                return;
+            }
+
+            const fila = event.target.closest(
+                '.venta-producto-row'
+            );
+
+            if (fila) {
+                abrirDetalle(
+                    fila.dataset.codigo
+                );
+            }
+        }
+    );
+})();
+</script>
+@endpush
