@@ -374,8 +374,19 @@ class LogisticaConciliacionService
                         'planificado_raw' => $planRaw,
                         'planificado' => $ptEfectivo,
                         'plan_objetivo' => $ptEfectivo,
-                        'plan_detallado' => $planRaw,
+
+                        /*
+                         * PRODUCTO TERMINADO manda.
+                         * El plan efectivo nunca puede superar el PT.
+                         * Cualquier detalle adicional queda sólo como auditoría.
+                         */
+                        'plan_detallado_raw' => $planRaw,
+                        'plan_detallado' => $planDisponible,
                         'plan_disponible' => $planDisponible,
+                        'exceso_plan_auditoria' => max(
+                            0,
+                            $planRaw - $ptEfectivo
+                        ),
                         'sin_asignar_plan' => max(
                             0,
                             $ptEfectivo - $planDisponible
@@ -448,7 +459,7 @@ class LogisticaConciliacionService
                          * Alias temporales para no romper las vistas existentes.
                          * Después podremos limpiar estos nombres progresivamente.
                          */
-                        'total_distribuido' => $planRaw,
+                        'total_distribuido' => $planDisponible,
                         'asignado_efectivo_legacy' => $asignadoEfectivo,
                         'faltante' => $sinDestino,
                         'hueco_detalle' => $huecoPlanVsReal,
