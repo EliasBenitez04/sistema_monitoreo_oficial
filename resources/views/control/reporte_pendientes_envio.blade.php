@@ -216,6 +216,253 @@
         </div>
     @endif
 
+    <div class="card cc-card mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <strong>
+                    <i class="fas fa-search-plus mr-1"></i>
+                    Diagnóstico de diferencias
+                </strong>
+                <div class="cc-sub">
+                    Identifica exactamente qué OTs explican las diferencias de Producción y Plan Logístico.
+                </div>
+            </div>
+            <div>
+                <span class="badge badge-danger p-2 mr-1">
+                    {{ $resumen->ots_diferencia_produccion }} OT producción
+                </span>
+                <span class="badge badge-warning p-2">
+                    {{ $resumen->ots_diferencia_plan }} OT plan
+                </span>
+            </div>
+        </div>
+
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-lg-6 mb-3 mb-lg-0">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Diferencia Producción</strong>
+                            <span class="badge {{ $resumen->diferencia_pt_ingreso === 0 ? 'badge-success' : 'badge-danger' }}">
+                                {{ $resumen->diferencia_pt_ingreso > 0 ? '+' : '' }}{{ number_format($resumen->diferencia_pt_ingreso,0,',','.') }}
+                            </span>
+                        </div>
+                        <div class="small text-muted">
+                            PT {{ number_format($resumen->producto_terminado,0,',','.') }}
+                            − Ingreso Terminación {{ number_format($resumen->ingreso_terminacion,0,',','.') }}
+                        </div>
+                        <div class="small mt-2">
+                            <strong>{{ number_format($resumen->exceso_pt_sobre_ingreso,0,',','.') }}</strong>
+                            PT por encima del ingreso ·
+                            <strong>{{ number_format($resumen->faltante_pt_vs_ingreso,0,',','.') }}</strong>
+                            pendientes respecto al ingreso.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>Diferencia Plan Logístico</strong>
+                            <span class="badge {{ $resumen->sin_destino_plan === 0 ? 'badge-success' : 'badge-warning' }}">
+                                {{ number_format($resumen->sin_destino_plan,0,',','.') }}
+                            </span>
+                        </div>
+                        <div class="small text-muted">
+                            PT no explicado inicialmente por el plan detallado.
+                        </div>
+                        <div class="small mt-2">
+                            <strong>{{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}</strong>
+                            ya demostraron destino mediante remisión ·
+                            <strong>{{ number_format($resumen->sin_destino,0,',','.') }}</strong>
+                            siguen realmente sin destino.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion" id="diagnosticoDiferencias">
+                <div class="card mb-2">
+                    <div class="card-header py-2" id="headingProduccion">
+                        <button class="btn btn-link btn-block text-left font-weight-bold p-0"
+                                type="button"
+                                data-toggle="collapse"
+                                data-target="#collapseProduccion"
+                                aria-expanded="false"
+                                aria-controls="collapseProduccion">
+                            <i class="fas fa-industry text-danger mr-1"></i>
+                            OTs con diferencia entre Ingreso Terminación y Producto Terminado
+                            <span class="badge badge-light border ml-1">
+                                {{ $diagnosticoProduccion->count() }}
+                            </span>
+                        </button>
+                    </div>
+
+                    <div id="collapseProduccion"
+                         class="collapse"
+                         aria-labelledby="headingProduccion"
+                         data-parent="#diagnosticoDiferencias">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0 cc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>OT</th>
+                                            <th>Código / Descripción</th>
+                                            <th class="text-right">Ingreso Term.</th>
+                                            <th class="text-right">PT</th>
+                                            <th class="text-right">Diferencia</th>
+                                            <th>Qué revisar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($diagnosticoProduccion as $item)
+                                            <tr>
+                                                <td><strong>{{ $item->nro_ot }}</strong></td>
+                                                <td>
+                                                    <span class="cc-code">{{ $item->codigo }}</span><br>
+                                                    <small class="text-muted">{{ $item->descripcion }}</small>
+                                                </td>
+                                                <td class="text-right">
+                                                    {{ number_format($item->ingreso_terminacion,0,',','.') }}
+                                                </td>
+                                                <td class="text-right">
+                                                    <strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong>
+                                                </td>
+                                                <td class="text-right">
+                                                    @if($item->diferencia_pt_ingreso > 0)
+                                                        <span class="text-danger font-weight-bold">
+                                                            +{{ number_format($item->diferencia_pt_ingreso,0,',','.') }}
+                                                        </span>
+                                                    @else
+                                                        <span class="text-warning font-weight-bold">
+                                                            {{ number_format($item->diferencia_pt_ingreso,0,',','.') }}
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                                <td>
+                                                    @if($item->diferencia_pt_ingreso > 0)
+                                                        <span class="text-danger">
+                                                            PT supera lo registrado en Ingreso Terminación. Revisar trazabilidad/importación.
+                                                        </span>
+                                                    @else
+                                                        <span class="text-warning">
+                                                            Falta Producto Terminado respecto a lo ingresado a Terminación.
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="6" class="text-center text-success py-3">
+                                                    Sin diferencias entre Ingreso Terminación y PT.
+                                                </td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-0">
+                    <div class="card-header py-2" id="headingPlan">
+                        <button class="btn btn-link btn-block text-left font-weight-bold p-0"
+                                type="button"
+                                data-toggle="collapse"
+                                data-target="#collapsePlan"
+                                aria-expanded="false"
+                                aria-controls="collapsePlan">
+                            <i class="fas fa-route text-warning mr-1"></i>
+                            OTs con diferencia entre PT y Plan asignado
+                            <span class="badge badge-light border ml-1">
+                                {{ $diagnosticoPlan->count() }}
+                            </span>
+                        </button>
+                    </div>
+
+                    <div id="collapsePlan"
+                         class="collapse"
+                         aria-labelledby="headingPlan"
+                         data-parent="#diagnosticoDiferencias">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0 cc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>OT</th>
+                                            <th>Código / Descripción</th>
+                                            <th class="text-right">PT</th>
+                                            <th class="text-right">Plan asignado</th>
+                                            <th class="text-right">Hueco plan</th>
+                                            <th class="text-right">Cubierto por remisión</th>
+                                            <th class="text-right">Sin destino real</th>
+                                            <th>Qué revisar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($diagnosticoPlan as $item)
+                                            <tr>
+                                                <td><strong>{{ $item->nro_ot }}</strong></td>
+                                                <td>
+                                                    <span class="cc-code">{{ $item->codigo }}</span><br>
+                                                    <small class="text-muted">{{ $item->descripcion }}</small>
+                                                </td>
+                                                <td class="text-right">
+                                                    <strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong>
+                                                </td>
+                                                <td class="text-right">
+                                                    {{ number_format($item->plan_detallado,0,',','.') }}
+                                                </td>
+                                                <td class="text-right text-warning font-weight-bold">
+                                                    @if($item->hueco_plan_bruto > 0)
+                                                        {{ number_format($item->hueco_plan_bruto,0,',','.') }}
+                                                    @elseif($item->exceso_plan_sobre_pt > 0)
+                                                        +{{ number_format($item->exceso_plan_sobre_pt,0,',','.') }} exceso plan
+                                                    @else
+                                                        0
+                                                    @endif
+                                                </td>
+                                                <td class="text-right text-info">
+                                                    {{ number_format($item->cubierto_sin_plan_por_remision,0,',','.') }}
+                                                </td>
+                                                <td class="text-right text-danger font-weight-bold">
+                                                    {{ number_format($item->sin_destino,0,',','.') }}
+                                                </td>
+                                                <td>
+                                                    @if($item->sin_destino > 0)
+                                                        <span class="text-danger">
+                                                            Falta asignar destino para {{ number_format($item->sin_destino,0,',','.') }} prenda(s).
+                                                        </span>
+                                                    @elseif($item->cubierto_sin_plan_por_remision > 0)
+                                                        <span class="text-info">
+                                                            El plan quedó corto, pero la remisión real ya demuestra el destino.
+                                                        </span>
+                                                    @elseif($item->exceso_plan_sobre_pt > 0)
+                                                        <span class="text-warning">
+                                                            El plan supera el PT. Revisar distribución cargada.
+                                                        </span>
+                                                    @endif
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="8" class="text-center text-success py-3">
+                                                    Sin diferencias entre PT y Plan asignado.
+                                                </td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card cc-card">
         <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
             <div>
