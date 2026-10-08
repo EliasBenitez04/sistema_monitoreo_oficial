@@ -510,11 +510,27 @@ class SeguimientoPedidoController extends Controller
                 );
             }
 
+            /*
+             * Regla gerencial:
+             * si ya existe al menos una confirmación local, la OT deja de
+             * pertenecer a este listado, aunque conserve algún saldo.
+             *
+             * fecha_recepcion se obtiene de cualquier remisión recibida de la
+             * OT, por lo que también cubre confirmaciones parciales.
+             */
+            $tieneConfirmacionLocal =
+                $recibido > 0
+                || !empty($fechaRecepcion);
+
             $urgente =
-                $saldoPendiente > 0
+                !$tieneConfirmacionLocal
+                && $saldoPendiente > 0
                 && $etapa !== 'CONFIRMADO'
                 && $dias !== null
                 && $dias >= 2;
+
+            $ot->tiene_confirmacion_local =
+                $tieneConfirmacionLocal;
 
             $ot->cantidad_original = (int) $ot->cantidad_orden;
             $ot->falta_terminacion_real = $faltaTerminacion;
@@ -535,7 +551,12 @@ class SeguimientoPedidoController extends Controller
 
         $pendientes = $filas
             ->filter(function ($fila) {
-                return $fila->etapa_gerencial !== 'CONFIRMADO'
+                /*
+                 * Este informe sólo muestra OTs sin ninguna confirmación
+                 * local. Con la primera fecha_recepcion sale del listado.
+                 */
+                return !$fila->tiene_confirmacion_local
+                    && $fila->etapa_gerencial !== 'CONFIRMADO'
                     && (int) $fila->saldo_pendiente > 0;
             })
             ->sortByDesc(function ($fila) {
