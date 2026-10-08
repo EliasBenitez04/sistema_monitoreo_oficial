@@ -120,10 +120,11 @@
     <div class="row mb-3">
         <div class="col-lg-4 col-md-6 mb-2">
             <div class="td-kpi">
-                <small class="d-block">Costo remitido total</small>
+                <small class="d-block">Costo efectivo remitido</small>
                 <strong>Gs {{ number_format($totalCostoRemitido, 0, ',', '.') }}</strong>
                 <div class="mt-1">
                     <small class="text-muted">
+                        {{ number_format($cantidadValorizadaRemitida, 0, ',', '.') }} prendas valorizadas ·
                         Confirmado: Gs {{ number_format($totalCostoRecibido, 0, ',', '.') }}
                     </small>
                 </div>
@@ -132,10 +133,11 @@
 
         <div class="col-lg-4 col-md-6 mb-2">
             <div class="td-kpi">
-                <small class="d-block">Valor a precio de venta</small>
+                <small class="d-block">Valor efectivo a precio de venta</small>
                 <strong class="text-primary">Gs {{ number_format($totalVentaRemitida, 0, ',', '.') }}</strong>
                 <div class="mt-1">
                     <small class="text-muted">
+                        {{ number_format($cantidadValorizadaRemitida, 0, ',', '.') }} prendas valorizadas ·
                         Confirmado: Gs {{ number_format($totalVentaRecibida, 0, ',', '.') }}
                     </small>
                 </div>
@@ -157,9 +159,10 @@
 
     <div class="alert alert-light border py-2 small">
         <i class="fas fa-info-circle text-info mr-1"></i>
-        Los importes salen de <strong>costo_unitario</strong> y <strong>precio_venta</strong>
-        de cada movimiento físico realmente remitido. Por eso la valorización puede incluir
-        reenvíos/re-movimientos de auditoría aunque el avance efectivo esté limitado a la cantidad de la OT.
+        Los importes salen de <strong>costo_unitario</strong> y <strong>precio_venta</strong>,
+        pero se valorizan únicamente hasta completar el volumen efectivo reconocido por
+        <strong>Producto Terminado</strong>. Los reenvíos/re-movimientos que exceden ese volumen
+        quedan sólo como auditoría y no vuelven a sumar costo ni venta.
     </div>
 
     <div class="table-responsive">
