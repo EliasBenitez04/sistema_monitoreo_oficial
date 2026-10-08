@@ -129,7 +129,8 @@
                 <div class="label">Plan asignado</div>
                 <div class="value">{{ number_format($resumen->plan_detallado,0,',','.') }}</div>
                 <div class="meta">
-                    de {{ number_format($resumen->planificado,0,',','.') }} de objetivo logístico
+                    de {{ number_format($resumen->planificado,0,',','.') }} de objetivo ·
+                    referencia de distribución, no se suma al Remitido
                 </div>
             </div>
         </div>
@@ -161,6 +162,49 @@
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label text-primary">En tránsito</div><div class="value">{{ number_format($resumen->en_transito,0,',','.') }}</div><div class="meta">Tiene remisión pero todavía no tiene fecha_recepcion</div></div>
+        </div>
+    </div>
+
+    <div class="card cc-card mb-3">
+        <div class="card-body py-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                <strong>Cuadre físico de Producto Terminado</strong>
+                @if($resumen->diferencia_cuadre === 0)
+                    <span class="badge badge-success p-2">CUADRA 100%</span>
+                @else
+                    <span class="badge badge-danger p-2">
+                        DIFERENCIA {{ number_format($resumen->diferencia_cuadre,0,',','.') }}
+                    </span>
+                @endif
+            </div>
+
+            <div class="cc-rule mb-2">
+                <strong>{{ number_format($resumen->remitido,0,',','.') }}</strong> remitidas
+                +
+                <strong>{{ number_format($resumen->pendiente_remitir_plan,0,',','.') }}</strong> con destino pendientes de remitir
+                +
+                <strong>{{ number_format($resumen->sin_destino,0,',','.') }}</strong> sin destino
+                =
+                <strong>{{ number_format($resumen->cuadre_fisico,0,',','.') }}</strong> PT
+            </div>
+
+            <div class="small text-muted">
+                El Plan asignado ({{ number_format($resumen->plan_detallado,0,',','.') }})
+                es una referencia de distribución y se superpone con lo ya remitido.
+                @if($resumen->cubierto_sin_plan_por_remision > 0)
+                    {{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}
+                    prendas sin plan suficiente ya demostraron destino mediante una remisión real.
+                @endif
+            </div>
+
+            <div class="small text-muted mt-1">
+                Control de recepción:
+                <strong>{{ number_format($resumen->recibido,0,',','.') }}</strong> recibidas
+                +
+                <strong>{{ number_format($resumen->en_transito,0,',','.') }}</strong> en tránsito
+                =
+                <strong>{{ number_format($resumen->remitido,0,',','.') }}</strong> remitidas.
+            </div>
         </div>
     </div>
 
