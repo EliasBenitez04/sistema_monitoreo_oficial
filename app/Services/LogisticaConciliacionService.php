@@ -9,9 +9,17 @@ use Illuminate\Support\Facades\Schema;
 
 class LogisticaConciliacionService
 {
-    private const PROCESO_INGRESO_TERMINACION = 'TERMINACION - TERMINACION';
-    private const PROCESO_PRODUCTO_TERMINADO = 'TERMINACION - PRODUCTO TERMINADO';
-    private const PROCESO_LOGISTICA = 'LOGISTICA - LOGISTICA Y DISTRIBUCION';
+    private const PROCESO_INGRESO_TERMINACION =
+        'TERMINACION - INGRESO TERMINACION';
+
+    private const PROCESO_TERMINACION =
+        'TERMINACION - TERMINACION';
+
+    private const PROCESO_PRODUCTO_TERMINADO =
+        'TERMINACION - PRODUCTO TERMINADO';
+
+    private const PROCESO_LOGISTICA =
+        'LOGISTICA - LOGISTICA Y DISTRIBUCION';
 
     /**
      * Concilia PLAN vs MOVIMIENTO REAL para las OTs indicadas.
@@ -53,6 +61,7 @@ class LogisticaConciliacionService
             ->whereIn('id_ot', $idsOt)
             ->whereIn('proceso', [
                 self::PROCESO_INGRESO_TERMINACION,
+                self::PROCESO_TERMINACION,
                 self::PROCESO_PRODUCTO_TERMINADO,
                 self::PROCESO_LOGISTICA,
             ])
@@ -121,6 +130,11 @@ class LogisticaConciliacionService
                     self::PROCESO_INGRESO_TERMINACION
                 );
 
+                $terminacion = $movimientos->firstWhere(
+                    'proceso',
+                    self::PROCESO_TERMINACION
+                );
+
                 $pt = $movimientos->firstWhere(
                     'proceso',
                     self::PROCESO_PRODUCTO_TERMINADO
@@ -149,11 +163,42 @@ class LogisticaConciliacionService
                  * Los movimientos pueden ser incrementales:
                  * 319 + 1 reparada = 320.
                  */
-                $ingresoRaw = max(0, (int) ($ingreso->cantidad ?? 0));
-                $ptRaw = max(0, (int) ($pt->cantidad ?? 0));
+                $ingresoRaw = max(
+                    0,
+                    (int) ($ingreso->cantidad ?? 0)
+                );
 
-                $ingresoEfectivo = $ingresoRaw;
-                $ptEfectivo = $ptRaw;
+                $terminacionRaw = max(
+                    0,
+                    (int) ($terminacion->cantidad ?? 0)
+                );
+
+                $ptRaw = max(
+                    0,
+                    (int) ($pt->cantidad ?? 0)
+                );
+
+                /*
+                 * Los registros de trazabilidad pueden ser:
+                 *
+                 * - incrementales: 1.397 + 1 reparada = 1.398
+                 * - repetición completa del mismo volumen: 1.398 + 1.398
+                 *
+                 * La cantidad de la OT es el techo físico. De esta manera una
+                 * repetición completa no convierte una OT de 1.398 en 2.796,
+                 * pero los incrementos reales sí pueden completar el objetivo.
+                 */
+                $ingresoEfectivo = $objetivo > 0
+                    ? min($objetivo, $ingresoRaw)
+                    : $ingresoRaw;
+
+                $terminacionEfectivo = $objetivo > 0
+                    ? min($objetivo, $terminacionRaw)
+                    : $terminacionRaw;
+
+                $ptEfectivo = $objetivo > 0
+                    ? min($objetivo, $ptRaw)
+                    : $ptRaw;
 
                 $planRaw = max(0, (int) ($plan->planificado ?? 0));
 
@@ -298,6 +343,9 @@ class LogisticaConciliacionService
                         'ingreso_terminacion_raw' => $ingresoRaw,
                         'ingreso_terminacion' => $ingresoEfectivo,
 
+                        'terminacion_raw' => $terminacionRaw,
+                        'terminacion' => $terminacionEfectivo,
+
                         'producto_terminado_raw' => $ptRaw,
                         'producto_terminado' => $ptEfectivo,
                         'exceso_producto_terminado' => max(
@@ -350,6 +398,11 @@ class LogisticaConciliacionService
                             $ingreso->primera_fecha ?? null,
                         'ultima_fecha_ingreso' =>
                             $ingreso->ultima_fecha ?? null,
+
+                        'primera_fecha_terminacion' =>
+                            $terminacion->primera_fecha ?? null,
+                        'ultima_fecha_terminacion' =>
+                            $terminacion->ultima_fecha ?? null,
 
                         'primera_fecha_pt' =>
                             $pt->primera_fecha ?? null,
