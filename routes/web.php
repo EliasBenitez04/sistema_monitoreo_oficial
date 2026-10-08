@@ -332,6 +332,11 @@ Route::get(
 )->name('ventas.index');
 
 Route::get(
+    '/ventas/producto/{codigo}/detalle',
+    [VentaController::class, 'detalleProducto']
+)->name('ventas.producto.detalle');
+
+Route::get(
     '/ventas/importar',
     [VentaController::class, 'importarForm']
 )->name('ventas.importar.form');
