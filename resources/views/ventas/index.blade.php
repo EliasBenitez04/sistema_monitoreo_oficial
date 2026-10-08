@@ -424,7 +424,10 @@
                 <tbody>
                     @forelse($ventas as $item)
                         @php
-                            $importe = ((float) $item->cantidad) * ((float) $item->p_venta);
+                            // El signo comercial lo define CANTIDAD.
+                            // Las NCR del export pueden traer también PVTA negativo.
+                            $importe = ((float) $item->cantidad)
+                                * abs((float) $item->p_venta);
                         @endphp
                         <tr class="{{ $item->cantidad < 0 ? 'table-danger' : '' }}">
                             <td>{{ date('d/m/Y', strtotime($item->fecha)) }}</td>
