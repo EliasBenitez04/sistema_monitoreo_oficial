@@ -462,7 +462,66 @@ class SeguimientoPedidoController extends Controller
                 ? $desde->diffInDays($hoy, false)
                 : 0;
 
-            $urgente = $etapa !== 'CONFIRMADO' && $dias !== null && $dias >= 2;
+            /*
+             * SALDO REAL DEL INFORME GERENCIAL
+             *
+             * Nunca usamos cantidad_orden como "pendiente".
+             *
+             * Pendiente real =
+             *   lo que todavía falta convertir a PT
+             *   + lo que ya es PT pero todavía no fue recibido.
+             *
+             * Así una OT de 360 con 359 recibidas muestra 1 pendiente,
+             * no 360.
+             */
+            $faltaTerminacion = $conciliacion
+                ? max(0, (int) $conciliacion->falta_terminacion)
+                : 0;
+
+            $productoTerminado = $conciliacion
+                ? max(0, (int) $conciliacion->producto_terminado)
+                : 0;
+
+            $remitido = $conciliacion
+                ? max(0, (int) $conciliacion->remitido_original)
+                : 0;
+
+            $recibido = $conciliacion
+                ? max(0, (int) $conciliacion->recibido_original)
+                : 0;
+
+            $pendienteDesdePt = max(
+                0,
+                $productoTerminado - $recibido
+            );
+
+            $saldoPendiente = $faltaTerminacion
+                + $pendienteDesdePt;
+
+            /*
+             * Si todavía no existe conciliación útil, mantenemos la OT
+             * solamente cuando realmente tiene una entrada a Terminación.
+             * No declaramos cantidad_orden completa como saldo por defecto.
+             */
+            if (!$conciliacion && $fechaTerminacion) {
+                $saldoPendiente = max(
+                    0,
+                    (int) $ot->cantidad_orden
+                );
+            }
+
+            $urgente =
+                $saldoPendiente > 0
+                && $etapa !== 'CONFIRMADO'
+                && $dias !== null
+                && $dias >= 2;
+
+            $ot->cantidad_original = (int) $ot->cantidad_orden;
+            $ot->falta_terminacion_real = $faltaTerminacion;
+            $ot->producto_terminado_real = $productoTerminado;
+            $ot->remitido_real = $remitido;
+            $ot->recibido_real = $recibido;
+            $ot->saldo_pendiente = $saldoPendiente;
 
             $ot->fecha_terminacion = $fechaTerminacion;
             $ot->fecha_logistica = $fechaLogistica;
@@ -474,7 +533,11 @@ class SeguimientoPedidoController extends Controller
             return $ot;
         });
 
-        $pendientes = $filas->where('etapa_gerencial', '!=', 'CONFIRMADO')
+        $pendientes = $filas
+            ->filter(function ($fila) {
+                return $fila->etapa_gerencial !== 'CONFIRMADO'
+                    && (int) $fila->saldo_pendiente > 0;
+            })
             ->sortByDesc(function ($fila) {
                 return ($fila->urgente ? 100000 : 0) + (int) ($fila->dias_etapa ?? 0);
             })
@@ -483,8 +546,11 @@ class SeguimientoPedidoController extends Controller
         $resumen = (object) [
             'pedidos' => $pendientes->pluck('seguimiento_pedido_id')->unique()->count(),
             'ots' => $pendientes->count(),
-            'prendas' => (int) $pendientes->sum('cantidad_orden'),
+            'prendas' => (int) $pendientes->sum('saldo_pendiente'),
             'urgentes' => $pendientes->where('urgente', true)->count(),
+            'prendas_urgentes' => (int) $pendientes
+                ->where('urgente', true)
+                ->sum('saldo_pendiente'),
             'en_terminacion' => $pendientes->where('etapa_gerencial', 'TERMINACION')->count(),
             'en_logistica' => $pendientes->where('etapa_gerencial', 'LOGISTICA')->count(),
             'recepcion_parcial' => $pendientes
