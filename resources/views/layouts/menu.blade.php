@@ -22,6 +22,11 @@
 
 
 @php
+    $menuVentas = request()->routeIs('ventas.*');
+@endphp
+
+
+@php
     $menuConfiguracion = request()->routeIs('usuarios.*', 'permissions.*', 'roles.*');
 @endphp
 
@@ -35,6 +40,34 @@
 
     <li class="nav-header">
         CARGA DE DATOS
+    </li>
+
+    <li class="nav-item {{ $menuVentas ? 'menu-open' : '' }}">
+        <a href="#" class="nav-link {{ $menuVentas ? 'active' : '' }}">
+            <i class="nav-icon fas fa-chart-line"></i>
+            <p>
+                Ventas
+                <i class="right fas fa-angle-left"></i>
+            </p>
+        </a>
+
+        <ul class="nav nav-treeview">
+            <li class="nav-item">
+                <a href="{{ route('ventas.index') }}"
+                   class="nav-link {{ request()->routeIs('ventas.index') ? 'active' : '' }}">
+                    <i class="far fa-circle nav-icon"></i>
+                    <p>Ventas</p>
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="{{ route('ventas.importar.form') }}"
+                   class="nav-link {{ request()->routeIs('ventas.importar*') ? 'active' : '' }}">
+                    <i class="fas fa-file-import nav-icon"></i>
+                    <p>Importar ventas</p>
+                </a>
+            </li>
+        </ul>
     </li>
 
     <li class="nav-item {{ $menuCargaDatos ? 'menu-open' : '' }}">
