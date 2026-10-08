@@ -337,6 +337,11 @@ Route::get(
 )->name('ventas.producto.detalle');
 
 Route::get(
+    '/ventas/importaciones/{id}/omitidas',
+    [VentaController::class, 'omitidasImportacion']
+)->name('ventas.importaciones.omitidas');
+
+Route::get(
     '/ventas/importar',
     [VentaController::class, 'importarForm']
 )->name('ventas.importar.form');
