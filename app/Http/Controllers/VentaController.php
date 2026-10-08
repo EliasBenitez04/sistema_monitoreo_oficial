@@ -86,7 +86,7 @@ class VentaController extends Controller
                 : 0;
 
         $resumen->precio_promedio_unidad =
-            (int) $resumen->unidades_vendidas > 0
+            (int) $resumen->unidades_netas > 0
                 ? (float) $resumen->venta_neta
                     / (int) $resumen->unidades_netas
                 : 0;
