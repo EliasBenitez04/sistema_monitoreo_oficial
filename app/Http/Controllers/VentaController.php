@@ -291,6 +291,163 @@ class VentaController extends Controller
         ));
     }
 
+    /**
+     * Detalle comercial de un producto desde el dashboard de Ventas.
+     *
+     * Respeta los mismos filtros activos de fecha/local/vendedor/tipo/búsqueda
+     * y agrupa el código por sucursal + vendedor.
+     */
+    public function detalleProducto(
+        Request $request,
+        string $codigo
+    ) {
+        $this->asegurarTablas();
+
+        $codigo = trim($codigo);
+
+        abort_if(
+            $codigo === '',
+            404,
+            'Código no válido.'
+        );
+
+        $desde = $request->input('desde');
+        $hasta = $request->input('hasta');
+        $local = trim((string) $request->input('local', ''));
+        $vendedor = trim((string) $request->input('vendedor', ''));
+        $tipo = trim((string) $request->input('tipo', ''));
+        $buscar = trim((string) $request->input('buscar', ''));
+
+        $query = DB::table('ventas as v')
+            ->where('v.codigo', $codigo);
+
+        $this->aplicarFiltros(
+            $query,
+            $desde,
+            $hasta,
+            $local,
+            $vendedor,
+            $tipo,
+            $buscar
+        );
+
+        $producto = (clone $query)
+            ->select(
+                'v.codigo',
+                DB::raw("MAX(v.descripcion) as descripcion")
+            )
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as cantidad,
+                 COALESCE(SUM(v.p_lista), 0) as p_lista,
+                 COALESCE(SUM(v.descuento), 0) as descuento,
+                 COALESCE(SUM(v.p_venta), 0) as p_venta,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
+            )
+            ->groupBy('v.codigo')
+            ->first();
+
+        abort_unless(
+            $producto,
+            404,
+            'No hay ventas de este producto con los filtros actuales.'
+        );
+
+        $detalle = (clone $query)
+            ->select(
+                'v.local',
+                'v.vendedor'
+            )
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as cantidad,
+                 COALESCE(SUM(v.p_lista), 0) as p_lista,
+                 COALESCE(SUM(v.descuento), 0) as descuento,
+                 COALESCE(SUM(v.p_venta), 0) as p_venta,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante END) as tickets,
+                 COUNT(*) as lineas"
+            )
+            ->groupBy(
+                'v.local',
+                'v.vendedor'
+            )
+            ->orderByDesc('p_venta')
+            ->orderBy('v.local')
+            ->orderBy('v.vendedor')
+            ->get();
+
+        $comprobantes = (clone $query)
+            ->select(
+                'v.local',
+                'v.vendedor',
+                'v.fecha',
+                'v.comprobante',
+                'v.cantidad',
+                'v.p_lista',
+                'v.descuento',
+                'v.p_venta'
+            )
+            ->orderByDesc('v.fecha')
+            ->orderBy('v.local')
+            ->orderBy('v.vendedor')
+            ->orderBy('v.comprobante')
+            ->get();
+
+        $maestro = null;
+
+        if (Schema::hasTable('maestro_codigos')) {
+            $maestro = DB::table('maestro_codigos')
+                ->where('cod_articulo', $codigo)
+                ->select(
+                    'grupo',
+                    'grupo_plan',
+                    'temporada',
+                    'linea'
+                )
+                ->first();
+        }
+
+        return response()->json([
+            'producto' => [
+                'codigo' => $producto->codigo,
+                'descripcion' => $producto->descripcion,
+                'cantidad' => (int) $producto->cantidad,
+                'p_lista' => (float) $producto->p_lista,
+                'descuento' => (float) $producto->descuento,
+                'p_venta' => (float) $producto->p_venta,
+                'tickets' => (int) $producto->tickets,
+                'grupo' => $maestro->grupo ?? null,
+                'grupo_plan' => $maestro->grupo_plan ?? null,
+                'temporada' => $maestro->temporada ?? null,
+                'linea' => $maestro->linea ?? null,
+            ],
+            'detalle' => $detalle->map(function ($item) {
+                return [
+                    'local' => $item->local ?: '-',
+                    'vendedor' => $item->vendedor ?: '-',
+                    'cantidad' => (int) $item->cantidad,
+                    'p_lista' => (float) $item->p_lista,
+                    'descuento' => (float) $item->descuento,
+                    'p_venta' => (float) $item->p_venta,
+                    'tickets' => (int) $item->tickets,
+                    'lineas' => (int) $item->lineas,
+                ];
+            })->values(),
+            'comprobantes' => $comprobantes->map(function ($item) {
+                return [
+                    'local' => $item->local ?: '-',
+                    'vendedor' => $item->vendedor ?: '-',
+                    'fecha' => $item->fecha
+                        ? date('d/m/Y', strtotime($item->fecha))
+                        : '-',
+                    'comprobante' => $item->comprobante,
+                    'cantidad' => (int) $item->cantidad,
+                    'p_lista' => (float) $item->p_lista,
+                    'descuento' => (float) $item->descuento,
+                    'p_venta' => (float) $item->p_venta,
+                ];
+            })->values(),
+        ]);
+    }
+
     public function importarForm()
     {
         $this->asegurarTablas();
