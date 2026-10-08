@@ -274,16 +274,39 @@
                                         {{ number_format($remision->fecha_recepcion ? $remision->cantidad : 0, 0, ',', '.') }}
                                     </span>
                                 </td>
+                                @php
+                                    $cantidadValorizadaLinea = (int) (
+                                        $remision->cantidad_efectiva_valorizada
+                                        ?? 0
+                                    );
+                                    $cantidadAuditoriaLinea = max(
+                                        0,
+                                        (int) $remision->cantidad
+                                            - $cantidadValorizadaLinea
+                                    );
+                                @endphp
                                 <td class="text-right">
                                     <span class="td-money">
-                                        Gs {{ number_format(((float) $remision->cantidad) * ((float) $remision->costo_unitario), 0, ',', '.') }}
-                                        <small>Gs {{ number_format((float) $remision->costo_unitario, 0, ',', '.') }}/u</small>
+                                        Gs {{ number_format($cantidadValorizadaLinea * ((float) $remision->costo_unitario), 0, ',', '.') }}
+                                        <small>
+                                            Gs {{ number_format((float) $remision->costo_unitario, 0, ',', '.') }}/u
+                                            · {{ number_format($cantidadValorizadaLinea,0,',','.') }} efectivas
+                                            @if($cantidadAuditoriaLinea > 0)
+                                                · {{ number_format($cantidadAuditoriaLinea,0,',','.') }} auditoría
+                                            @endif
+                                        </small>
                                     </span>
                                 </td>
                                 <td class="text-right">
                                     <span class="td-money text-primary">
-                                        Gs {{ number_format(((float) $remision->cantidad) * ((float) $remision->precio_venta), 0, ',', '.') }}
-                                        <small>Gs {{ number_format((float) $remision->precio_venta, 0, ',', '.') }}/u</small>
+                                        Gs {{ number_format($cantidadValorizadaLinea * ((float) $remision->precio_venta), 0, ',', '.') }}
+                                        <small>
+                                            Gs {{ number_format((float) $remision->precio_venta, 0, ',', '.') }}/u
+                                            · {{ number_format($cantidadValorizadaLinea,0,',','.') }} efectivas
+                                            @if($cantidadAuditoriaLinea > 0)
+                                                · {{ number_format($cantidadAuditoriaLinea,0,',','.') }} auditoría
+                                            @endif
+                                        </small>
                                     </span>
                                 </td>
                                 <td>{{ $remision->fecha_recepcion ? \Carbon\Carbon::parse($remision->fecha_recepcion)->format('d/m/Y') : 'Pendiente' }}</td>
@@ -326,15 +349,21 @@
                                             </span>
                                         </span>
                                         <span class="td-subtotal-item">
-                                            <span class="td-subtotal-label">Costo</span>
+                                            <span class="td-subtotal-label">Costo efectivo</span>
                                             <span class="td-subtotal-value">
                                                 Gs {{ number_format($detalle->costo_remitido, 0, ',', '.') }}
+                                                <small class="text-muted">
+                                                    ({{ number_format($detalle->cantidad_valorizada,0,',','.') }} prendas)
+                                                </small>
                                             </span>
                                         </span>
                                         <span class="td-subtotal-item">
-                                            <span class="td-subtotal-label">Venta</span>
+                                            <span class="td-subtotal-label">Venta efectiva</span>
                                             <span class="td-subtotal-value text-primary">
                                                 Gs {{ number_format($detalle->venta_remitida, 0, ',', '.') }}
+                                                <small class="text-muted">
+                                                    ({{ number_format($detalle->cantidad_valorizada,0,',','.') }} prendas)
+                                                </small>
                                             </span>
                                         </span>
                                         <span class="td-subtotal-item">
