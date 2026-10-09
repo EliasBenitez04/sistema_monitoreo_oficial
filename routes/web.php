@@ -332,6 +332,11 @@ Route::get(
 )->name('ventas.index');
 
 Route::get(
+    '/ventas/vendedores/todos',
+    [VentaController::class, 'vendedoresTodos']
+)->name('ventas.vendedores.todos');
+
+Route::get(
     '/ventas/producto/{codigo}/detalle',
     [VentaController::class, 'detalleProducto']
 )->name('ventas.producto.detalle');
