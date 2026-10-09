@@ -843,6 +843,10 @@ class VentaController extends Controller
                 && Schema::hasColumn(
                     'ventas_importaciones',
                     'filas_invalidas'
+                )
+                && Schema::hasColumn(
+                    'ventas',
+                    'remision'
                 ),
             503,
             'Falta ejecutar php artisan migrate para completar el módulo de ventas.'
