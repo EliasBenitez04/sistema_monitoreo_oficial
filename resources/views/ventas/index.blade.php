@@ -342,20 +342,39 @@
                     </h3>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 ventas-table">
+                    <table class="table table-sm table-hover mb-0 ventas-table"
+                           id="topProductosTable">
                         <thead>
                             <tr>
                                 <th>Código / artículo</th>
                                 <th>Grupo</th>
                                 <th>Temporada</th>
-                                <th class="text-right">Unid. netas</th>
-                                <th class="text-right">Venta neta</th>
+                                <th class="text-right">
+                                    <button type="button"
+                                            class="top-productos-sort"
+                                            data-sort="unidades"
+                                            title="Ordenar por unidades netas">
+                                        Unid. netas
+                                        <i class="fas fa-sort ml-1 sort-icon"></i>
+                                    </button>
+                                </th>
+                                <th class="text-right">
+                                    <button type="button"
+                                            class="top-productos-sort"
+                                            data-sort="venta"
+                                            title="Ordenar por venta neta">
+                                        Venta neta
+                                        <i class="fas fa-sort ml-1 sort-icon"></i>
+                                    </button>
+                                </th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="topProductosBody">
                             @forelse($porProducto as $item)
                                 <tr class="venta-producto-row"
                                     data-codigo="{{ $item->codigo }}"
+                                    data-unidades="{{ (float) $item->unidades_netas }}"
+                                    data-venta="{{ (float) $item->venta_neta }}"
                                     title="Ver sucursales y vendedores">
                                     <td>
                                         <button type="button"
@@ -372,7 +391,25 @@
                                     <td>{{ $item->grupo ?? '-' }}</td>
                                     <td>
                                         @if(!empty($item->temporada))
-                                            <span class="badge badge-info">{{ $item->temporada }}</span>
+                                            @php
+                                                $temporadaProducto = strtoupper(
+                                                    trim((string) $item->temporada)
+                                                );
+
+                                                $claseTemporada = 'temporada-otro';
+
+                                                if ($temporadaProducto === 'VERANO') {
+                                                    $claseTemporada = 'temporada-verano';
+                                                } elseif ($temporadaProducto === 'INVIERNO') {
+                                                    $claseTemporada = 'temporada-invierno';
+                                                } elseif ($temporadaProducto === 'AMBOS') {
+                                                    $claseTemporada = 'temporada-ambos';
+                                                }
+                                            @endphp
+
+                                            <span class="badge temporada-badge {{ $claseTemporada }}">
+                                                {{ $item->temporada }}
+                                            </span>
                                         @else
                                             -
                                         @endif
@@ -844,6 +881,56 @@
 .venta-producto-row{cursor:pointer}
 .venta-producto-row:hover{background:#f8fbff}
 .venta-producto-detalle{text-decoration:none!important;line-height:1.2}
+.top-productos-sort{
+    border:0;
+    padding:0;
+    margin:0;
+    background:transparent;
+    color:inherit;
+    font:inherit;
+    font-weight:700;
+    text-transform:inherit;
+    letter-spacing:inherit;
+    cursor:pointer;
+    white-space:nowrap;
+}
+.top-productos-sort:hover,
+.top-productos-sort:focus{
+    color:#2563eb;
+    outline:none;
+}
+.top-productos-sort.is-active{
+    color:#2563eb;
+}
+.top-productos-sort .sort-icon{
+    font-size:.68rem;
+}
+.temporada-badge{
+    padding:.35rem .55rem;
+    border-radius:999px;
+    font-weight:700;
+    letter-spacing:.02em;
+}
+.temporada-verano{
+    background:#dcfce7;
+    color:#166534;
+    border:1px solid #bbf7d0;
+}
+.temporada-invierno{
+    background:#e0f2fe;
+    color:#075985;
+    border:1px solid #bae6fd;
+}
+.temporada-ambos{
+    background:#ffedd5;
+    color:#9a3412;
+    border:1px solid #fed7aa;
+}
+.temporada-otro{
+    background:#f1f5f9;
+    color:#475569;
+    border:1px solid #e2e8f0;
+}
 .vp-kpi{
     height:100%;
     border:1px solid #e2e8f0;
@@ -1308,6 +1395,114 @@
                 caja.classList.remove('d-none');
             });
     }
+
+    const topProductosBody = document.getElementById(
+        'topProductosBody'
+    );
+
+    const topProductosSortButtons = document.querySelectorAll(
+        '.top-productos-sort'
+    );
+
+    const topProductosSortState = {
+        campo: null,
+        direccion: null
+    };
+
+    function actualizarIconosTopProductos() {
+        topProductosSortButtons.forEach(function (button) {
+            const icon = button.querySelector('.sort-icon');
+            const activo =
+                button.dataset.sort === topProductosSortState.campo;
+
+            button.classList.toggle('is-active', activo);
+
+            if (!icon) {
+                return;
+            }
+
+            icon.classList.remove(
+                'fa-sort',
+                'fa-sort-up',
+                'fa-sort-down'
+            );
+
+            if (!activo) {
+                icon.classList.add('fa-sort');
+                return;
+            }
+
+            icon.classList.add(
+                topProductosSortState.direccion === 'desc'
+                    ? 'fa-sort-down'
+                    : 'fa-sort-up'
+            );
+        });
+    }
+
+    function ordenarTopProductos(campo) {
+        if (!topProductosBody) {
+            return;
+        }
+
+        if (topProductosSortState.campo === campo) {
+            topProductosSortState.direccion =
+                topProductosSortState.direccion === 'desc'
+                    ? 'asc'
+                    : 'desc';
+        } else {
+            topProductosSortState.campo = campo;
+            topProductosSortState.direccion = 'desc';
+        }
+
+        const atributo =
+            campo === 'unidades'
+                ? 'unidades'
+                : 'venta';
+
+        const filas = Array.from(
+            topProductosBody.querySelectorAll(
+                '.venta-producto-row'
+            )
+        );
+
+        filas.sort(function (a, b) {
+            const valorA = Number(
+                a.dataset[atributo] || 0
+            );
+
+            const valorB = Number(
+                b.dataset[atributo] || 0
+            );
+
+            if (valorA === valorB) {
+                return 0;
+            }
+
+            if (topProductosSortState.direccion === 'desc') {
+                return valorB - valorA;
+            }
+
+            return valorA - valorB;
+        });
+
+        filas.forEach(function (fila) {
+            topProductosBody.appendChild(fila);
+        });
+
+        actualizarIconosTopProductos();
+    }
+
+    topProductosSortButtons.forEach(function (button) {
+        button.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            ordenarTopProductos(
+                button.dataset.sort
+            );
+        });
+    });
 
     document.addEventListener(
         'click',
