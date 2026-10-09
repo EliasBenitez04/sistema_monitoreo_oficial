@@ -235,9 +235,10 @@
     <div class="alert alert-light border py-2 mb-3">
         <strong>Cómo leer Clientes:</strong>
         visita = día distinto en que el cliente compró.
+        <strong>Identidad:</strong> nombre + código de cliente + local.
+        Esto evita mezclar personas distintas cuando el código o el nombre se repiten.
         <strong>VIP</strong> = recurrente dentro del 20% de mayor valor del período.
         <strong>A recuperar</strong> = tuvo al menos 2 visitas y lleva 30 días o más sin comprar.
-        El detalle usa el código de cliente cuando existe; si no, usa el nombre como respaldo.
     </div>
 
     <div class="card shadow-sm">
@@ -295,15 +296,20 @@
                             <td>
                                 <strong>{{ $item->cliente ?: 'SIN NOMBRE' }}</strong>
 
-                                @if(!empty($item->cli_cod))
-                                    <small class="d-block text-muted">
+                                <small class="d-block text-muted">
+                                    @if(!empty($item->cli_cod))
                                         Cod. {{ $item->cli_cod }}
-                                    </small>
-                                @endif
+                                    @else
+                                        Sin código
+                                    @endif
+
+                                    @if(!empty($item->local_principal))
+                                        · {{ $item->local_principal }}
+                                    @endif
+                                </small>
 
                                 <small class="d-block text-muted">
-                                    {{ number_format($item->locales,0,',','.') }} local(es)
-                                    · {{ number_format($item->vendedores,0,',','.') }} vendedor(es)
+                                    {{ number_format($item->vendedores,0,',','.') }} vendedor(es)
                                     · {{ number_format($item->productos,0,',','.') }} producto(s)
                                 </small>
                             </td>
@@ -894,9 +900,13 @@
 
                 document.getElementById(
                     'clientePerfilSubtitulo'
-                ).textContent = r.cli_cod
-                    ? 'Código de cliente ' + r.cli_cod
-                    : 'Cliente identificado por nombre';
+                ).textContent =
+                    (r.cli_cod
+                        ? 'Código ' + r.cli_cod
+                        : 'Sin código')
+                    + (r.local_principal
+                        ? ' · ' + r.local_principal
+                        : '');
 
                 document.getElementById('cpVenta').textContent =
                     gs(r.venta_neta);
