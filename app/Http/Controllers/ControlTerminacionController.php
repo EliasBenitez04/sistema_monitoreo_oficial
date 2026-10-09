@@ -1963,6 +1963,189 @@ class ControlTerminacionController extends Controller
                 )
                 : 0;
 
+        /*
+         * VALORIZACIÓN TOTAL DEL PRODUCTO TERMINADO
+         *
+         * Para poder mostrar:
+         *   - valor total del PT,
+         *   - valor ya remitido,
+         *   - valor retenido / pendiente de salida,
+         *
+         * necesitamos un costo y precio unitario de referencia confiable.
+         *
+         * Prioridad:
+         * 1) maestro_codigos, si todas las variantes del código base comparten
+         *    exactamente costo y precio;
+         * 2) remisiones de la OT, si todas comparten costo y precio;
+         * 3) promedio efectivo de lo remitido, marcado como referencial.
+         */
+        $costoUnitarioReferencia = null;
+        $precioVentaUnitarioReferencia = null;
+        $valorReferenciaExacto = false;
+        $fuenteValorReferencia = null;
+
+        if (
+            Schema::hasTable('maestro_codigos')
+            && !empty($ot->codigo)
+        ) {
+            $valoresMaestro = DB::table('maestro_codigos')
+                ->where(
+                    'cod_articulo',
+                    'like',
+                    trim((string) $ot->codigo) . '%'
+                )
+                ->whereNotNull('costo_unitario')
+                ->whereNotNull('precio_venta')
+                ->select(
+                    'costo_unitario',
+                    'precio_venta'
+                )
+                ->get()
+                ->filter(function ($item) {
+                    return (float) $item->costo_unitario > 0
+                        && (float) $item->precio_venta > 0;
+                })
+                ->map(function ($item) {
+                    return [
+                        'costo' => round(
+                            (float) $item->costo_unitario,
+                            6
+                        ),
+                        'venta' => round(
+                            (float) $item->precio_venta,
+                            6
+                        ),
+                    ];
+                })
+                ->unique(function ($item) {
+                    return $item['costo']
+                        . '|'
+                        . $item['venta'];
+                })
+                ->values();
+
+            if ($valoresMaestro->count() === 1) {
+                $costoUnitarioReferencia =
+                    (float) $valoresMaestro[0]['costo'];
+
+                $precioVentaUnitarioReferencia =
+                    (float) $valoresMaestro[0]['venta'];
+
+                $valorReferenciaExacto = true;
+                $fuenteValorReferencia = 'MAESTRO DE CÓDIGOS';
+            }
+        }
+
+        if (
+            $costoUnitarioReferencia === null
+            || $precioVentaUnitarioReferencia === null
+        ) {
+            $valoresRemision = $remisionesOriginales
+                ->filter(function ($item) {
+                    return (int) $item->cantidad > 0
+                        && (float) $item->costo_unitario > 0
+                        && (float) $item->precio_venta > 0;
+                })
+                ->map(function ($item) {
+                    return [
+                        'costo' => round(
+                            (float) $item->costo_unitario,
+                            6
+                        ),
+                        'venta' => round(
+                            (float) $item->precio_venta,
+                            6
+                        ),
+                    ];
+                })
+                ->unique(function ($item) {
+                    return $item['costo']
+                        . '|'
+                        . $item['venta'];
+                })
+                ->values();
+
+            if ($valoresRemision->count() === 1) {
+                $costoUnitarioReferencia =
+                    (float) $valoresRemision[0]['costo'];
+
+                $precioVentaUnitarioReferencia =
+                    (float) $valoresRemision[0]['venta'];
+
+                $valorReferenciaExacto = true;
+                $fuenteValorReferencia = 'REMISIONES DE LA OT';
+            }
+        }
+
+        if (
+            (
+                $costoUnitarioReferencia === null
+                || $precioVentaUnitarioReferencia === null
+            )
+            && $cantidadValorizadaRemitida > 0
+        ) {
+            $costoUnitarioReferencia =
+                $totalCostoRemitido
+                / $cantidadValorizadaRemitida;
+
+            $precioVentaUnitarioReferencia =
+                $totalVentaRemitida
+                / $cantidadValorizadaRemitida;
+
+            $valorReferenciaExacto = false;
+            $fuenteValorReferencia =
+                'PROMEDIO DE LO REMITIDO';
+        }
+
+        $cantidadRetenida = $totalPendiente;
+
+        $totalCostoProductoTerminado =
+            $costoUnitarioReferencia !== null
+                ? $costoUnitarioReferencia * $totalPlan
+                : null;
+
+        $totalVentaProductoTerminado =
+            $precioVentaUnitarioReferencia !== null
+                ? $precioVentaUnitarioReferencia * $totalPlan
+                : null;
+
+        $totalCostoRetenido =
+            $costoUnitarioReferencia !== null
+                ? $costoUnitarioReferencia * $cantidadRetenida
+                : null;
+
+        $totalVentaRetenida =
+            $precioVentaUnitarioReferencia !== null
+                ? $precioVentaUnitarioReferencia * $cantidadRetenida
+                : null;
+
+        $totalMargenProductoTerminado =
+            $totalCostoProductoTerminado !== null
+            && $totalVentaProductoTerminado !== null
+                ? $totalVentaProductoTerminado
+                    - $totalCostoProductoTerminado
+                : null;
+
+        $totalMargenRetenido =
+            $totalCostoRetenido !== null
+            && $totalVentaRetenida !== null
+                ? $totalVentaRetenida
+                    - $totalCostoRetenido
+                : null;
+
+        $porcentajeMargenProductoTerminado =
+            $totalVentaProductoTerminado !== null
+            && $totalVentaProductoTerminado > 0
+            && $totalMargenProductoTerminado !== null
+                ? round(
+                    (
+                        $totalMargenProductoTerminado
+                        / $totalVentaProductoTerminado
+                    ) * 100,
+                    1
+                )
+                : 0;
+
         return view('control._terminacion_detalle', compact(
             'ot',
             'detalles',
@@ -1988,7 +2171,19 @@ class ControlTerminacionController extends Controller
             'cantidadValorizadaRemitida',
             'cantidadValorizadaRecibida',
             'totalMargenBrutoRemitido',
-            'porcentajeMargenBrutoRemitido'
+            'porcentajeMargenBrutoRemitido',
+            'costoUnitarioReferencia',
+            'precioVentaUnitarioReferencia',
+            'valorReferenciaExacto',
+            'fuenteValorReferencia',
+            'cantidadRetenida',
+            'totalCostoProductoTerminado',
+            'totalVentaProductoTerminado',
+            'totalCostoRetenido',
+            'totalVentaRetenida',
+            'totalMargenProductoTerminado',
+            'totalMargenRetenido',
+            'porcentajeMargenProductoTerminado'
         ));
     }
 
