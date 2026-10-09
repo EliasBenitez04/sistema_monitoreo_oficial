@@ -166,7 +166,7 @@
             <div class="it-day-highlight is-request">
                 <div>
                     <small>DE ESA SALIDA, ERA PEDIDO DEL DÍA</small>
-                    <strong>{{ number_format($resumen->salidas_reales - $resumen->salidas_otras_fechas,0,',','.') }} OT</strong>
+                    <strong>{{ number_format($resumen->salidas_del_pedido,0,',','.') }} OT</strong>
                     <span>salieron y correspondían al pedido de esa fecha</span>
                 </div>
                 <i class="fas fa-bullseye"></i>
