@@ -1831,6 +1831,17 @@ class ControlTerminacionController extends Controller
         }
 
         /*
+         * FACTURACIÓN - PRUEBA CONTROLADA
+         *
+         * Por ahora sólo AYALA y MODELO MUESTRA intentan asociar la
+         * remisión visual con la facturación importada en "ventas".
+         *
+         * La asociación es sólo de lectura: no persiste ninguna FK hasta
+         * validar que el criterio código + cantidad + fecha sea correcto.
+         */
+        $this->asociarFacturacionAyalaModelo($detalles);
+
+        /*
          * Encabezado del modal:
          * - Plan logística = TODO PT que debe salir.
          * - Plan detallado = suma distribuida por sucursales.
@@ -2219,6 +2230,282 @@ class ControlTerminacionController extends Controller
      * Los importes efectivos se suman línea por línea para conservar costo
      * y precio exactos.
      */
+    /**
+     * Asocia facturación a las líneas visuales de AYALA / MODELO MUESTRA.
+     *
+     * Criterio de esta primera prueba:
+     * - código exacto;
+     * - cantidad exacta;
+     * - factura positiva;
+     * - fecha dentro de +/- 30 días de la remisión;
+     * - se prioriza facturación de CASA CENTRAL / MATRIZ;
+     * - luego la fecha más cercana.
+     *
+     * Si dos facturas quedan empatadas en el mejor criterio, no elegimos
+     * ninguna: se marca AMBIGUA para evitar mostrar datos financieros falsos.
+     */
+    private function asociarFacturacionAyalaModelo($detalles): void
+    {
+        if (!Schema::hasTable('ventas')) {
+            return;
+        }
+
+        foreach ([
+            'codigo',
+            'cantidad',
+            'fecha',
+            'comprobante',
+            'cliente',
+            'local',
+        ] as $columna) {
+            if (!Schema::hasColumn('ventas', $columna)) {
+                return;
+            }
+        }
+
+        $objetivos = collect();
+
+        foreach ($detalles as $detalle) {
+            $plan = $this->normalizarDestinoMovimiento(
+                $detalle->sucursal
+            );
+
+            if (!in_array($plan, ['AYALA', 'MODELO'], true)) {
+                continue;
+            }
+
+            foreach ($detalle->remisiones as $indice => $remision) {
+                $codigo = strtoupper(
+                    trim((string) (
+                        $remision->codigo_visual
+                        ?? $remision->codigo
+                        ?? ''
+                    ))
+                );
+
+                $cantidad = max(
+                    0,
+                    (int) ($remision->cantidad ?? 0)
+                );
+
+                $fechaBase =
+                    $remision->fecha_remision
+                    ?: ($remision->fecha_creacion
+                        ?: $remision->fecha_recepcion);
+
+                $remision->factura_estado = 'SIN COINCIDENCIA';
+                $remision->factura_numero = null;
+                $remision->factura_cliente = null;
+                $remision->factura_fecha = null;
+                $remision->factura_local = null;
+                $remision->factura_cantidad = null;
+
+                if ($codigo === '' || $cantidad <= 0 || !$fechaBase) {
+                    continue;
+                }
+
+                $objetivos->push((object) [
+                    'detalle' => $detalle,
+                    'remision' => $remision,
+                    'plan' => $plan,
+                    'codigo' => $codigo,
+                    'cantidad' => $cantidad,
+                    'fecha' => date(
+                        'Y-m-d',
+                        strtotime((string) $fechaBase)
+                    ),
+                ]);
+            }
+        }
+
+        if ($objetivos->isEmpty()) {
+            return;
+        }
+
+        $codigos = $objetivos
+            ->pluck('codigo')
+            ->unique()
+            ->values();
+
+        $fechaMin = $objetivos
+            ->pluck('fecha')
+            ->filter()
+            ->min();
+
+        $fechaMax = $objetivos
+            ->pluck('fecha')
+            ->filter()
+            ->max();
+
+        if (!$fechaMin || !$fechaMax) {
+            return;
+        }
+
+        $desde = date(
+            'Y-m-d',
+            strtotime($fechaMin . ' -30 days')
+        );
+
+        $hasta = date(
+            'Y-m-d',
+            strtotime($fechaMax . ' +30 days')
+        );
+
+        /*
+         * Agrupamos por factura/cliente/código/fecha/local porque un mismo
+         * código puede aparecer repetido en varias líneas del export.
+         * SUM(cantidad) representa la cantidad facturada real del código
+         * dentro de ese comprobante.
+         */
+        $facturas = DB::table('ventas')
+            ->whereIn(
+                DB::raw("UPPER(TRIM(codigo))"),
+                $codigos->all()
+            )
+            ->where('cantidad', '>', 0)
+            ->where('fecha', '>=', $desde)
+            ->where('fecha', '<=', $hasta)
+            ->select(
+                DB::raw("UPPER(TRIM(codigo)) as codigo_normalizado"),
+                'comprobante',
+                'cliente',
+                'fecha',
+                'local'
+            )
+            ->selectRaw('SUM(cantidad) as cantidad_facturada')
+            ->groupBy(
+                DB::raw("UPPER(TRIM(codigo))"),
+                'comprobante',
+                'cliente',
+                'fecha',
+                'local'
+            )
+            ->get();
+
+        if ($facturas->isEmpty()) {
+            return;
+        }
+
+        $facturasPorCodigo = $facturas->groupBy(
+            'codigo_normalizado'
+        );
+
+        /*
+         * Una misma línea de factura no debe asociarse a dos remisiones.
+         */
+        $usadas = [];
+
+        foreach ($objetivos as $objetivo) {
+            $candidatas = collect(
+                $facturasPorCodigo->get(
+                    $objetivo->codigo,
+                    collect()
+                )
+            )
+                ->filter(function ($factura) use ($objetivo, $usadas) {
+                    if ((int) $factura->cantidad_facturada
+                        !== (int) $objetivo->cantidad) {
+                        return false;
+                    }
+
+                    $clave = implode('|', [
+                        (string) $factura->comprobante,
+                        (string) $factura->cliente,
+                        (string) $factura->codigo_normalizado,
+                        (string) $factura->fecha,
+                        (string) $factura->local,
+                    ]);
+
+                    return !isset($usadas[$clave]);
+                })
+                ->map(function ($factura) use ($objetivo) {
+                    $factura->_dias = abs(
+                        (int) floor(
+                            (
+                                strtotime((string) $factura->fecha)
+                                - strtotime((string) $objetivo->fecha)
+                            ) / 86400
+                        )
+                    );
+
+                    $local = strtoupper(
+                        trim((string) $factura->local)
+                    );
+
+                    $factura->_prioridad_local =
+                        (
+                            strpos($local, 'CASA CENTRAL') !== false
+                            || strpos($local, 'MATRIZ') !== false
+                        )
+                            ? 0
+                            : 1;
+
+                    return $factura;
+                })
+                ->sort(function ($a, $b) {
+                    if ($a->_prioridad_local
+                        !== $b->_prioridad_local) {
+                        return $a->_prioridad_local
+                            <=> $b->_prioridad_local;
+                    }
+
+                    if ($a->_dias !== $b->_dias) {
+                        return $a->_dias <=> $b->_dias;
+                    }
+
+                    return strcmp(
+                        (string) $a->comprobante,
+                        (string) $b->comprobante
+                    );
+                })
+                ->values();
+
+            if ($candidatas->isEmpty()) {
+                continue;
+            }
+
+            $mejor = $candidatas->first();
+
+            $empatadas = $candidatas->filter(function ($factura) use ($mejor) {
+                return $factura->_prioridad_local
+                        === $mejor->_prioridad_local
+                    && $factura->_dias === $mejor->_dias;
+            });
+
+            if ($empatadas->count() > 1) {
+                $objetivo->remision->factura_estado = 'AMBIGUA';
+                $objetivo->remision->factura_candidatas =
+                    $empatadas->count();
+
+                continue;
+            }
+
+            $clave = implode('|', [
+                (string) $mejor->comprobante,
+                (string) $mejor->cliente,
+                (string) $mejor->codigo_normalizado,
+                (string) $mejor->fecha,
+                (string) $mejor->local,
+            ]);
+
+            $usadas[$clave] = true;
+
+            $objetivo->remision->factura_estado = 'ASOCIADA';
+            $objetivo->remision->factura_numero =
+                $mejor->comprobante;
+            $objetivo->remision->factura_cliente =
+                $mejor->cliente;
+            $objetivo->remision->factura_fecha =
+                $mejor->fecha;
+            $objetivo->remision->factura_local =
+                $mejor->local;
+            $objetivo->remision->factura_cantidad =
+                (int) $mejor->cantidad_facturada;
+            $objetivo->remision->factura_diferencia_dias =
+                (int) $mejor->_dias;
+        }
+    }
+
     private function agruparRemisionesVisualesAyala($remisiones)
     {
         /*
