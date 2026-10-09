@@ -367,8 +367,13 @@ class VentasImport
 
         $existentes = DB::table('ventas')
             ->whereIn('hash_linea', $hashes)
-            ->pluck('hash_linea')
-            ->flip();
+            ->select(
+                'id',
+                'hash_linea',
+                'remision'
+            )
+            ->get()
+            ->keyBy('hash_linea');
 
         $nuevos = [];
 
@@ -377,6 +382,65 @@ class VentasImport
             unset($registro['_fila_importacion']);
 
             if ($existentes->has($registro['hash_linea'])) {
+                $existente = $existentes->get(
+                    $registro['hash_linea']
+                );
+
+                /*
+                 * Si la venta ya había sido importada antes de guardar el
+                 * número de remisión, completar ese dato sin duplicar la
+                 * venta. Esto permite reimportar el mismo archivo para
+                 * enriquecer registros históricos.
+                 */
+                $remisionNueva = trim(
+                    (string) ($registro['remision'] ?? '')
+                );
+
+                $remisionActual = trim(
+                    (string) ($existente->remision ?? '')
+                );
+
+                if (
+                    $remisionNueva !== ''
+                    && $remisionActual === ''
+                ) {
+                    DB::table('ventas')
+                        ->where('id', $existente->id)
+                        ->update([
+                            'remision' => $remisionNueva,
+                            'updated_at' => now(),
+                        ]);
+
+                    $existente->remision = $remisionNueva;
+
+                    Log::info(
+                        'IMPORTACION VENTAS - REMISION COMPLETADA EN DUPLICADO',
+                        [
+                            'venta_id' => $existente->id,
+                            'codigo' => $registro['codigo'] ?? null,
+                            'comprobante' =>
+                                $registro['comprobante'] ?? null,
+                            'remision' => $remisionNueva,
+                        ]
+                    );
+                } elseif (
+                    $remisionNueva !== ''
+                    && $remisionActual !== ''
+                    && $remisionNueva !== $remisionActual
+                ) {
+                    Log::warning(
+                        'IMPORTACION VENTAS - REMISION DISTINTA EN DUPLICADO',
+                        [
+                            'venta_id' => $existente->id,
+                            'codigo' => $registro['codigo'] ?? null,
+                            'comprobante' =>
+                                $registro['comprobante'] ?? null,
+                            'remision_actual' => $remisionActual,
+                            'remision_archivo' => $remisionNueva,
+                        ]
+                    );
+                }
+
                 $this->duplicadas++;
                 $this->omitidas++;
 
@@ -508,6 +572,23 @@ class VentasImport
             $fila['comprobante'] ?? null
         );
 
+        /*
+         * La remisión es opcional porque algunos exportes históricos no la
+         * incluyen. Se aceptan varios nombres habituales de columna.
+         */
+        $remision = $this->limpiarTexto(
+            $fila['remision']
+                ?? $fila['nro_remision']
+                ?? $fila['numero_remision']
+                ?? $fila['nota_remision']
+                ?? $fila['nota_de_remision']
+                ?? $fila['nro_nota_remision']
+                ?? $fila['numero_nota_remision']
+                ?? $fila['remision_nro']
+                ?? $fila['nro_rem']
+                ?? null
+        );
+
         $errores = [];
 
         if (!$local) {
@@ -631,6 +712,7 @@ class VentasImport
             'fecha' => $fecha,
             'cantidad' => $cantidad,
             'comprobante' => $comprobante,
+            'remision' => $remision,
             'tipo_comprobante' => $tipoComprobante,
             'hash_linea' => $hashLinea,
             'created_at' => $ahora,
