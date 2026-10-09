@@ -16,9 +16,6 @@
             <a href="{{ route('seguimiento-produccion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
                 <i class="fas fa-chart-line mr-1"></i> Informe gerencial
             </a>
-            <a href="{{ route('seguimiento-produccion.avance-diario') }}" class="btn btn-info shadow-sm mr-1">
-                <i class="fas fa-calendar-day mr-1"></i> Avance por día
-            </a>
             <a href="{{ route('pedidos.importar') }}" class="btn btn-primary shadow-sm mr-1">
                 <i class="fas fa-file-import mr-1"></i> Importar datos
             </a>
