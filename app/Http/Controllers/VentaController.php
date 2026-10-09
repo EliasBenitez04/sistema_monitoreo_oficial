@@ -1665,6 +1665,7 @@ class VentaController extends Controller
 
             Cache::forget('ventas:fecha_maxima');
             Cache::forget('ventas:filtros_catalogo');
+            Cache::forget('ventas:clientes:locales');
 
             return response()->json([
                 'success' => true,
