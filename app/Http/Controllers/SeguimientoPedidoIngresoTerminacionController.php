@@ -140,21 +140,37 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
      */
     public function seguimientoDiario(Request $request)
     {
+        $pedidoId = $request->filled('pedido')
+            ? (int) $request->input('pedido')
+            : null;
+
         $pedidosIt = SeguimientoPedido::query()
             ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
             ->select('id', 'nro_pedido', 'fecha_pedido')
             ->whereNotNull('fecha_pedido');
 
+        if ($pedidoId) {
+            $pedidosIt->where('id', $pedidoId);
+        }
+
         $ultimaFechaPedido = (clone $pedidosIt)->max('fecha_pedido');
 
-        $idsOtIt = DB::table('seguimiento_pedido_detalle as spd')
+        $idsOtItQuery = DB::table(
+            'seguimiento_pedido_detalle as spd'
+        )
             ->join(
                 'seguimiento_pedido as sp',
                 'sp.id',
                 '=',
                 'spd.seguimiento_pedido_id'
             )
-            ->where('sp.nro_pedido', 'ILIKE', self::PREFIJO . '%')
+            ->where('sp.nro_pedido', 'ILIKE', self::PREFIJO . '%');
+
+        if ($pedidoId) {
+            $idsOtItQuery->where('sp.id', $pedidoId);
+        }
+
+        $idsOtIt = $idsOtItQuery
             ->pluck('spd.id_ot')
             ->unique()
             ->values();
@@ -212,10 +228,6 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         if ($desde->diffInDays($hasta) > 89) {
             $desde = $hasta->copy()->subDays(89);
         }
-
-        $pedidoId = $request->filled('pedido')
-            ? (int) $request->input('pedido')
-            : null;
 
         $pedidosDisponibles = SeguimientoPedido::query()
             ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
@@ -573,6 +585,10 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 ),
             'salidas_reales' =>
                 (int) $dias->sum('salidas_reales'),
+            'salidas_del_pedido' =>
+                (int) $dias->sum(
+                    'salidas_del_pedido'
+                ),
             'salidas_otras_fechas' =>
                 (int) $dias->sum(
                     'salidas_otras_fechas'
