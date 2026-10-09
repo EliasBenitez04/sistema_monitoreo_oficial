@@ -126,19 +126,37 @@ class VentaController extends Controller
                 return $item;
             });
 
-        $porVendedor = (clone $base)
+        /*
+         * Ranking de vendedores por sucursal.
+         *
+         * No agrupamos únicamente por nombre porque un mismo vendedor puede
+         * tener ventas en más de una sucursal. La sucursal queda visible como
+         * parte del ranking y el Top muestra las primeras 15 combinaciones.
+         */
+        $porVendedorTodos = (clone $base)
             ->whereNotNull('v.vendedor')
             ->where('v.vendedor', '<>', '')
-            ->select('v.vendedor')
+            ->whereNotNull('v.local')
+            ->where('v.local', '<>', '')
+            ->select(
+                'v.local',
+                'v.vendedor'
+            )
             ->selectRaw(
                 "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
                  COALESCE(SUM(v.p_venta), 0) as venta_neta,
-                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets"
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante END) as tickets"
             )
-            ->groupBy('v.vendedor')
+            ->groupBy(
+                'v.local',
+                'v.vendedor'
+            )
             ->orderByDesc('venta_neta')
-            ->limit(15)
             ->get();
+
+        $porVendedor = $porVendedorTodos
+            ->take(15)
+            ->values();
 
         $queryProductos = clone $base;
 
@@ -274,6 +292,7 @@ class VentaController extends Controller
             'resumen',
             'porLocal',
             'porVendedor',
+            'porVendedorTodos',
             'porProducto',
             'porDia',
             'locales',
