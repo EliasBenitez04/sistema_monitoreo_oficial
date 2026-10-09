@@ -96,18 +96,31 @@
                 <h3 class="mgr-section-title mb-1">OT pendientes por proceso actual</h3>
                 <p class="text-muted small mb-0">Cada tarjeta muestra cuántas OT y prendas están concentradas actualmente en ese proceso.</p>
             </div>
-            <div class="mgr-process-total mt-2 mt-md-0">
-                <strong>{{ number_format($resumen->ots_pendientes,0,',','.') }}</strong>
-                <span>OT pendientes</span>
+            <div class="d-flex align-items-center flex-wrap mt-2 mt-md-0">
+                <button type="button"
+                        id="toggleOrdenProcesos"
+                        class="btn btn-sm btn-outline-primary mgr-process-order-btn mr-2"
+                        aria-pressed="false"
+                        title="Alternar entre el orden actual y el orden del flujo productivo">
+                    <i class="fas fa-sort-amount-down mr-1"></i>
+                    Orden del flujo
+                </button>
+
+                <div class="mgr-process-total">
+                    <strong>{{ number_format($resumen->ots_pendientes,0,',','.') }}</strong>
+                    <span>OT pendientes</span>
+                </div>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row" id="procesoCardsContainer">
             @forelse($porProcesos as $proceso)
                 @php
                     $sinProceso = strtoupper(trim($proceso->proceso)) === 'SIN PROCESO';
                 @endphp
-                <div class="col-xl-3 col-lg-4 col-md-6 mb-3">
+                <div class="col-xl-3 col-lg-4 col-md-6 mb-3 mgr-process-card-wrap"
+                     data-proceso="{{ strtoupper(trim($proceso->proceso)) }}"
+                     data-original-index="{{ $loop->index }}">
                     <div class="mgr-process-kpi {{ $sinProceso ? 'is-empty' : '' }}">
                         <div class="mgr-process-kpi-head">
                             <div class="mgr-process-kpi-icon">
@@ -366,6 +379,19 @@
     letter-spacing:.05em;
     color:#94a3b8;
 }
+.mgr-process-order-btn{
+    border-radius:10px;
+    font-size:11px;
+    font-weight:800;
+    white-space:nowrap;
+    transition:all .18s ease;
+}
+.mgr-process-order-btn.is-active{
+    background:#2563eb;
+    border-color:#2563eb;
+    color:#fff;
+    box-shadow:0 4px 12px rgba(37,99,235,.2);
+}
 
 .mgr-process-kpi{
     height:100%;
@@ -555,3 +581,94 @@
 }
 </style>
 @endpush
+@push('page_scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const boton = document.getElementById('toggleOrdenProcesos');
+    const contenedor = document.getElementById('procesoCardsContainer');
+
+    if (!boton || !contenedor) {
+        return;
+    }
+
+    /*
+     * Orden oficial del flujo.
+     * Los procesos no contemplados quedan al final cuando el modo está activo.
+     */
+    const ordenProcesos = {
+        'DISEÑO - ORDEN DE TRABAJO': 10,
+        'DISEÑO - MOLDERIA': 15,
+        'DISEÑO - PROTOTIPO': 20,
+        'DISEÑO - DISEÑO GRAFICO': 25,
+
+        'PRODUCCION - TIZADAS': 30,
+        'PRODUCCION - CORTE': 40,
+        'PRODUCCION - LOTEO Y DISTRIBUCION': 45,
+        'PRODUCCION - REVELADO': 50,
+        'PRODUCCION - SERIGRAFIA': 55,
+        'PRODUCCION - BORDADO': 60,
+        'PRODUCCION - COSTURA INTERNA': 70,
+        'PRODUCCION - ATRAQUES': 75,
+        'PRODUCCION - LAVANDERIA': 80,
+        'PRODUCCION - PRETERMINACION': 85,
+
+        'TERMINACION - INGRESO TERMINACION': 90,
+        'TERMINACION - TERMINACION': 95,
+        'TERMINACION - PRODUCTO TERMINADO': 100,
+
+        'LOGISTICA - LOGISTICA Y DISTRIBUCION': 110
+    };
+
+    const tarjetas = Array.from(
+        contenedor.querySelectorAll('.mgr-process-card-wrap')
+    );
+
+    function aplicarOrdenFlujo(activo) {
+        tarjetas.forEach(function (tarjeta) {
+            if (activo) {
+                const proceso = String(
+                    tarjeta.dataset.proceso || ''
+                ).trim().toUpperCase();
+
+                const orden = Object.prototype.hasOwnProperty.call(
+                    ordenProcesos,
+                    proceso
+                )
+                    ? ordenProcesos[proceso]
+                    : 9999;
+
+                tarjeta.style.order = orden;
+            } else {
+                tarjeta.style.order = parseInt(
+                    tarjeta.dataset.originalIndex || '0',
+                    10
+                );
+            }
+        });
+
+        boton.classList.toggle('is-active', activo);
+        boton.setAttribute(
+            'aria-pressed',
+            activo ? 'true' : 'false'
+        );
+
+        boton.innerHTML = activo
+            ? '<i class="fas fa-stream mr-1"></i> Orden del flujo: ACTIVO'
+            : '<i class="fas fa-sort-amount-down mr-1"></i> Orden del flujo';
+    }
+
+    /*
+     * Inicio: conservar exactamente el orden actual del informe.
+     */
+    aplicarOrdenFlujo(false);
+
+    boton.addEventListener('click', function () {
+        const activo =
+            boton.getAttribute('aria-pressed') !== 'true';
+
+        aplicarOrdenFlujo(activo);
+    });
+});
+</script>
+@endpush
+
