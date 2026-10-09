@@ -207,11 +207,21 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         }
 
         try {
-            $desde = $request->filled('desde')
-                ? Carbon::parse(
+            if ($request->filled('desde')) {
+                $desde = Carbon::parse(
                     $request->input('desde')
-                )->startOfDay()
-                : $hasta->copy()->subDays(13);
+                )->startOfDay();
+            } elseif ($pedidoId && $ultimaFechaPedido) {
+                /*
+                 * Al elegir un pedido concreto, mostrar por defecto toda su
+                 * ventana operativa desde la fecha del pedido.
+                 */
+                $desde = Carbon::parse(
+                    $ultimaFechaPedido
+                )->startOfDay();
+            } else {
+                $desde = $hasta->copy()->subDays(13);
+            }
         } catch (\Throwable $e) {
             $desde = $hasta->copy()->subDays(13);
         }
