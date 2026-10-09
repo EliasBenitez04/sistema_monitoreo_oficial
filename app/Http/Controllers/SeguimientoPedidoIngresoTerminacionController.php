@@ -309,6 +309,23 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'tr.fecha_proceso',
                 $fechaControlTexto
             )
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('ot_trazabilidad as ant')
+                    ->whereColumn(
+                        'ant.id_ot',
+                        'tr.id_ot'
+                    )
+                    ->whereRaw(
+                        "UPPER(TRIM(ant.proceso)) = ?",
+                        [self::PROCESO_CIERRE]
+                    )
+                    ->whereColumn(
+                        'ant.fecha_proceso',
+                        '<',
+                        'tr.fecha_proceso'
+                    );
+            })
             ->select(
                 'o.id_ot',
                 'o.nro_ot',
@@ -382,7 +399,8 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         $salidas = $salidas
             ->map(function ($salida) use (
                 $pedidosPorOt,
-                $pedido
+                $pedido,
+                $fechaControlTexto
             ) {
                 $pedidosOt = collect(
                     $pedidosPorOt->get(
@@ -394,7 +412,12 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                         return (object) [
                             'id' => (int) $item->pedido_id,
                             'nro' => $item->nro_pedido,
-                            'fecha' => $item->fecha_pedido,
+                            'fecha' => $item->fecha_pedido
+                                ? date(
+                                    'Y-m-d',
+                                    strtotime($item->fecha_pedido)
+                                )
+                                : null,
                         ];
                     })
                     ->unique(function ($item) {
@@ -402,26 +425,61 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                     })
                     ->values();
 
-                $esPedidoSeleccionado = $pedidosOt
+                /*
+                 * Sólo justifica una salida el pedido que ya existía en esa
+                 * fecha. Un pedido futuro se muestra como referencia, pero
+                 * no convierte una salida anticipada en salida pedida.
+                 */
+                $pedidosVigentes = $pedidosOt
+                    ->filter(function ($item) use (
+                        $fechaControlTexto
+                    ) {
+                        return $item->fecha !== null
+                            && $item->fecha
+                                <= $fechaControlTexto;
+                    })
+                    ->values();
+
+                $pedidosPosteriores = $pedidosOt
+                    ->filter(function ($item) use (
+                        $fechaControlTexto
+                    ) {
+                        return $item->fecha !== null
+                            && $item->fecha
+                                > $fechaControlTexto;
+                    })
+                    ->values();
+
+                $esPedidoSeleccionado = $pedidosVigentes
                     ->contains(function ($item) use ($pedido) {
                         return (int) $item->id
                             === (int) $pedido->id;
                     });
 
                 $salida->pedidos = $pedidosOt;
+                $salida->pedidos_vigentes =
+                    $pedidosVigentes;
+                $salida->pedidos_posteriores =
+                    $pedidosPosteriores;
+
                 $salida->tiene_pedido =
-                    $pedidosOt->isNotEmpty();
+                    $pedidosVigentes->isNotEmpty();
+
                 $salida->es_pedido_seleccionado =
                     $esPedidoSeleccionado;
 
-                if (!$salida->tiene_pedido) {
-                    $salida->clasificacion = 'SIN PEDIDO';
-                } elseif ($esPedidoSeleccionado) {
+                if ($esPedidoSeleccionado) {
                     $salida->clasificacion =
                         'PEDIDO SELECCIONADO';
-                } else {
+                } elseif ($pedidosVigentes->isNotEmpty()) {
                     $salida->clasificacion =
                         'OTRO PEDIDO';
+                } elseif ($pedidosPosteriores->isNotEmpty()) {
+                    $salida->clasificacion =
+                        'PEDIDO POSTERIOR';
+                } else {
+                    $salida->clasificacion =
+                        'SIN PEDIDO';
                 }
 
                 return $salida;
