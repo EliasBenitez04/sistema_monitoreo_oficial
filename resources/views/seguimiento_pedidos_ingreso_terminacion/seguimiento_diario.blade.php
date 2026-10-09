@@ -2,17 +2,17 @@
 
 @section('content')
 <section class="content-header pb-2">
-<div class="container-fluid it-day-shell">
+<div class="container-fluid it-audit-shell">
     <div class="d-flex justify-content-between align-items-center flex-wrap">
         <div>
-            <div class="it-day-eyebrow">CONTROL DE PEDIDOS · INGRESO TERMINACIÓN</div>
-            <h1 class="it-day-title mb-1">
-                <i class="fas fa-clipboard-check mr-2"></i>
-                Seguimiento diario de cumplimiento
+            <div class="it-audit-eyebrow">CONTROL DE PEDIDOS · INGRESO TERMINACIÓN</div>
+            <h1 class="it-audit-title mb-1">
+                <i class="fas fa-search-location mr-2"></i>
+                Seguimiento de salidas
             </h1>
             <p class="text-muted mb-0">
-                Compara lo pedido por día contra las OT que realmente alcanzaron
-                <strong>TERMINACION - TERMINACION</strong>.
+                Controla qué OT se enviaron a <strong>TERMINACION - TERMINACION</strong>
+                en la fecha de un pedido IT y si cada salida estaba realmente solicitada.
             </p>
         </div>
 
@@ -34,56 +34,37 @@
 </section>
 
 <section class="content">
-<div class="container-fluid it-day-shell">
+<div class="container-fluid it-audit-shell">
 
-    <div class="card it-day-filter mb-3">
+    <div class="card it-audit-filter mb-3">
         <div class="card-body pb-2">
             <form method="GET"
                   action="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario') }}">
                 <div class="row align-items-end">
-                    <div class="col-lg-3 col-md-4 mb-2">
-                        <label class="small font-weight-bold">Desde</label>
-                        <input type="date"
-                               name="desde"
-                               class="form-control"
-                               value="{{ $desde->format('Y-m-d') }}">
-                    </div>
+                    <div class="col-lg-8 col-md-8 mb-2">
+                        <label class="small font-weight-bold">
+                            Pedido IT a controlar
+                        </label>
 
-                    <div class="col-lg-3 col-md-4 mb-2">
-                        <label class="small font-weight-bold">Hasta</label>
-                        <input type="date"
-                               name="hasta"
-                               class="form-control"
-                               value="{{ $hasta->format('Y-m-d') }}">
-                    </div>
-
-                    <div class="col-lg-4 col-md-4 mb-2">
-                        <label class="small font-weight-bold">Pedido IT</label>
                         <select name="pedido" class="form-control">
-                            <option value="">Todos los pedidos IT</option>
-
-                            @foreach($pedidosDisponibles as $pedido)
-                                <option value="{{ $pedido->id }}"
-                                        {{ (int) $pedidoId === (int) $pedido->id ? 'selected' : '' }}>
-                                    {{ $pedido->nro_pedido }}
-                                    @if($pedido->fecha_pedido)
-                                        · {{ date('d/m/Y', strtotime($pedido->fecha_pedido)) }}
+                            @forelse($pedidosDisponibles as $item)
+                                <option value="{{ $item->id }}"
+                                        {{ (int) $pedidoId === (int) $item->id ? 'selected' : '' }}>
+                                    {{ $item->nro_pedido }}
+                                    @if($item->fecha_pedido)
+                                        · {{ date('d/m/Y', strtotime($item->fecha_pedido)) }}
                                     @endif
                                 </option>
-                            @endforeach
+                            @empty
+                                <option value="">Sin pedidos IT</option>
+                            @endforelse
                         </select>
                     </div>
 
-                    <div class="col-lg-2 mb-2 text-lg-right">
-                        <a href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario') }}"
-                           class="btn btn-light border mr-1"
-                           title="Limpiar filtros">
-                            <i class="fas fa-eraser"></i>
-                        </a>
-
+                    <div class="col-lg-4 col-md-4 mb-2 text-md-right">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-search mr-1"></i>
-                            Consultar
+                            Revisar salidas de esa fecha
                         </button>
                     </div>
                 </div>
@@ -91,444 +72,357 @@
         </div>
     </div>
 
-    <div class="alert alert-light border it-day-reading mb-3">
-        <strong>Cómo leerlo:</strong>
-        <strong>Pedido del día</strong> = OT solicitadas en pedidos IT de esa fecha.
-        <strong>Ya disponible</strong> = la OT ya había alcanzado TERMINACION - TERMINACION antes del pedido.
-        <strong>Salió el mismo día</strong> = alcanzó el proceso objetivo ese día.
-        <strong>Pendiente al cierre</strong> = no estaba disponible antes ni salió ese mismo día.
-        <strong>Salida real</strong> puede incluir OT atrasadas de pedidos anteriores.
-    </div>
-
-    <div class="row mb-2">
-        <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
-            <div class="it-day-kpi">
-                <small>Días con pedido</small>
-                <strong>{{ number_format($resumen->dias_con_pedido,0,',','.') }}</strong>
-                <span>de {{ number_format($resumen->dias,0,',','.') }} días consultados</span>
-            </div>
+    @if(!$pedido)
+        <div class="alert alert-info">
+            Todavía no hay pedidos IT con fecha para realizar el control.
         </div>
+    @else
+        <div class="it-audit-hero mb-3">
+            <div class="row align-items-center">
+                <div class="col-lg-7">
+                    <div class="it-audit-hero-label">
+                        PEDIDO SELECCIONADO
+                    </div>
 
-        <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
-            <div class="it-day-kpi is-primary">
-                <small>OT pedidas</small>
-                <strong>{{ number_format($resumen->ots_pedidas,0,',','.') }}</strong>
-                <span>{{ number_format($resumen->prendas_pedidas,0,',','.') }} prendas</span>
-            </div>
-        </div>
+                    <div class="d-flex align-items-end flex-wrap">
+                        <div class="mr-4">
+                            <div class="it-audit-order">
+                                {{ $pedido->nro_pedido }}
+                            </div>
+                            <div class="text-muted">
+                                Fecha del pedido:
+                                <strong>{{ $fechaControl->format('d/m/Y') }}</strong>
+                            </div>
+                        </div>
 
-        <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
-            <div class="it-day-kpi is-success">
-                <small>Salieron mismo día</small>
-                <strong>{{ number_format($resumen->ots_mismo_dia,0,',','.') }}</strong>
-                <span>respuesta nueva al pedido diario</span>
-            </div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
-            <div class="it-day-kpi is-info">
-                <small>Ya disponibles</small>
-                <strong>{{ number_format($resumen->ots_ya_disponibles,0,',','.') }}</strong>
-                <span>estaban listas antes del pedido</span>
-            </div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
-            <div class="it-day-kpi is-warning">
-                <small>Pendiente al cierre</small>
-                <strong>{{ number_format($resumen->ots_pendientes_cierre,0,',','.') }}</strong>
-                <span>no cubiertas ese día</span>
-            </div>
-        </div>
-
-        <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
-            <div class="it-day-kpi is-dark">
-                <small>Días 100% cumplidos</small>
-                <strong>{{ number_format($resumen->dias_cumplidos,0,',','.') }}</strong>
-                <span>{{ number_format($resumen->cumplimiento_dias,1,',','.') }}% de días con pedido</span>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mb-3">
-        <div class="col-lg-4 mb-3 mb-lg-0">
-            <div class="it-day-highlight is-output">
-                <div>
-                    <small>SALIDA REAL DEL PERÍODO</small>
-                    <strong>{{ number_format($resumen->salidas_reales,0,',','.') }} OT</strong>
-                    <span>alcanzaron TERMINACION - TERMINACION</span>
+                        <div class="it-audit-order-meta">
+                            <strong>{{ number_format($resumen->ots_pedidas,0,',','.') }} OT</strong>
+                            <span>{{ number_format($resumen->prendas_pedidas,0,',','.') }} prendas solicitadas</span>
+                        </div>
+                    </div>
                 </div>
-                <i class="fas fa-sign-out-alt"></i>
-            </div>
-        </div>
 
-        <div class="col-lg-4 mb-3 mb-lg-0">
-            <div class="it-day-highlight is-request">
-                <div>
-                    <small>DE ESA SALIDA, ERA PEDIDO DEL DÍA</small>
-                    <strong>{{ number_format($resumen->salidas_del_pedido,0,',','.') }} OT</strong>
-                    <span>salieron y correspondían al pedido de esa fecha</span>
+                <div class="col-lg-5 mt-3 mt-lg-0">
+                    <div class="it-audit-request-progress">
+                        <div>
+                            <small>OT del pedido que salieron ese mismo día</small>
+                            <strong>
+                                {{ number_format($resumen->pedido_cubierto_mismo_dia,0,',','.') }}
+                                /
+                                {{ number_format($resumen->ots_pedidas,0,',','.') }}
+                            </strong>
+                        </div>
+
+                        <div class="it-audit-percent">
+                            {{ number_format($resumen->porcentaje_pedido_mismo_dia,1,',','.') }}%
+                        </div>
+                    </div>
+
+                    <div class="it-audit-progress mt-2">
+                        <div style="width:{{ min(100,$resumen->porcentaje_pedido_mismo_dia) }}%"></div>
+                    </div>
+
+                    <small class="text-muted d-block mt-1">
+                        Este porcentaje mide sólo lo que realmente salió ese día;
+                        una OT que ya había salido antes no cuenta como trabajo del día.
+                    </small>
                 </div>
-                <i class="fas fa-bullseye"></i>
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="it-day-highlight is-backlog">
-                <div>
-                    <small>DE ESA SALIDA, OTRAS FECHAS</small>
-                    <strong>{{ number_format($resumen->salidas_otras_fechas,0,',','.') }} OT</strong>
-                    <span>correspondían a pedidos anteriores u otras fechas</span>
+        @php
+            $porcentajeJustificado = $resumen->salidas_reales > 0
+                ? round(($resumen->salidas_con_pedido / $resumen->salidas_reales) * 100, 1)
+                : 0;
+        @endphp
+
+        <div class="row mb-2">
+            <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+                <div class="it-audit-kpi is-dark">
+                    <small>Salidas reales</small>
+                    <strong>{{ number_format($resumen->salidas_reales,0,',','.') }}</strong>
+                    <span>{{ number_format($resumen->prendas_salida,0,',','.') }} prendas</span>
                 </div>
-                <i class="fas fa-history"></i>
+            </div>
+
+            <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+                <div class="it-audit-kpi is-success">
+                    <small>Con pedido vigente</small>
+                    <strong>{{ number_format($resumen->salidas_con_pedido,0,',','.') }}</strong>
+                    <span>salidas justificadas</span>
+                </div>
+            </div>
+
+            <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+                <div class="it-audit-kpi is-primary">
+                    <small>Del {{ $pedido->nro_pedido }}</small>
+                    <strong>{{ number_format($resumen->salidas_pedido_seleccionado,0,',','.') }}</strong>
+                    <span>pertenecían al pedido elegido</span>
+                </div>
+            </div>
+
+            <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+                <div class="it-audit-kpi is-info">
+                    <small>Otros pedidos IT</small>
+                    <strong>{{ number_format($resumen->salidas_otros_pedidos,0,',','.') }}</strong>
+                    <span>también eran necesarias</span>
+                </div>
+            </div>
+
+            <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+                <div class="it-audit-kpi {{ $resumen->salidas_sin_pedido > 0 ? 'is-danger' : 'is-success' }}">
+                    <small>Sin pedido vigente</small>
+                    <strong>{{ number_format($resumen->salidas_sin_pedido,0,',','.') }}</strong>
+                    <span>{{ $resumen->salidas_sin_pedido > 0 ? 'requieren revisión' : 'sin desvíos' }}</span>
+                </div>
+            </div>
+
+            <div class="col-xl-2 col-md-4 col-sm-6 mb-3">
+                <div class="it-audit-kpi {{ $porcentajeJustificado >= 100 ? 'is-success' : 'is-warning' }}">
+                    <small>Salida justificada</small>
+                    <strong>{{ number_format($porcentajeJustificado,1,',','.') }}%</strong>
+                    <span>con pedido existente al salir</span>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="card shadow-sm it-day-table-card">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
-            <div>
+        @if($resumen->salidas_sin_pedido > 0)
+            <div class="alert alert-danger it-audit-alert">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <strong>Atención:</strong>
+                {{ number_format($resumen->salidas_sin_pedido,0,',','.') }}
+                de {{ number_format($resumen->salidas_reales,0,',','.') }} OT
+                que salieron el {{ $fechaControl->format('d/m/Y') }}
+                no tenían un pedido IT vigente en ese momento.
+                Revisá las filas rojas.
+            </div>
+        @elseif($resumen->salidas_reales > 0)
+            <div class="alert alert-success it-audit-alert">
+                <i class="fas fa-check-circle mr-2"></i>
+                <strong>Correcto:</strong>
+                todas las OT que salieron el {{ $fechaControl->format('d/m/Y') }}
+                estaban justificadas por algún pedido IT vigente.
+            </div>
+        @endif
+
+        <div class="card shadow-sm it-audit-card mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <h3 class="card-title float-none mb-0 font-weight-bold">
+                        <i class="fas fa-sign-out-alt mr-1 text-primary"></i>
+                        OT que realmente salieron el {{ $fechaControl->format('d/m/Y') }}
+                    </h3>
+                    <small class="text-muted">
+                        Todas las primeras entradas a TERMINACION - TERMINACION de esa fecha,
+                        aunque la OT no figure en ningún pedido.
+                    </small>
+                </div>
+
+                <span class="badge badge-light border p-2 mt-2 mt-md-0">
+                    {{ number_format($resumen->salidas_reales,0,',','.') }} OT
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 it-audit-table">
+                    <thead>
+                        <tr>
+                            <th>OT</th>
+                            <th>Código / descripción</th>
+                            <th class="text-center">Cant. OT</th>
+                            <th class="text-center">Resultado proceso</th>
+                            <th>Pedido que justifica la salida</th>
+                            <th>Control</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                    @forelse($salidas as $salida)
+                        <tr class="{{ !$salida->tiene_pedido ? 'it-audit-row-danger' : '' }}">
+                            <td>
+                                <strong class="it-audit-ot">
+                                    {{ $salida->nro_ot }}
+                                </strong>
+                            </td>
+
+                            <td>
+                                <strong>{{ $salida->codigo ?: '-' }}</strong>
+                                <small class="d-block text-muted">
+                                    {{ $salida->descripcion }}
+                                </small>
+                            </td>
+
+                            <td class="text-center">
+                                <strong>{{ number_format($salida->cantidad_orden,0,',','.') }}</strong>
+                            </td>
+
+                            <td class="text-center">
+                                {{ number_format($salida->resultado_dia,0,',','.') }}
+
+                                @if((int) $salida->eventos_dia > 1)
+                                    <small class="d-block text-muted">
+                                        {{ number_format($salida->eventos_dia,0,',','.') }} registros
+                                    </small>
+                                @endif
+                            </td>
+
+                            <td>
+                                @if($salida->pedidos_vigentes->isNotEmpty())
+                                    @foreach($salida->pedidos_vigentes as $pedidoSalida)
+                                        <span class="it-audit-order-badge is-valid">
+                                            <i class="fas fa-check mr-1"></i>
+                                            PEDIDO {{ $pedidoSalida->nro }}
+                                        </span>
+
+                                        <small class="d-block text-muted mt-1">
+                                            {{ $pedidoSalida->fecha
+                                                ? date('d/m/Y', strtotime($pedidoSalida->fecha))
+                                                : '-' }}
+
+                                            @if((int) $pedidoSalida->id === (int) $pedido->id)
+                                                · pedido seleccionado
+                                            @endif
+                                        </small>
+                                    @endforeach
+                                @else
+                                    <span class="it-audit-order-badge is-missing">
+                                        <i class="fas fa-times mr-1"></i>
+                                        SIN PEDIDO VIGENTE
+                                    </span>
+
+                                    @if($salida->pedidos_posteriores->isNotEmpty())
+                                        <div class="mt-2">
+                                            @foreach($salida->pedidos_posteriores as $pedidoPosterior)
+                                                <span class="it-audit-order-badge is-future">
+                                                    PEDIDO POSTERIOR {{ $pedidoPosterior->nro }}
+                                                </span>
+
+                                                <small class="d-block text-muted">
+                                                    recién fue pedido el
+                                                    {{ date('d/m/Y', strtotime($pedidoPosterior->fecha)) }}
+                                                </small>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                @endif
+                            </td>
+
+                            <td>
+                                @if($salida->clasificacion === 'PEDIDO SELECCIONADO')
+                                    <span class="badge badge-primary px-2 py-1">
+                                        DEL {{ $pedido->nro_pedido }}
+                                    </span>
+                                @elseif($salida->clasificacion === 'OTRO PEDIDO')
+                                    <span class="badge badge-success px-2 py-1">
+                                        PEDIDO
+                                    </span>
+                                @elseif($salida->clasificacion === 'PEDIDO POSTERIOR')
+                                    <span class="badge badge-danger px-2 py-1">
+                                        NO PEDIDA AL SALIR
+                                    </span>
+                                @else
+                                    <span class="badge badge-danger px-2 py-1">
+                                        SIN PEDIDO
+                                    </span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6"
+                                class="text-center text-muted py-5">
+                                No hubo OT que alcanzaran TERMINACION - TERMINACION
+                                el {{ $fechaControl->format('d/m/Y') }}.
+                            </td>
+                        </tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card shadow-sm it-audit-card">
+            <div class="card-header bg-white">
                 <h3 class="card-title float-none mb-0 font-weight-bold">
-                    <i class="fas fa-calendar-check mr-1 text-primary"></i>
-                    Cumplimiento por día
+                    <i class="fas fa-clipboard-list mr-1 text-info"></i>
+                    OT solicitadas en {{ $pedido->nro_pedido }}
                 </h3>
                 <small class="text-muted">
-                    {{ $desde->format('d/m/Y') }} al {{ $hasta->format('d/m/Y') }}
+                    Referencia del pedido seleccionado para saber qué pasó con cada una.
                 </small>
             </div>
 
-            <div class="it-day-legend mt-2 mt-md-0">
-                <span><i class="fas fa-circle text-success"></i> 100%</span>
-                <span><i class="fas fa-circle text-warning"></i> Parcial</span>
-                <span><i class="fas fa-circle text-danger"></i> Sin cubrir</span>
-            </div>
-        </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 it-audit-table">
+                    <thead>
+                        <tr>
+                            <th>OT</th>
+                            <th>Código / descripción</th>
+                            <th class="text-center">Cantidad</th>
+                            <th>Situación respecto al {{ $fechaControl->format('d/m/Y') }}</th>
+                            <th>Fecha real TERMINACION - TERMINACION</th>
+                        </tr>
+                    </thead>
 
-        <div class="table-responsive">
-            <table class="table table-hover mb-0 it-day-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th class="text-center">Pedidos IT</th>
-                        <th class="text-center">OT pedidas</th>
-                        <th class="text-center">Prendas pedidas</th>
-                        <th class="text-center">Ya disponibles</th>
-                        <th class="text-center">Salieron mismo día</th>
-                        <th class="text-center">Pendiente cierre</th>
-                        <th class="text-center">Cobertura</th>
-                        <th class="text-center">Salida real día</th>
-                        <th class="text-center">Era pedido del día</th>
-                        <th class="text-center">De otras fechas</th>
-                        <th class="text-center">Detalle</th>
-                    </tr>
-                </thead>
+                    <tbody>
+                    @forelse($otsPedido as $ot)
+                        @php
+                            $badge = 'badge-secondary';
 
-                <tbody>
-                @forelse($dias as $dia)
-                    @php
-                        $sinPedido = $dia->ots_pedidas === 0;
-                        $coverage = $dia->cobertura;
+                            if ($ot->estado_control === 'SALIO ESE DIA') {
+                                $badge = 'badge-success';
+                            } elseif ($ot->estado_control === 'YA HABIA SALIDO') {
+                                $badge = 'badge-info';
+                            } elseif ($ot->estado_control === 'SALIO DESPUES') {
+                                $badge = 'badge-warning';
+                            } elseif ($ot->estado_control === 'PENDIENTE') {
+                                $badge = 'badge-danger';
+                            }
+                        @endphp
 
-                        if ($coverage === null) {
-                            $coverageClass = 'is-neutral';
-                        } elseif ($coverage >= 100) {
-                            $coverageClass = 'is-good';
-                        } elseif ($coverage > 0) {
-                            $coverageClass = 'is-partial';
-                        } else {
-                            $coverageClass = 'is-bad';
-                        }
+                        <tr>
+                            <td>
+                                <strong class="it-audit-ot">
+                                    {{ $ot->nro_ot }}
+                                </strong>
+                            </td>
 
-                        $collapseId = 'itday-' . str_replace('-', '', $dia->fecha);
-                    @endphp
-
-                    <tr class="{{ $sinPedido && $dia->salidas_reales === 0 ? 'it-day-empty-row' : '' }}">
-                        <td>
-                            <strong>{{ $dia->fecha_label }}</strong>
-                            <small class="d-block text-muted">
-                                {{ $dia->dia_semana }}
-                            </small>
-                        </td>
-
-                        <td class="text-center">
-                            {{ number_format($dia->pedidos,0,',','.') }}
-                        </td>
-
-                        <td class="text-center">
-                            @if($dia->ots_pedidas > 0)
-                                <span class="it-day-number is-blue">
-                                    {{ number_format($dia->ots_pedidas,0,',','.') }}
-                                </span>
-                            @else
-                                <span class="text-muted">0</span>
-                            @endif
-                        </td>
-
-                        <td class="text-center">
-                            {{ number_format($dia->prendas_pedidas,0,',','.') }}
-                        </td>
-
-                        <td class="text-center">
-                            {{ number_format($dia->ya_disponibles,0,',','.') }}
-                        </td>
-
-                        <td class="text-center">
-                            @if($dia->salieron_hoy_pedido > 0)
-                                <span class="it-day-number is-green">
-                                    {{ number_format($dia->salieron_hoy_pedido,0,',','.') }}
-                                </span>
-                            @else
-                                <span class="text-muted">0</span>
-                            @endif
-                        </td>
-
-                        <td class="text-center">
-                            @if($dia->pendientes_al_cierre > 0)
-                                <span class="it-day-number is-orange">
-                                    {{ number_format($dia->pendientes_al_cierre,0,',','.') }}
-                                </span>
-                            @else
-                                <span class="text-success font-weight-bold">0</span>
-                            @endif
-                        </td>
-
-                        <td class="text-center">
-                            @if($coverage !== null)
-                                <span class="it-day-coverage {{ $coverageClass }}">
-                                    {{ number_format($coverage,1,',','.') }}%
-                                </span>
-                                <small class="d-block text-muted mt-1">
-                                    {{ number_format($dia->ya_disponibles + $dia->salieron_hoy_pedido,0,',','.') }}
-                                    / {{ number_format($dia->ots_pedidas,0,',','.') }} OT
-                                </small>
-                            @else
-                                <span class="text-muted">Sin pedido</span>
-                            @endif
-                        </td>
-
-                        <td class="text-center">
-                            <strong>{{ number_format($dia->salidas_reales,0,',','.') }}</strong>
-                            @if($dia->salidas_reales > 0)
+                            <td>
+                                <strong>{{ $ot->codigo ?: '-' }}</strong>
                                 <small class="d-block text-muted">
-                                    {{ number_format($dia->prendas_salidas_reales,0,',','.') }} prendas
+                                    {{ $ot->descripcion }}
                                 </small>
-                            @endif
-                        </td>
+                            </td>
 
-                        <td class="text-center">
-                            @if($dia->salidas_del_pedido > 0)
-                                <span class="badge badge-success px-2 py-1">
-                                    {{ number_format($dia->salidas_del_pedido,0,',','.') }}
+                            <td class="text-center">
+                                {{ number_format($ot->cantidad_orden,0,',','.') }}
+                            </td>
+
+                            <td>
+                                <span class="badge {{ $badge }} px-2 py-1">
+                                    {{ $ot->estado_control }}
                                 </span>
-                            @else
-                                <span class="text-muted">0</span>
-                            @endif
-                        </td>
+                            </td>
 
-                        <td class="text-center">
-                            @if($dia->salidas_otras_fechas > 0)
-                                <span class="badge badge-secondary px-2 py-1">
-                                    {{ number_format($dia->salidas_otras_fechas,0,',','.') }}
-                                </span>
-                            @else
-                                <span class="text-muted">0</span>
-                            @endif
-                        </td>
-
-                        <td class="text-center">
-                            @if($dia->ots_pedidas > 0 || $dia->salidas_reales > 0)
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-primary"
-                                        data-toggle="collapse"
-                                        data-target="#{{ $collapseId }}"
-                                        aria-expanded="false">
-                                    <i class="fas fa-eye mr-1"></i>
-                                    Ver
-                                </button>
-                            @else
-                                <span class="text-muted">-</span>
-                            @endif
-                        </td>
-                    </tr>
-
-                    @if($dia->ots_pedidas > 0 || $dia->salidas_reales > 0)
-                        <tr class="it-day-detail-row">
-                            <td colspan="12" class="p-0 border-0">
-                                <div class="collapse" id="{{ $collapseId }}">
-                                    <div class="it-day-detail">
-
-                                        <div class="row">
-                                            <div class="col-xl-7 mb-3 mb-xl-0">
-                                                <div class="it-day-detail-title">
-                                                    <i class="fas fa-clipboard-list mr-1"></i>
-                                                    Pedido del día
-                                                </div>
-                                                <small class="text-muted">
-                                                    Qué se pidió y cuándo terminó realmente cada OT.
-                                                </small>
-
-                                                <div class="table-responsive mt-2">
-                                                    <table class="table table-sm table-hover mb-0 it-day-detail-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Pedido</th>
-                                                                <th>OT</th>
-                                                                <th>Código / descripción</th>
-                                                                <th class="text-center">Cant.</th>
-                                                                <th>Resultado</th>
-                                                                <th>Fecha salida</th>
-                                                            </tr>
-                                                        </thead>
-
-                                                        <tbody>
-                                                        @forelse($dia->ots_pedido as $ot)
-                                                            @php
-                                                                $estadoClass = 'badge-secondary';
-
-                                                                if ($ot->estado === 'SALIO HOY') {
-                                                                    $estadoClass = 'badge-success';
-                                                                } elseif ($ot->estado === 'YA DISPONIBLE') {
-                                                                    $estadoClass = 'badge-info';
-                                                                } elseif ($ot->estado === 'SALIO DESPUES') {
-                                                                    $estadoClass = 'badge-warning';
-                                                                } elseif ($ot->estado === 'PENDIENTE') {
-                                                                    $estadoClass = 'badge-danger';
-                                                                }
-                                                            @endphp
-
-                                                            <tr>
-                                                                <td>
-                                                                    @foreach($ot->pedidos as $nroPedido)
-                                                                        <span class="badge badge-light border mr-1">
-                                                                            {{ $nroPedido }}
-                                                                        </span>
-                                                                    @endforeach
-                                                                </td>
-
-                                                                <td>
-                                                                    <strong>{{ $ot->nro_ot }}</strong>
-                                                                </td>
-
-                                                                <td>
-                                                                    <strong>{{ $ot->codigo ?: '-' }}</strong>
-                                                                    <small class="d-block text-muted">
-                                                                        {{ $ot->descripcion }}
-                                                                    </small>
-                                                                </td>
-
-                                                                <td class="text-center">
-                                                                    {{ number_format($ot->cantidad_orden,0,',','.') }}
-                                                                </td>
-
-                                                                <td>
-                                                                    <span class="badge {{ $estadoClass }}">
-                                                                        {{ $ot->estado }}
-                                                                    </span>
-                                                                </td>
-
-                                                                <td>
-                                                                    {{ $ot->fecha_cierre
-                                                                        ? date('d/m/Y', strtotime($ot->fecha_cierre))
-                                                                        : '-' }}
-                                                                </td>
-                                                            </tr>
-                                                        @empty
-                                                            <tr>
-                                                                <td colspan="6"
-                                                                    class="text-center text-muted py-3">
-                                                                    No hubo pedido IT ese día.
-                                                                </td>
-                                                            </tr>
-                                                        @endforelse
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-
-                                            <div class="col-xl-5">
-                                                <div class="it-day-detail-title">
-                                                    <i class="fas fa-sign-out-alt mr-1"></i>
-                                                    Salida real del día
-                                                </div>
-                                                <small class="text-muted">
-                                                    Todo lo que llegó a TERMINACION - TERMINACION ese día.
-                                                </small>
-
-                                                <div class="table-responsive mt-2">
-                                                    <table class="table table-sm table-hover mb-0 it-day-detail-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>OT</th>
-                                                                <th>Pedido vinculado</th>
-                                                                <th class="text-center">Cant.</th>
-                                                                <th>Origen</th>
-                                                            </tr>
-                                                        </thead>
-
-                                                        <tbody>
-                                                        @forelse($dia->ots_salida as $ot)
-                                                            <tr>
-                                                                <td>
-                                                                    <strong>{{ $ot->nro_ot }}</strong>
-                                                                    <small class="d-block text-muted">
-                                                                        {{ $ot->codigo }}
-                                                                    </small>
-                                                                </td>
-
-                                                                <td>
-                                                                    @foreach($ot->pedidos as $nroPedido)
-                                                                        <span class="badge badge-light border mr-1">
-                                                                            {{ $nroPedido }}
-                                                                        </span>
-                                                                    @endforeach
-                                                                </td>
-
-                                                                <td class="text-center">
-                                                                    {{ number_format($ot->cantidad_orden,0,',','.') }}
-                                                                </td>
-
-                                                                <td>
-                                                                    @if($ot->corresponde_hoy)
-                                                                        <span class="badge badge-success">
-                                                                            PEDIDO DEL DÍA
-                                                                        </span>
-                                                                    @else
-                                                                        <span class="badge badge-secondary">
-                                                                            OTRA FECHA
-                                                                        </span>
-                                                                    @endif
-                                                                </td>
-                                                            </tr>
-                                                        @empty
-                                                            <tr>
-                                                                <td colspan="4"
-                                                                    class="text-center text-muted py-3">
-                                                                    No hubo salida real ese día.
-                                                                </td>
-                                                            </tr>
-                                                        @endforelse
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
+                            <td>
+                                {{ $ot->fecha_cierre
+                                    ? date('d/m/Y', strtotime($ot->fecha_cierre))
+                                    : '-' }}
                             </td>
                         </tr>
-                    @endif
-                @empty
-                    <tr>
-                        <td colspan="12" class="text-center text-muted py-5">
-                            No hay información para el período seleccionado.
-                        </td>
-                    </tr>
-                @endforelse
-                </tbody>
-            </table>
+                    @empty
+                        <tr>
+                            <td colspan="5"
+                                class="text-center text-muted py-4">
+                                El pedido seleccionado no tiene OT vinculadas.
+                            </td>
+                        </tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
-    </div>
+    @endif
 
 </div>
 </section>
@@ -536,193 +430,178 @@
 
 @push('page_styles')
 <style>
-.it-day-shell{max-width:1800px}
-.it-day-eyebrow{
+.it-audit-shell{max-width:1800px}
+.it-audit-eyebrow{
     font-size:10px;
     font-weight:900;
     letter-spacing:.12em;
     color:#94a3b8;
 }
-.it-day-title{
+.it-audit-title{
     font-size:27px;
     font-weight:900;
     color:#0f172a;
 }
-.it-day-filter,
-.it-day-table-card{
+.it-audit-filter,
+.it-audit-card{
     border:1px solid #e2e8f0;
     border-radius:14px;
 }
-.it-day-reading{
-    border-radius:10px;
-    font-size:12px;
+.it-audit-hero{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-left:5px solid #2563eb;
+    border-radius:14px;
+    padding:16px 18px;
+}
+.it-audit-hero-label{
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.1em;
     color:#64748b;
 }
-.it-day-kpi{
+.it-audit-order{
+    margin-top:2px;
+    font-size:30px;
+    font-weight:950;
+    color:#0f172a;
+}
+.it-audit-order-meta{
+    border-left:1px solid #e2e8f0;
+    padding-left:18px;
+}
+.it-audit-order-meta strong{
+    display:block;
+    font-size:18px;
+}
+.it-audit-order-meta span{
+    font-size:11px;
+    color:#64748b;
+}
+.it-audit-request-progress{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+.it-audit-request-progress small{
+    display:block;
+    font-size:10px;
+    color:#64748b;
+}
+.it-audit-request-progress strong{
+    display:block;
+    font-size:21px;
+}
+.it-audit-percent{
+    font-size:25px;
+    font-weight:950;
+    color:#2563eb;
+}
+.it-audit-progress{
+    height:7px;
+    background:#e2e8f0;
+    border-radius:999px;
+    overflow:hidden;
+}
+.it-audit-progress div{
     height:100%;
-    min-height:110px;
+    background:#2563eb;
+    border-radius:999px;
+}
+.it-audit-kpi{
+    height:100%;
+    min-height:108px;
+    background:#fff;
     border:1px solid #e2e8f0;
     border-left:4px solid #64748b;
     border-radius:11px;
-    background:#fff;
     padding:13px 14px;
 }
-.it-day-kpi.is-primary{border-left-color:#2563eb}
-.it-day-kpi.is-success{border-left-color:#22c55e}
-.it-day-kpi.is-info{border-left-color:#06b6d4}
-.it-day-kpi.is-warning{border-left-color:#f59e0b}
-.it-day-kpi.is-dark{border-left-color:#334155}
-.it-day-kpi small{
+.it-audit-kpi.is-dark{border-left-color:#334155}
+.it-audit-kpi.is-success{border-left-color:#22c55e}
+.it-audit-kpi.is-primary{border-left-color:#2563eb}
+.it-audit-kpi.is-info{border-left-color:#06b6d4}
+.it-audit-kpi.is-danger{border-left-color:#ef4444}
+.it-audit-kpi.is-warning{border-left-color:#f59e0b}
+.it-audit-kpi small{
     display:block;
-    font-size:9px;
-    font-weight:850;
-    text-transform:uppercase;
     color:#94a3b8;
-    letter-spacing:.04em;
+    font-size:9px;
+    font-weight:900;
+    text-transform:uppercase;
 }
-.it-day-kpi strong{
+.it-audit-kpi strong{
     display:block;
     margin:5px 0 3px;
-    font-size:24px;
+    font-size:25px;
     line-height:1;
     color:#0f172a;
 }
-.it-day-kpi span{
+.it-audit-kpi span{
     display:block;
+    color:#64748b;
     font-size:10px;
-    color:#64748b;
 }
-.it-day-highlight{
-    height:100%;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    border-radius:12px;
-    padding:14px 16px;
-    border:1px solid #e2e8f0;
-    background:#fff;
+.it-audit-alert{
+    border-radius:11px;
+    font-size:12px;
 }
-.it-day-highlight small{
-    display:block;
-    font-size:9px;
-    font-weight:900;
-    color:#64748b;
-    letter-spacing:.05em;
-}
-.it-day-highlight strong{
-    display:block;
-    margin-top:3px;
-    font-size:22px;
-}
-.it-day-highlight span{
-    display:block;
-    font-size:10px;
-    color:#64748b;
-}
-.it-day-highlight i{
-    font-size:27px;
-    opacity:.25;
-}
-.it-day-highlight.is-output{
-    border-left:4px solid #22c55e;
-}
-.it-day-highlight.is-request{
-    border-left:4px solid #2563eb;
-}
-.it-day-highlight.is-backlog{
-    border-left:4px solid #64748b;
-}
-.it-day-legend{
-    display:flex;
-    gap:10px;
-    font-size:10px;
-    color:#64748b;
-}
-.it-day-table th,
-.it-day-detail-table th{
+.it-audit-table th{
     background:#f8fafc;
     color:#64748b;
     font-size:9px;
+    font-weight:900;
     text-transform:uppercase;
     letter-spacing:.04em;
     white-space:nowrap;
     vertical-align:middle!important;
 }
-.it-day-table td{
+.it-audit-table td{
     font-size:11px;
     vertical-align:middle!important;
 }
-.it-day-empty-row{
-    background:#fafafa;
-    color:#94a3b8;
-}
-.it-day-number{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width:31px;
-    border-radius:999px;
-    padding:3px 8px;
-    font-weight:900;
-}
-.it-day-number.is-blue{
-    background:#eff6ff;
-    color:#1d4ed8;
-}
-.it-day-number.is-green{
-    background:#ecfdf5;
-    color:#047857;
-}
-.it-day-number.is-orange{
-    background:#fff7ed;
-    color:#c2410c;
-}
-.it-day-coverage{
-    display:inline-block;
-    min-width:58px;
-    border-radius:999px;
-    padding:5px 8px;
-    font-weight:900;
-    border:1px solid transparent;
-}
-.it-day-coverage.is-good{
-    background:#ecfdf5;
-    color:#047857;
-    border-color:#bbf7d0;
-}
-.it-day-coverage.is-partial{
-    background:#fff7ed;
-    color:#c2410c;
-    border-color:#fed7aa;
-}
-.it-day-coverage.is-bad{
-    background:#fef2f2;
-    color:#b91c1c;
-    border-color:#fecaca;
-}
-.it-day-coverage.is-neutral{
-    background:#f8fafc;
-    color:#64748b;
-    border-color:#e2e8f0;
-}
-.it-day-detail{
-    padding:16px 18px;
-    background:#f8fafc;
-    border-top:1px solid #e2e8f0;
-    border-bottom:1px solid #e2e8f0;
-}
-.it-day-detail-title{
+.it-audit-ot{
     font-size:13px;
-    font-weight:900;
     color:#0f172a;
 }
-.it-day-detail-table td{
-    font-size:10px;
-    vertical-align:middle!important;
-    background:#fff;
+.it-audit-row-danger{
+    background:#fff7f7;
+}
+.it-audit-row-danger:hover{
+    background:#fff0f0!important;
+}
+.it-audit-order-badge{
+    display:inline-block;
+    border-radius:999px;
+    padding:5px 8px;
+    font-size:9px;
+    font-weight:900;
+    margin:1px 3px 1px 0;
+}
+.it-audit-order-badge.is-valid{
+    background:#dcfce7;
+    color:#166534;
+    border:1px solid #bbf7d0;
+}
+.it-audit-order-badge.is-missing{
+    background:#fee2e2;
+    color:#991b1b;
+    border:1px solid #fecaca;
+}
+.it-audit-order-badge.is-future{
+    background:#fef3c7;
+    color:#92400e;
+    border:1px solid #fde68a;
 }
 @media(max-width:767.98px){
-    .it-day-title{font-size:22px}
+    .it-audit-title{font-size:22px}
+    .it-audit-order{font-size:25px}
+    .it-audit-order-meta{
+        border-left:0;
+        padding-left:0;
+        margin-top:10px;
+        width:100%;
+    }
 }
 </style>
 @endpush
