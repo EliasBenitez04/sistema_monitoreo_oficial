@@ -557,6 +557,16 @@ Route::get(
     ]
 )->name('dashboard.ot');
 
+Route::post(
+    '/dashboard/ot/distribucion/{idTrazabilidad}/actualizar',
+    [
+        OtController::class,
+        'actualizarDistribucionDashboard'
+    ]
+)->name('dashboard.ot.distribucion.actualizar');
+
+
+
 
 /*
 |--------------------------------------------------------------------------
