@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 use App\Exports\OtLogisticaExport;
 use App\Exports\ReporteSemanalLogisticaExport;
 use App\Models\OtTrazabilidad;
@@ -32,6 +33,9 @@ class OtController extends Controller
         $this->middleware('permission:ot destroy')->only('destroy');
         $this->middleware('permission:ot importar')->only('importar');
         $this->middleware('permission:ot dashboard')->only('dashboard');
+        $this->middleware('permission:ot edit')->only(
+            'actualizarDistribucionDashboard'
+        );
         // Reutilizamos el permiso "ot edit" para agregar procesos manualmente.
         // Si tenés un permiso propio (ej. "ot proceso"), cambialo acá.
         // $this->middleware('permission:ot edit')->only('nuevoProceso', 'guardarProceso');
@@ -465,6 +469,209 @@ class OtController extends Controller
             )
             ->header('Pragma', 'no-cache')
             ->header('Expires', '0');
+    }
+
+    /**
+     * Edita los datos fuente de una distribución logística desde el
+     * dashboard. Los totales/estado/diferencia se recalculan en la vista.
+     */
+    public function actualizarDistribucionDashboard(
+        Request $request,
+        $idTrazabilidad
+    ) {
+        $datos = $request->validate([
+            'fecha_proceso' => 'required|date',
+            'resultado' => 'required|integer|min:0',
+            'sucursales' => 'required|array|min:1',
+            'sucursales.*.nombre' => 'required|string|max:150',
+            'sucursales.*.cantidad' => 'required|integer|min:0',
+        ]);
+
+        $trazabilidad = OtTrazabilidad::where(
+            'id_trazabilidad',
+            $idTrazabilidad
+        )->firstOrFail();
+
+        abort_unless(
+            $trazabilidad->proceso
+                === 'LOGISTICA - LOGISTICA Y DISTRIBUCION',
+            422,
+            'La trazabilidad indicada no corresponde a una distribución logística.'
+        );
+
+        $ot = Ot::findOrFail($trazabilidad->id_ot);
+
+        $detalles = DB::table('ot_logistica_detalle')
+            ->where(
+                'id_trazabilidad',
+                $trazabilidad->id_trazabilidad
+            )
+            ->where('id_ot', $trazabilidad->id_ot)
+            ->orderBy('id')
+            ->get();
+
+        abort_if(
+            $detalles->isEmpty(),
+            422,
+            'Esta distribución no tiene detalle por sucursal.'
+        );
+
+        $porSucursal = $detalles->groupBy(function ($item) {
+            return trim((string) $item->sucursal);
+        });
+
+        $cambiosSucursales = [];
+
+        DB::beginTransaction();
+
+        try {
+            $resultadoAnterior = (int) $trazabilidad->resultado;
+            $fechaAnterior = $trazabilidad->fecha_proceso;
+
+            foreach ($datos['sucursales'] as $entrada) {
+                $nombre = trim((string) $entrada['nombre']);
+                $cantidadNueva = (int) $entrada['cantidad'];
+
+                if (!$porSucursal->has($nombre)) {
+                    throw new \RuntimeException(
+                        'La sucursal "' . $nombre
+                            . '" no pertenece a esta distribución.'
+                    );
+                }
+
+                $filas = collect($porSucursal->get($nombre))
+                    ->sortBy('id')
+                    ->values();
+
+                $cantidadAnterior = (int) $filas->sum(function ($item) {
+                    return (int) $item->cantidad;
+                });
+
+                if ($cantidadAnterior === $cantidadNueva) {
+                    continue;
+                }
+
+                if ($cantidadNueva > $cantidadAnterior) {
+                    $delta = $cantidadNueva - $cantidadAnterior;
+                    $ultima = $filas->last();
+
+                    DB::table('ot_logistica_detalle')
+                        ->where('id', $ultima->id)
+                        ->update([
+                            'cantidad' =>
+                                (int) $ultima->cantidad + $delta,
+                            'updated_at' => now(),
+                        ]);
+                } else {
+                    $porReducir =
+                        $cantidadAnterior - $cantidadNueva;
+
+                    foreach ($filas->sortByDesc('id') as $fila) {
+                        if ($porReducir <= 0) {
+                            break;
+                        }
+
+                        $actual = max(
+                            0,
+                            (int) $fila->cantidad
+                        );
+
+                        $descontar = min(
+                            $actual,
+                            $porReducir
+                        );
+
+                        DB::table('ot_logistica_detalle')
+                            ->where('id', $fila->id)
+                            ->update([
+                                'cantidad' =>
+                                    $actual - $descontar,
+                                'updated_at' => now(),
+                            ]);
+
+                        $porReducir -= $descontar;
+                    }
+
+                    if ($porReducir > 0) {
+                        throw new \RuntimeException(
+                            'No fue posible ajustar '
+                                . $nombre
+                                . ' sin generar cantidades negativas.'
+                        );
+                    }
+                }
+
+                $cambiosSucursales[] = [
+                    'sucursal' => $nombre,
+                    'antes' => $cantidadAnterior,
+                    'despues' => $cantidadNueva,
+                ];
+            }
+
+            DB::table('ot_trazabilidad')
+                ->where(
+                    'id_trazabilidad',
+                    $trazabilidad->id_trazabilidad
+                )
+                ->update([
+                    'resultado' => (int) $datos['resultado'],
+                    'fecha_proceso' => $datos['fecha_proceso'],
+                ]);
+
+            DB::commit();
+
+            Log::info(
+                'DISTRIBUCION LOGISTICA EDITADA DESDE DASHBOARD',
+                [
+                    'usuario_id' => auth()->id(),
+                    'nro_ot' => $ot->nro_ot,
+                    'id_ot' => $ot->id_ot,
+                    'id_trazabilidad' =>
+                        $trazabilidad->id_trazabilidad,
+                    'resultado_antes' => $resultadoAnterior,
+                    'resultado_despues' =>
+                        (int) $datos['resultado'],
+                    'fecha_antes' => $fechaAnterior,
+                    'fecha_despues' =>
+                        $datos['fecha_proceso'],
+                    'sucursales' => $cambiosSucursales,
+                ]
+            );
+
+            return redirect()
+                ->route(
+                    'dashboard.ot',
+                    ['nro_ot' => $ot->nro_ot]
+                )
+                ->with(
+                    'success_distribucion',
+                    'Distribución #'
+                        . $trazabilidad->id_trazabilidad
+                        . ' actualizada correctamente.'
+                );
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error(
+                'ERROR AL EDITAR DISTRIBUCION LOGISTICA DESDE DASHBOARD',
+                [
+                    'usuario_id' => auth()->id(),
+                    'nro_ot' => $ot->nro_ot ?? null,
+                    'id_trazabilidad' => $idTrazabilidad,
+                    'error' => $e->getMessage(),
+                ]
+            );
+
+            return redirect()
+                ->route(
+                    'dashboard.ot',
+                    ['nro_ot' => $ot->nro_ot]
+                )
+                ->withInput()
+                ->withErrors([
+                    'distribucion' => $e->getMessage(),
+                ]);
+        }
     }
 
     /**
