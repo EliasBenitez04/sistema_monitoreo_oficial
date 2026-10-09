@@ -21,6 +21,9 @@
     .td-section-label{font-size:11px;text-transform:uppercase;font-weight:800;color:#7a8796;letter-spacing:.04em}
     .td-money{white-space:nowrap;font-weight:800;color:#26364a}
     .td-money small{display:block;font-size:10px;font-weight:600;color:#7a8796}
+    .td-valor-total{border-left:4px solid #17a2b8}
+    .td-valor-remitido{border-left:4px solid #28a745}
+    .td-valor-retenido{border-left:4px solid #ffc107;background:#fffdf5}
 </style>
 <div class="p-2">
     <div class="td-header-card mb-3">
@@ -116,54 +119,201 @@
         </span>
     </div>
 
-    <div class="td-section-label mb-2">Valorización de las remisiones de la OT</div>
-    <div class="row mb-3">
-        <div class="col-lg-4 col-md-6 mb-2">
-            <div class="td-kpi">
-                <small class="d-block">Costo efectivo remitido</small>
-                <strong>Gs {{ number_format($totalCostoRemitido, 0, ',', '.') }}</strong>
-                <div class="mt-1">
-                    <small class="text-muted">
-                        {{ number_format($cantidadValorizadaRemitida, 0, ',', '.') }} prendas valorizadas ·
-                        Confirmado: Gs {{ number_format($totalCostoRecibido, 0, ',', '.') }}
-                    </small>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-4 col-md-6 mb-2">
-            <div class="td-kpi">
-                <small class="d-block">Valor efectivo a precio de venta</small>
-                <strong class="text-primary">Gs {{ number_format($totalVentaRemitida, 0, ',', '.') }}</strong>
-                <div class="mt-1">
-                    <small class="text-muted">
-                        {{ number_format($cantidadValorizadaRemitida, 0, ',', '.') }} prendas valorizadas ·
-                        Confirmado: Gs {{ number_format($totalVentaRecibida, 0, ',', '.') }}
-                    </small>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-4 col-md-6 mb-2">
-            <div class="td-kpi">
-                <small class="d-block">Margen bruto teórico</small>
-                <strong class="text-success">Gs {{ number_format($totalMargenBrutoRemitido, 0, ',', '.') }}</strong>
-                <div class="mt-1">
-                    <small class="text-muted">
-                        {{ number_format($porcentajeMargenBrutoRemitido, 1, ',', '.') }}% sobre valor de venta
-                    </small>
-                </div>
-            </div>
-        </div>
+    <div class="td-section-label mb-2">
+        Valorización económica de la OT
     </div>
 
-    <div class="alert alert-light border py-2 small">
-        <i class="fas fa-info-circle text-info mr-1"></i>
-        Los importes salen de <strong>costo_unitario</strong> y <strong>precio_venta</strong>,
-        pero se valorizan únicamente hasta completar el volumen efectivo reconocido por
-        <strong>Producto Terminado</strong>. Los reenvíos/re-movimientos que exceden ese volumen
-        quedan sólo como auditoría y no vuelven a sumar costo ni venta.
-    </div>
+    @if(
+        $totalCostoProductoTerminado !== null
+        && $totalVentaProductoTerminado !== null
+    )
+        <div class="row mb-2">
+            <div class="col-lg-4 col-md-6 mb-2">
+                <div class="td-kpi td-valor-total">
+                    <small class="d-block">
+                        Valor total del Producto Terminado
+                    </small>
+
+                    <strong>
+                        {{ number_format($totalPlan, 0, ',', '.') }}
+                        prendas
+                    </strong>
+
+                    <div class="mt-2 small">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Costo total</span>
+                            <strong>
+                                Gs {{ number_format($totalCostoProductoTerminado, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Valor venta total</span>
+                            <strong class="text-primary">
+                                Gs {{ number_format($totalVentaProductoTerminado, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Margen bruto teórico</span>
+                            <strong class="text-success">
+                                Gs {{ number_format($totalMargenProductoTerminado, 0, ',', '.') }}
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4 col-md-6 mb-2">
+                <div class="td-kpi td-valor-remitido">
+                    <small class="d-block">
+                        Ya remitido
+                    </small>
+
+                    <strong class="text-success">
+                        {{ number_format($totalRemitido, 0, ',', '.') }}
+                        prendas
+                    </strong>
+
+                    <div class="mt-2 small">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Costo remitido</span>
+                            <strong>
+                                Gs {{ number_format($totalCostoRemitido, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Valor venta remitido</span>
+                            <strong class="text-primary">
+                                Gs {{ number_format($totalVentaRemitida, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Margen remitido</span>
+                            <strong class="text-success">
+                                Gs {{ number_format($totalMargenBrutoRemitido, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <small class="d-block text-muted mt-1">
+                            Confirmado:
+                            {{ number_format($totalRecibido, 0, ',', '.') }}
+                            prendas · venta
+                            Gs {{ number_format($totalVentaRecibida, 0, ',', '.') }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4 col-md-12 mb-2">
+                <div class="td-kpi td-valor-retenido">
+                    <small class="d-block text-warning">
+                        Retenido / pendiente de salida
+                    </small>
+
+                    <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : 'text-success' }}">
+                        {{ number_format($cantidadRetenida, 0, ',', '.') }}
+                        prendas
+                    </strong>
+
+                    <div class="mt-2 small">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">Costo retenido</span>
+                            <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : '' }}">
+                                Gs {{ number_format($totalCostoRetenido, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">
+                                Valor comercial retenido
+                            </span>
+                            <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : 'text-success' }}">
+                                Gs {{ number_format($totalVentaRetenida, 0, ',', '.') }}
+                            </strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted">
+                                Margen retenido
+                            </span>
+                            <strong>
+                                Gs {{ number_format($totalMargenRetenido, 0, ',', '.') }}
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="alert alert-light border py-2 small mb-3">
+            <strong>Cuadre económico:</strong>
+            venta total PT
+            <strong>
+                Gs {{ number_format($totalVentaProductoTerminado, 0, ',', '.') }}
+            </strong>
+            =
+            <strong>
+                Gs {{ number_format($totalVentaRemitida, 0, ',', '.') }}
+            </strong>
+            remitido
+            +
+            <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : 'text-success' }}">
+                Gs {{ number_format($totalVentaRetenida, 0, ',', '.') }}
+            </strong>
+            retenido.
+
+            <br>
+
+            <span class="text-muted">
+                Costo unitario:
+                Gs {{ number_format($costoUnitarioReferencia, 0, ',', '.') }}
+                · Precio venta unitario:
+                Gs {{ number_format($precioVentaUnitarioReferencia, 0, ',', '.') }}
+                · Fuente:
+                <strong>{{ $fuenteValorReferencia }}</strong>
+                @if(!$valorReferenciaExacto)
+                    · <span class="text-warning">
+                        valor referencial porque existen precios/costos variables
+                    </span>
+                @else
+                    · valor unitario uniforme
+                @endif
+            </span>
+        </div>
+    @else
+        <div class="alert alert-warning py-2 small mb-3">
+            <i class="fas fa-exclamation-triangle mr-1"></i>
+            No existe una referencia suficiente de costo/precio para valorar
+            el total de {{ number_format($totalPlan, 0, ',', '.') }} prendas.
+            Se mantienen únicamente los importes de las remisiones efectivamente
+            importadas.
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6 mb-2">
+                <div class="td-kpi">
+                    <small class="d-block">Costo efectivo remitido</small>
+                    <strong>
+                        Gs {{ number_format($totalCostoRemitido, 0, ',', '.') }}
+                    </strong>
+                </div>
+            </div>
+
+            <div class="col-md-6 mb-2">
+                <div class="td-kpi">
+                    <small class="d-block">
+                        Valor efectivo a precio de venta
+                    </small>
+                    <strong class="text-primary">
+                        Gs {{ number_format($totalVentaRemitida, 0, ',', '.') }}
+                    </strong>
+                </div>
+            </div>
+        </div>
+    @endif
 
     <div class="table-responsive">
         <table class="table table-sm table-hover mb-0 td-table">
