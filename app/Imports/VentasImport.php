@@ -24,7 +24,13 @@ class VentasImport
     private ?string $fechaDesde = null;
     private ?string $fechaHasta = null;
 
-    private int $tamanoLote = 1000;
+    private int $tamanoLote = 2000;
+
+    /**
+     * Auditoría pendiente de escritura. Se inserta en bloques para evitar
+     * cientos de INSERT individuales durante una carga con duplicados.
+     */
+    private array $auditoriaPendiente = [];
 
     /**
      * Conteo de ocurrencias por firma.
@@ -310,6 +316,8 @@ class VentasImport
 
     public function marcarError(string $mensaje): void
     {
+        $this->guardarAuditoriaPendiente();
+
         DB::table('ventas_importaciones')
             ->where('id', $this->importacionId)
             ->update([
@@ -392,6 +400,8 @@ class VentasImport
             $this->insertadas += count($nuevos);
         }
 
+        $this->guardarAuditoriaPendiente();
+
         DB::table('ventas_importaciones')
             ->where('id', $this->importacionId)
             ->update([
@@ -432,6 +442,8 @@ class VentasImport
 
     private function finalizar(): void
     {
+        $this->guardarAuditoriaPendiente();
+
         DB::table('ventas_importaciones')
             ->where('id', $this->importacionId)
             ->update([
@@ -637,7 +649,9 @@ class VentasImport
         ?string $local,
         string $motivo
     ): void {
-        DB::table('ventas_importacion_omitidas')->insert([
+        $ahora = now();
+
+        $this->auditoriaPendiente[] = [
             'importacion_id' => $this->importacionId,
             'fila' => $fila,
             'tipo' => $tipo,
@@ -645,10 +659,14 @@ class VentasImport
             'comprobante' => $comprobante,
             'local' => $local,
             'motivo' => $motivo,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            'created_at' => $ahora,
+            'updated_at' => $ahora,
+        ];
 
+        /*
+         * El log sigue siendo por fila para conservar la trazabilidad que
+         * pediste, pero evitamos un INSERT SQL por cada omisión.
+         */
         Log::warning('IMPORTACION VENTAS - FILA OMITIDA', [
             'importacion_id' => $this->importacionId,
             'tipo' => $tipo,
@@ -658,6 +676,27 @@ class VentasImport
             'local' => $local,
             'motivo' => $motivo,
         ]);
+
+        if (count($this->auditoriaPendiente) >= 500) {
+            $this->guardarAuditoriaPendiente();
+        }
+    }
+
+    private function guardarAuditoriaPendiente(): void
+    {
+        if (empty($this->auditoriaPendiente)) {
+            return;
+        }
+
+        foreach (
+            array_chunk($this->auditoriaPendiente, 500)
+            as $loteAuditoria
+        ) {
+            DB::table('ventas_importacion_omitidas')
+                ->insert($loteAuditoria);
+        }
+
+        $this->auditoriaPendiente = [];
     }
 
     private function validarEncabezados(
