@@ -138,166 +138,52 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
      * - lo que quedó pendiente al cierre del día;
      * - la salida real del día, incluso si correspondía a pedidos anteriores.
      */
+    /**
+     * Control diario de las OT que realmente alcanzaron
+     * TERMINACION - TERMINACION.
+     *
+     * La fecha se elige directamente desde un calendario. Para esa fecha se
+     * muestran todas las OT registradas en el proceso objetivo y se cruza cada
+     * una contra los pedidos IT existentes hasta ese día.
+     */
     public function seguimientoDiario(Request $request)
     {
-        /*
-         * CONTROL DE SALIDAS DE INGRESO TERMINACIÓN
-         *
-         * El pedido seleccionado define la fecha de control. Luego se toman
-         * TODAS las OT que realmente alcanzaron TERMINACION - TERMINACION en
-         * esa fecha, estén o no vinculadas a un pedido IT.
-         *
-         * De esa forma es posible detectar:
-         * - salida correspondiente al pedido seleccionado;
-         * - salida correspondiente a otro pedido IT;
-         * - salida sin ningún pedido IT.
-         */
-        $pedidosDisponibles = SeguimientoPedido::query()
-            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->whereNotNull('fecha_pedido')
-            ->select(
-                'id',
-                'nro_pedido',
-                'fecha_pedido'
+        $ultimaFechaProceso = DB::table('ot_trazabilidad')
+            ->whereRaw(
+                "UPPER(TRIM(proceso)) = ?",
+                [self::PROCESO_CIERRE]
             )
-            ->orderByDesc('fecha_pedido')
-            ->orderByDesc('id')
-            ->get();
+            ->max('fecha_proceso');
 
-        $pedidoId = $request->filled('pedido')
-            ? (int) $request->input('pedido')
-            : (int) optional(
-                $pedidosDisponibles->first()
-            )->id;
+        $fechaInput = trim((string) $request->input('fecha', ''));
 
-        $pedido = SeguimientoPedido::query()
-            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->find($pedidoId);
-
-        if (!$pedido) {
-            return view(
-                'seguimiento_pedidos_ingreso_terminacion.seguimiento_diario',
-                [
-                    'pedidosDisponibles' => $pedidosDisponibles,
-                    'pedidoId' => null,
-                    'pedido' => null,
-                    'fechaControl' => null,
-                    'otsPedido' => collect(),
-                    'salidas' => collect(),
-                    'resumen' => (object) [
-                        'ots_pedidas' => 0,
-                        'prendas_pedidas' => 0,
-                        'salidas_reales' => 0,
-                        'salidas_con_pedido' => 0,
-                        'salidas_sin_pedido' => 0,
-                        'salidas_pedido_seleccionado' => 0,
-                        'salidas_otros_pedidos' => 0,
-                        'prendas_salida' => 0,
-                        'pedido_cubierto_mismo_dia' => 0,
-                        'pedido_pendiente_mismo_dia' => 0,
-                        'porcentaje_pedido_mismo_dia' => 0,
-                    ],
-                ]
-            );
-        }
-
-        $fechaControl = Carbon::parse(
-            $pedido->fecha_pedido
-        )->startOfDay();
-
-        /*
-         * OT solicitadas en el pedido seleccionado.
-         */
-        $otsPedido = DB::table(
-            'seguimiento_pedido_detalle as spd'
-        )
-            ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
-            ->where(
-                'spd.seguimiento_pedido_id',
-                $pedido->id
-            )
-            ->select(
-                'o.id_ot',
-                'o.nro_ot',
-                'o.codigo',
-                'o.descripcion',
-                'o.cantidad_orden'
-            )
-            ->orderBy('o.nro_ot')
-            ->get()
-            ->unique('id_ot')
-            ->values();
-
-        $idsPedido = $otsPedido
-            ->pluck('id_ot')
-            ->map(function ($id) {
-                return (int) $id;
-            })
-            ->values();
-
-        /*
-         * Para las OT solicitadas, saber si realmente salieron ese mismo día,
-         * antes, después o si todavía no alcanzaron el proceso objetivo.
-         */
-        $cierresPedido = collect();
-
-        if ($idsPedido->isNotEmpty()) {
-            $cierresPedido = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $idsPedido->all())
-                ->whereRaw(
-                    "UPPER(TRIM(proceso)) = ?",
-                    [self::PROCESO_CIERRE]
-                )
-                ->select(
-                    'id_ot',
-                    DB::raw('MIN(fecha_proceso) as fecha_cierre')
-                )
-                ->groupBy('id_ot')
-                ->get()
-                ->keyBy('id_ot');
+        try {
+            if ($fechaInput !== '') {
+                $fechaControl = Carbon::createFromFormat(
+                    'Y-m-d',
+                    $fechaInput
+                )->startOfDay();
+            } elseif ($ultimaFechaProceso) {
+                $fechaControl = Carbon::parse(
+                    $ultimaFechaProceso
+                )->startOfDay();
+            } else {
+                $fechaControl = Carbon::today();
+            }
+        } catch (\Exception $e) {
+            $fechaControl = $ultimaFechaProceso
+                ? Carbon::parse($ultimaFechaProceso)->startOfDay()
+                : Carbon::today();
         }
 
         $fechaControlTexto = $fechaControl->format('Y-m-d');
 
-        $otsPedido = $otsPedido
-            ->map(function ($ot) use (
-                $cierresPedido,
-                $fechaControlTexto
-            ) {
-                $cierre = $cierresPedido->get(
-                    (int) $ot->id_ot
-                );
-
-                $fechaCierre = $cierre
-                    && $cierre->fecha_cierre
-                    ? Carbon::parse(
-                        $cierre->fecha_cierre
-                    )->format('Y-m-d')
-                    : null;
-
-                if ($fechaCierre === null) {
-                    $estado = 'PENDIENTE';
-                } elseif ($fechaCierre < $fechaControlTexto) {
-                    $estado = 'YA HABIA SALIDO';
-                } elseif ($fechaCierre === $fechaControlTexto) {
-                    $estado = 'SALIO ESE DIA';
-                } else {
-                    $estado = 'SALIO DESPUES';
-                }
-
-                $ot->fecha_cierre = $fechaCierre;
-                $ot->estado_control = $estado;
-
-                return $ot;
-            })
-            ->values();
-
         /*
-         * IMPORTANTE:
-         * acá NO filtramos por pedidos.
+         * Estas son las OT que realmente figuran en el sistema original como
+         * TERMINACION - TERMINACION en la fecha elegida.
          *
-         * Buscamos todas las OT que tuvieron TERMINACION - TERMINACION en la
-         * fecha de control. Esto es lo que permite detectar "SIN PEDIDO".
+         * No filtramos por pedido: primero tomamos la salida real del día y
+         * después verificamos si cada OT estaba solicitada.
          */
         $salidas = DB::table('ot_trazabilidad as tr')
             ->join('ot as o', 'o.id_ot', '=', 'tr.id_ot')
@@ -309,23 +195,6 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'tr.fecha_proceso',
                 $fechaControlTexto
             )
-            ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('ot_trazabilidad as ant')
-                    ->whereColumn(
-                        'ant.id_ot',
-                        'tr.id_ot'
-                    )
-                    ->whereRaw(
-                        "UPPER(TRIM(ant.proceso)) = ?",
-                        [self::PROCESO_CIERRE]
-                    )
-                    ->whereColumn(
-                        'ant.fecha_proceso',
-                        '<',
-                        'tr.fecha_proceso'
-                    );
-            })
             ->select(
                 'o.id_ot',
                 'o.nro_ot',
@@ -361,7 +230,11 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             ->values();
 
         /*
-         * Cruce de cada OT que salió contra TODOS los pedidos IT.
+         * Buscar a qué pedido IT pertenece cada OT.
+         *
+         * Para justificar una salida, el pedido debe existir en la fecha
+         * seleccionada. Si la OT fue incluida recién en un pedido posterior,
+         * para este control sigue siendo una salida SIN PEDIDO.
          */
         $pedidosPorOt = collect();
 
@@ -399,25 +272,34 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         $salidas = $salidas
             ->map(function ($salida) use (
                 $pedidosPorOt,
-                $pedido,
                 $fechaControlTexto
             ) {
-                $pedidosOt = collect(
+                $pedidosVigentes = collect(
                     $pedidosPorOt->get(
                         (int) $salida->id_ot,
                         collect()
                     )
                 )
+                    ->filter(function ($item) use (
+                        $fechaControlTexto
+                    ) {
+                        if (!$item->fecha_pedido) {
+                            return false;
+                        }
+
+                        return date(
+                            'Y-m-d',
+                            strtotime($item->fecha_pedido)
+                        ) <= $fechaControlTexto;
+                    })
                     ->map(function ($item) {
                         return (object) [
                             'id' => (int) $item->pedido_id,
                             'nro' => $item->nro_pedido,
-                            'fecha' => $item->fecha_pedido
-                                ? date(
-                                    'Y-m-d',
-                                    strtotime($item->fecha_pedido)
-                                )
-                                : null,
+                            'fecha' => date(
+                                'Y-m-d',
+                                strtotime($item->fecha_pedido)
+                            ),
                         ];
                     })
                     ->unique(function ($item) {
@@ -425,140 +307,46 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                     })
                     ->values();
 
-                /*
-                 * Sólo justifica una salida el pedido que ya existía en esa
-                 * fecha. Un pedido futuro se muestra como referencia, pero
-                 * no convierte una salida anticipada en salida pedida.
-                 */
-                $pedidosVigentes = $pedidosOt
-                    ->filter(function ($item) use (
-                        $fechaControlTexto
-                    ) {
-                        return $item->fecha !== null
-                            && $item->fecha
-                                <= $fechaControlTexto;
-                    })
-                    ->values();
-
-                $pedidosPosteriores = $pedidosOt
-                    ->filter(function ($item) use (
-                        $fechaControlTexto
-                    ) {
-                        return $item->fecha !== null
-                            && $item->fecha
-                                > $fechaControlTexto;
-                    })
-                    ->values();
-
-                $esPedidoSeleccionado = $pedidosVigentes
-                    ->contains(function ($item) use ($pedido) {
-                        return (int) $item->id
-                            === (int) $pedido->id;
-                    });
-
-                $salida->pedidos = $pedidosOt;
-                $salida->pedidos_vigentes =
-                    $pedidosVigentes;
-                $salida->pedidos_posteriores =
-                    $pedidosPosteriores;
-
-                $salida->tiene_pedido =
-                    $pedidosVigentes->isNotEmpty();
-
-                $salida->es_pedido_seleccionado =
-                    $esPedidoSeleccionado;
-
-                if ($esPedidoSeleccionado) {
-                    $salida->clasificacion =
-                        'PEDIDO SELECCIONADO';
-                } elseif ($pedidosVigentes->isNotEmpty()) {
-                    $salida->clasificacion =
-                        'OTRO PEDIDO';
-                } elseif ($pedidosPosteriores->isNotEmpty()) {
-                    $salida->clasificacion =
-                        'PEDIDO POSTERIOR';
-                } else {
-                    $salida->clasificacion =
-                        'SIN PEDIDO';
-                }
+                $salida->pedidos_vigentes = $pedidosVigentes;
+                $salida->tiene_pedido = $pedidosVigentes->isNotEmpty();
 
                 return $salida;
             })
             ->values();
 
-        $pedidoCubiertoMismoDia = $otsPedido
-            ->where('estado_control', 'SALIO ESE DIA')
-            ->count();
-
-        /*
-         * "Ya había salido" no cuenta como trabajo realizado por Ingreso
-         * Terminación ese día. El objetivo del control es medir qué sacaron
-         * realmente en la fecha del pedido.
-         */
-        $pedidoPendienteMismoDia = max(
-            0,
-            $otsPedido->count() - $pedidoCubiertoMismoDia
-        );
-
         $salidasConPedido = $salidas
-            ->where('tiene_pedido', true);
+            ->where('tiene_pedido', true)
+            ->values();
 
         $salidasSinPedido = $salidas
-            ->where('tiene_pedido', false);
-
-        $salidasPedidoSeleccionado = $salidas
-            ->where('es_pedido_seleccionado', true);
-
-        $salidasOtrosPedidos = $salidas
-            ->filter(function ($item) {
-                return $item->tiene_pedido
-                    && !$item->es_pedido_seleccionado;
-            });
+            ->where('tiene_pedido', false)
+            ->values();
 
         $resumen = (object) [
-            'ots_pedidas' => $otsPedido->count(),
-            'prendas_pedidas' =>
-                (int) $otsPedido->sum('cantidad_orden'),
-
             'salidas_reales' => $salidas->count(),
-            'prendas_salida' =>
-                (int) $salidas->sum('cantidad_orden'),
-
-            'salidas_con_pedido' =>
-                $salidasConPedido->count(),
-            'salidas_sin_pedido' =>
-                $salidasSinPedido->count(),
-
-            'salidas_pedido_seleccionado' =>
-                $salidasPedidoSeleccionado->count(),
-            'salidas_otros_pedidos' =>
-                $salidasOtrosPedidos->count(),
-
-            'pedido_cubierto_mismo_dia' =>
-                $pedidoCubiertoMismoDia,
-            'pedido_pendiente_mismo_dia' =>
-                $pedidoPendienteMismoDia,
-
-            'porcentaje_pedido_mismo_dia' =>
-                $otsPedido->count() > 0
-                    ? round(
-                        (
-                            $pedidoCubiertoMismoDia
-                            / $otsPedido->count()
-                        ) * 100,
-                        1
-                    )
-                    : 0,
+            'salidas_con_pedido' => $salidasConPedido->count(),
+            'salidas_sin_pedido' => $salidasSinPedido->count(),
+            'prendas_programadas' => (int) $salidas->sum(
+                'cantidad_orden'
+            ),
+            'prendas_salida' => (int) $salidas->sum(
+                'resultado_dia'
+            ),
+            'porcentaje_justificado' => $salidas->count() > 0
+                ? round(
+                    (
+                        $salidasConPedido->count()
+                        / $salidas->count()
+                    ) * 100,
+                    1
+                )
+                : 0,
         ];
 
         return view(
             'seguimiento_pedidos_ingreso_terminacion.seguimiento_diario',
             compact(
-                'pedidosDisponibles',
-                'pedidoId',
-                'pedido',
                 'fechaControl',
-                'otsPedido',
                 'salidas',
                 'resumen'
             )
