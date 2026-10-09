@@ -67,7 +67,7 @@
                                         {{ (int) $pedidoId === (int) $pedido->id ? 'selected' : '' }}>
                                     {{ $pedido->nro_pedido }}
                                     @if($pedido->fecha_pedido)
-                                        · {{ CarbonCarbon::parse($pedido->fecha_pedido)->format('d/m/Y') }}
+                                        · {{ date('d/m/Y', strtotime($pedido->fecha_pedido)) }}
                                     @endif
                                 </option>
                             @endforeach
