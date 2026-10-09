@@ -21,7 +21,13 @@ class VentaController extends Controller
     {
         $this->asegurarTablas();
 
-        $fechaMaxima = DB::table('ventas')->max('fecha');
+        $fechaMaxima = Cache::remember(
+            'ventas:fecha_maxima',
+            300,
+            function () {
+                return DB::table('ventas')->max('fecha');
+            }
+        );
 
         $todo = $request->boolean('todo');
         $desde = $request->input('desde');
@@ -127,13 +133,12 @@ class VentaController extends Controller
             });
 
         /*
-         * Ranking de vendedores por sucursal.
-         *
-         * No agrupamos únicamente por nombre porque un mismo vendedor puede
-         * tener ventas en más de una sucursal. La sucursal queda visible como
-         * parte del ranking y el Top muestra las primeras 15 combinaciones.
+         * La carga inicial trae solamente el Top 15.
+         * El ranking completo se consulta por AJAX cuando el usuario pulsa
+         * "Ver todos", evitando generar y renderizar datos que normalmente
+         * no se necesitan al entrar al módulo.
          */
-        $porVendedorTodos = (clone $base)
+        $porVendedor = (clone $base)
             ->whereNotNull('v.vendedor')
             ->where('v.vendedor', '<>', '')
             ->whereNotNull('v.local')
@@ -152,11 +157,8 @@ class VentaController extends Controller
                 'v.vendedor'
             )
             ->orderByDesc('venta_neta')
+            ->limit(15)
             ->get();
-
-        $porVendedor = $porVendedorTodos
-            ->take(15)
-            ->values();
 
         $queryProductos = clone $base;
 
@@ -254,32 +256,51 @@ class VentaController extends Controller
             );
         }
 
+        /*
+         * simplePaginate evita el COUNT(*) global que Laravel ejecuta con
+         * paginate(). Para una tabla de ventas que crecerá todos los días,
+         * esto reduce bastante el tiempo de respuesta.
+         */
         $ventas = $detalleQuery
             ->orderByDesc('v.fecha')
             ->orderByDesc('v.id')
-            ->paginate(100)
+            ->simplePaginate(50)
             ->appends($request->query());
 
-        $locales = DB::table('ventas')
-            ->whereNotNull('local')
-            ->where('local', '<>', '')
-            ->distinct()
-            ->orderBy('local')
-            ->pluck('local');
+        /*
+         * Los combos casi no cambian entre una apertura y otra.
+         * Los cacheamos 15 minutos y se invalidan al terminar una importación.
+         */
+        $filtrosCatalogo = Cache::remember(
+            'ventas:filtros_catalogo',
+            900,
+            function () {
+                return [
+                    'locales' => DB::table('ventas')
+                        ->whereNotNull('local')
+                        ->where('local', '<>', '')
+                        ->distinct()
+                        ->orderBy('local')
+                        ->pluck('local'),
+                    'vendedores' => DB::table('ventas')
+                        ->whereNotNull('vendedor')
+                        ->where('vendedor', '<>', '')
+                        ->distinct()
+                        ->orderBy('vendedor')
+                        ->pluck('vendedor'),
+                    'tipos' => DB::table('ventas')
+                        ->whereNotNull('tipo_comprobante')
+                        ->where('tipo_comprobante', '<>', '')
+                        ->distinct()
+                        ->orderBy('tipo_comprobante')
+                        ->pluck('tipo_comprobante'),
+                ];
+            }
+        );
 
-        $vendedores = DB::table('ventas')
-            ->whereNotNull('vendedor')
-            ->where('vendedor', '<>', '')
-            ->distinct()
-            ->orderBy('vendedor')
-            ->pluck('vendedor');
-
-        $tipos = DB::table('ventas')
-            ->whereNotNull('tipo_comprobante')
-            ->where('tipo_comprobante', '<>', '')
-            ->distinct()
-            ->orderBy('tipo_comprobante')
-            ->pluck('tipo_comprobante');
+        $locales = $filtrosCatalogo['locales'];
+        $vendedores = $filtrosCatalogo['vendedores'];
+        $tipos = $filtrosCatalogo['tipos'];
 
         $ultimaImportacion = DB::table(
             'ventas_importaciones'
@@ -292,7 +313,6 @@ class VentaController extends Controller
             'resumen',
             'porLocal',
             'porVendedor',
-            'porVendedorTodos',
             'porProducto',
             'porDia',
             'locales',
@@ -308,6 +328,67 @@ class VentaController extends Controller
             'buscar',
             'todo'
         ));
+    }
+
+    /**
+     * Ranking completo de vendedores, cargado sólo cuando se solicita.
+     */
+    public function vendedoresTodos(Request $request)
+    {
+        $this->asegurarTablas();
+
+        $desde = $request->input('desde');
+        $hasta = $request->input('hasta');
+        $local = trim((string) $request->input('local', ''));
+        $vendedor = trim((string) $request->input('vendedor', ''));
+        $tipo = trim((string) $request->input('tipo', ''));
+        $buscar = trim((string) $request->input('buscar', ''));
+
+        $query = DB::table('ventas as v');
+
+        $this->aplicarFiltros(
+            $query,
+            $desde,
+            $hasta,
+            $local,
+            $vendedor,
+            $tipo,
+            $buscar
+        );
+
+        $ranking = $query
+            ->whereNotNull('v.vendedor')
+            ->where('v.vendedor', '<>', '')
+            ->whereNotNull('v.local')
+            ->where('v.local', '<>', '')
+            ->select(
+                'v.local',
+                'v.vendedor'
+            )
+            ->selectRaw(
+                "COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante END) as tickets"
+            )
+            ->groupBy(
+                'v.local',
+                'v.vendedor'
+            )
+            ->orderByDesc('venta_neta')
+            ->get();
+
+        return response()->json([
+            'total' => $ranking->count(),
+            'vendedores' => $ranking->map(function ($item) {
+                return [
+                    'local' => $item->local,
+                    'vendedor' => $item->vendedor,
+                    'unidades_netas' => (int) $item->unidades_netas,
+                    'tickets' => (int) $item->tickets,
+                    'venta_neta' => (float) $item->venta_neta,
+                ];
+            })->values(),
+        ]);
     }
 
     /**
@@ -608,9 +689,19 @@ class VentaController extends Controller
                 );
             }
 
-            DB::statement('ANALYZE ventas');
-
             $resumen = $importador->resumen();
+
+            /*
+             * No bloquear la respuesta con ANALYZE en una carga diaria chica.
+             * PostgreSQL/autovacuum puede actualizar estadísticas luego.
+             * Sólo forzamos ANALYZE cuando la carga fue realmente grande.
+             */
+            if ((int) ($resumen['insertadas'] ?? 0) >= 10000) {
+                DB::statement('ANALYZE ventas');
+            }
+
+            Cache::forget('ventas:fecha_maxima');
+            Cache::forget('ventas:filtros_catalogo');
 
             return response()->json([
                 'success' => true,
