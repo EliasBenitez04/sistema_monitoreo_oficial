@@ -2203,34 +2203,6 @@ class ControlTerminacionController extends Controller
     }
 
     /**
-     * Agrupa las líneas físicas de AYALA por REMISIÓN + CÓDIGO.
-     *
-     * Regla correcta:
-     *
-     *   BG01 x1
-     *   BG01 x1
-     *   BG01 x1
-     *   BG02 x1
-     *   BG02 x1
-     *   BG02 x1
-     *   BG03 x1
-     *   BG03 x1
-     *   BG03 x1
-     *
-     * se presenta como:
-     *
-     *   BG01 x3
-     *   BG02 x3
-     *   BG03 x3
-     *
-     * Nunca se mezclan códigos distintos en una sola fila. La agrupación
-     * sirve únicamente para consolidar repeticiones del MISMO código dentro
-     * de la MISMA remisión.
-     *
-     * Los importes efectivos se suman línea por línea para conservar costo
-     * y precio exactos.
-     */
-    /**
      * Asocia facturación a las líneas visuales de AYALA / MODELO MUESTRA.
      *
      * Criterio de esta primera prueba:
@@ -2506,6 +2478,10 @@ class ControlTerminacionController extends Controller
         }
     }
 
+    /**
+     * Agrupa visualmente AYALA por remisión + código y aplica, cuando
+     * corresponde, la expansión operativa 03 x N hacia 01/02/03.
+     */
     private function agruparRemisionesVisualesAyala($remisiones)
     {
         /*
