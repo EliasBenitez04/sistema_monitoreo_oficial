@@ -442,16 +442,24 @@
                                             · {{ number_format($remision->factura_cantidad ?? 0, 0, ',', '.') }} u.
                                         </small>
 
-                                        @if(!empty($remision->factura_remision))
+                                        @if(
+                                            ($remision->factura_origen_asociacion ?? null)
+                                            === 'MISMA_REMISION'
+                                        )
                                             <small class="d-block text-success font-weight-bold">
-                                                Remisión fact.:
-                                                {{ $remision->factura_remision }}
+                                                <i class="fas fa-link mr-1"></i>
+                                                Misma remisión:
+                                                {{ $remision->numero_remision }}
                                             </small>
-                                        @endif
 
-                                        <span class="badge badge-success mt-1">
-                                            ASOCIADA
-                                        </span>
+                                            <span class="badge badge-success mt-1">
+                                                ASOCIADA POR REMISIÓN
+                                            </span>
+                                        @else
+                                            <span class="badge badge-success mt-1">
+                                                ASOCIADA
+                                            </span>
+                                        @endif
                                     @elseif(($remision->factura_estado ?? null) === 'AMBIGUA')
                                         <span class="badge badge-warning">
                                             AMBIGUA
