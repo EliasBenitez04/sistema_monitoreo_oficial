@@ -2234,7 +2234,12 @@ class ControlTerminacionController extends Controller
      *   1-43792 · GR03 x1
      *
      * se presenta como:
-     *   1-43792 · 3 variantes · cantidad 3
+     *   1-43792 · codigo representativo terminado en 03 · cantidad 3
+     *
+     * Regla operativa AYALA:
+     * si dentro del bloque existe un código terminado en 03, ese código
+     * representa el conjunto completo. No se muestran GR01/GR02/GR03 como
+     * códigos independientes en la lectura operativa.
      *
      * Los importes efectivos se suman línea por línea para no asumir que
      * todas las variantes necesariamente tengan el mismo costo/precio.
@@ -2287,12 +2292,42 @@ class ControlTerminacionController extends Controller
                     ->unique()
                     ->values();
 
-                $visual->codigos_variantes = $codigos->all();
-                $visual->cantidad_variantes = $codigos->count();
+                /*
+                 * AYALA se identifica operativamente con el código del bloque
+                 * terminado en 03. Ejemplo:
+                 *
+                 * GR01 + GR02 + GR03 => mostrar GR03 con cantidad 3.
+                 *
+                 * Si por algún dato histórico no existe un código terminado
+                 * en 03, usamos el último código del bloque como respaldo.
+                 */
+                $codigoRepresentativo = $codigos
+                    ->first(function ($codigo) {
+                        return preg_match(
+                            '/03$/',
+                            trim((string) $codigo)
+                        ) === 1;
+                    });
 
-                $visual->codigo_visual = $codigos->isNotEmpty()
-                    ? $codigos->implode(' · ')
-                    : ($visual->codigo ?? null);
+                if (!$codigoRepresentativo && $codigos->isNotEmpty()) {
+                    $codigoRepresentativo = $codigos->last();
+                }
+
+                $visual->codigo_visual =
+                    $codigoRepresentativo
+                    ?: ($visual->codigo ?? null);
+
+                /*
+                 * También dejamos el código del objeto visual alineado para
+                 * que cualquier otra parte de la vista que use ->codigo no
+                 * vuelva a mostrar una variante diferente.
+                 */
+                $visual->codigo = $visual->codigo_visual;
+
+                $visual->codigo_ayala_representativo =
+                    $visual->codigo_visual;
+
+                $visual->es_bloque_ayala = true;
 
                 $visual->costo_efectivo_visual =
                     (float) $grupo->sum(function ($item) {
