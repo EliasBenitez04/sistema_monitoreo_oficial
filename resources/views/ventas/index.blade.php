@@ -481,6 +481,157 @@
         </div>
     </div>
 
+    <div class="card shadow-sm mt-3" id="clientesInteligencia">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <h3 class="card-title float-none mb-0">
+                    <i class="fas fa-users mr-1"></i>
+                    Inteligencia de clientes
+                </h3>
+                <small class="text-muted">
+                    Frecuencia, valor, recurrencia y clientes a recuperar.
+                </small>
+            </div>
+
+            <div class="btn-group btn-group-sm mt-2 mt-md-0"
+                 role="group"
+                 aria-label="Modo análisis clientes">
+                <button type="button"
+                        class="btn btn-primary cliente-modo-btn active"
+                        data-modo="historico">
+                    Histórico
+                </button>
+
+                <button type="button"
+                        class="btn btn-outline-primary cliente-modo-btn"
+                        data-modo="periodo">
+                    Período filtrado
+                </button>
+            </div>
+        </div>
+
+        <div id="clientesLoading" class="text-center text-muted py-5">
+            <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+            <div>Analizando comportamiento de clientes...</div>
+        </div>
+
+        <div id="clientesError"
+             class="alert alert-danger m-3 d-none"></div>
+
+        <div id="clientesContenido" class="d-none">
+            <div class="p-3 border-bottom bg-light">
+                <div class="row">
+                    <div class="col-xl-3 col-md-6 mb-2">
+                        <div class="cliente-kpi h-100">
+                            <small>Clientes únicos</small>
+                            <strong id="cliTotal">0</strong>
+                            <span id="cliFechaRef" class="text-muted"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-3 col-md-6 mb-2">
+                        <div class="cliente-kpi h-100">
+                            <small>Clientes recurrentes</small>
+                            <strong id="cliRecurrentes">0</strong>
+                            <span>2 o más días de compra</span>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-3 col-md-6 mb-2">
+                        <div class="cliente-kpi h-100">
+                            <small>Clientes frecuentes</small>
+                            <strong id="cliFrecuentes">0</strong>
+                            <span>4 o más días de compra</span>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-3 col-md-6 mb-2">
+                        <div class="cliente-kpi h-100">
+                            <small>Venta de recurrentes</small>
+                            <strong id="cliVentaRecurrente">Gs 0</strong>
+                            <span id="cliPorcRecurrente">0% de la venta de clientes</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-1">
+                    <div class="col-lg-6 mb-2">
+                        <div class="cliente-destacado cliente-destacado-frecuencia">
+                            <small>Cliente que más vuelve</small>
+                            <strong id="cliMasFrecuente">-</strong>
+                            <span id="cliMasFrecuenteMeta">Sin datos</span>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6 mb-2">
+                        <div class="cliente-destacado cliente-destacado-valor">
+                            <small>Cliente de mayor valor</small>
+                            <strong id="cliMayorValor">-</strong>
+                            <span id="cliMayorValorMeta">Sin datos</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="small text-muted mt-1">
+                    <strong>Lectura:</strong>
+                    visita = día distinto con compra.
+                    VIP = cliente recurrente dentro del 20% de mayor valor.
+                    A recuperar = 2+ visitas y 30+ días sin comprar.
+                    En modo Histórico se ignoran las fechas del filtro superior;
+                    los demás filtros sí se respetan.
+                </div>
+            </div>
+
+            <div class="row no-gutters">
+                <div class="col-xl-8 border-right">
+                    <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                        <strong>
+                            <i class="fas fa-user-clock mr-1"></i>
+                            Clientes por frecuencia
+                        </strong>
+
+                        <small class="text-muted">
+                            Top 25 · primero quien más vuelve
+                        </small>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 ventas-table clientes-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th class="text-right">Visitas</th>
+                                    <th class="text-right">Tickets</th>
+                                    <th class="text-right">Unid.</th>
+                                    <th class="text-right">Venta neta</th>
+                                    <th class="text-right">Ticket prom.</th>
+                                    <th>Última compra</th>
+                                    <th>Segmento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clientesRankingBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="col-xl-4">
+                    <div class="px-3 py-2 border-bottom">
+                        <strong>
+                            <i class="fas fa-user-plus mr-1"></i>
+                            Oportunidad de recuperación
+                        </strong>
+                        <small class="d-block text-muted">
+                            Clientes que ya compraban y dejaron de volver.
+                        </small>
+                    </div>
+
+                    <div id="clientesRecuperar"
+                         class="clientes-recuperar-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card shadow-sm mt-3">
         <div class="card-header d-flex justify-content-between align-items-center">
             <div>
@@ -949,6 +1100,111 @@
     display:block;
     margin-top:3px;
     font-size:1.15rem;
+}
+.cliente-kpi{
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+    background:#fff;
+    padding:12px 14px;
+}
+.cliente-kpi small{
+    display:block;
+    color:#64748b;
+    font-size:.68rem;
+    font-weight:700;
+    text-transform:uppercase;
+}
+.cliente-kpi strong{
+    display:block;
+    margin-top:2px;
+    font-size:1.35rem;
+    line-height:1.2;
+}
+.cliente-kpi span{
+    display:block;
+    margin-top:3px;
+    font-size:.72rem;
+    color:#64748b;
+}
+.cliente-destacado{
+    height:100%;
+    border-radius:10px;
+    padding:12px 14px;
+    border:1px solid #e2e8f0;
+    background:#fff;
+}
+.cliente-destacado small{
+    display:block;
+    font-size:.68rem;
+    font-weight:700;
+    text-transform:uppercase;
+    color:#64748b;
+}
+.cliente-destacado strong{
+    display:block;
+    margin-top:3px;
+    font-size:1rem;
+}
+.cliente-destacado span{
+    display:block;
+    margin-top:3px;
+    font-size:.76rem;
+    color:#64748b;
+}
+.cliente-destacado-frecuencia{
+    border-left:4px solid #17a2b8;
+}
+.cliente-destacado-valor{
+    border-left:4px solid #28a745;
+}
+.cliente-segmento{
+    display:inline-block;
+    border-radius:999px;
+    padding:.25rem .5rem;
+    font-size:.65rem;
+    font-weight:800;
+    white-space:nowrap;
+}
+.cliente-segmento-vip{
+    background:#fef3c7;
+    color:#92400e;
+}
+.cliente-segmento-frecuente{
+    background:#dcfce7;
+    color:#166534;
+}
+.cliente-segmento-recurrente{
+    background:#e0f2fe;
+    color:#075985;
+}
+.cliente-segmento-recuperar{
+    background:#fee2e2;
+    color:#991b1b;
+}
+.cliente-segmento-ocasional{
+    background:#f1f5f9;
+    color:#475569;
+}
+.clientes-recuperar-list{
+    max-height:520px;
+    overflow:auto;
+}
+.cliente-recuperar-item{
+    padding:10px 14px;
+    border-bottom:1px solid #edf2f7;
+}
+.cliente-recuperar-item:last-child{
+    border-bottom:0;
+}
+.cliente-recuperar-item strong{
+    display:block;
+    font-size:.84rem;
+}
+.cliente-recuperar-item span{
+    display:block;
+    margin-top:2px;
+    font-size:.72rem;
+    color:#64748b;
 }
 </style>
 @endpush
