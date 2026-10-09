@@ -1455,14 +1455,16 @@ class ControlTerminacionController extends Controller
 
             /*
              * AYALA y MODELO MUESTRA comparten destino físico
-             * COMERCIAL MATRIZ. Se concilian por LÍNEA, no por documento
-             * completo:
+             * COMERCIAL MATRIZ, pero NO se reparten por cupo.
              *
-             * Ayala 9 + Modelo 4 y líneas 3,3,3,3 =>
-             * Ayala recibe las primeras 3 líneas (9) y Modelo la siguiente (3).
+             * Regla operativa validada con las remisiones:
              *
-             * Así una misma remisión puede contener líneas de ambos planes,
-             * pero una misma línea física nunca se duplica.
+             * - cantidad múltiplo de 3 => AYALA
+             * - cantidad no múltiplo de 3 => MODELO MUESTRA
+             *
+             * Una línea física nunca se divide entre ambos destinos.
+             * Ejemplo: BL16 x3 debe quedar completo en AYALA; jamás
+             * BL16 x1 AYALA + BL16 x2 MODELO.
              */
             $detallesMatriz = $detalles
                 ->filter(function ($detalle) {
@@ -1474,14 +1476,23 @@ class ControlTerminacionController extends Controller
                         true
                     );
                 })
-                ->sortBy(function ($detalle) {
+                ->values();
+
+            $detalleAyala = $detallesMatriz->first(
+                function ($detalle) {
                     return $this->normalizarDestinoMovimiento(
                         $detalle->sucursal
-                    ) === 'AYALA'
-                        ? 1
-                        : 2;
-                })
-                ->values();
+                    ) === 'AYALA';
+                }
+            );
+
+            $detalleModelo = $detallesMatriz->first(
+                function ($detalle) {
+                    return $this->normalizarDestinoMovimiento(
+                        $detalle->sucursal
+                    ) === 'MODELO';
+                }
+            );
 
             foreach ($remisionesOriginales as $remisionOriginal) {
                 $destinoReal = $remisionOriginal->sucursal_destino
@@ -1500,136 +1511,91 @@ class ControlTerminacionController extends Controller
                 }
 
                 /*
-                 * COMERCIAL MATRIZ: repartir la línea contra AYALA y luego
-                 * MODELO MUESTRA respetando las capacidades del plan.
+                 * COMERCIAL MATRIZ:
+                 *
+                 * La cantidad de la propia línea define el plan lógico.
+                 * No usamos "capacidad restante" para decidir destino porque
+                 * eso era lo que partía una línea x3 en 1 + 2.
                  */
                 if ($destinoNormalizado === 'MATRIZ'
                     && $detallesMatriz->isNotEmpty()) {
-                    $cantidadRestante = $cantidadOriginal;
 
-                    $efectivaRestanteLinea = max(
-                        0,
-                        (int) (
-                            $remisionOriginal
-                                ->cantidad_efectiva_valorizada
-                            ?? 0
-                        )
-                    );
+                    $esAyala = $cantidadOriginal % 3 === 0;
 
-                    $recibidaEfectivaRestanteLinea = max(
-                        0,
-                        (int) (
-                            $remisionOriginal
-                                ->cantidad_recibida_efectiva_valorizada
-                            ?? 0
-                        )
-                    );
-
-                    $asignoAlgo = false;
-
-                    foreach ($detallesMatriz as $candidato) {
-                        if ($cantidadRestante <= 0) {
-                            break;
-                        }
-
-                        $idCandidato = (int) $candidato->id;
-                        $capacidadRestante = max(
-                            0,
-                            ($capacidad[$idCandidato] ?? 0)
-                                - ($asignado[$idCandidato] ?? 0)
-                        );
-
-                        if ($capacidadRestante <= 0) {
-                            continue;
-                        }
-
-                        $cantidadAsignar = min(
-                            $cantidadRestante,
-                            $capacidadRestante
-                        );
-
-                        $remisionVisual = clone $remisionOriginal;
-                        $remisionVisual->cantidad = $cantidadAsignar;
-
-                        $remisionVisual->cantidad_efectiva_valorizada = min(
-                            $efectivaRestanteLinea,
-                            $cantidadAsignar
-                        );
-
-                        $efectivaRestanteLinea -=
-                            $remisionVisual->cantidad_efectiva_valorizada;
-
-                        $remisionVisual
-                            ->cantidad_recibida_efectiva_valorizada = min(
-                                $recibidaEfectivaRestanteLinea,
-                                $cantidadAsignar
-                            );
-
-                        $recibidaEfectivaRestanteLinea -=
-                            $remisionVisual
-                                ->cantidad_recibida_efectiva_valorizada;
-
-                        $remisionVisual->id_detalle_visual =
-                            $idCandidato;
-
-                        $asignadas[] = $remisionVisual;
-
-                        $asignado[$idCandidato] =
-                            ($asignado[$idCandidato] ?? 0)
-                            + $cantidadAsignar;
-
-                        $cantidadRestante -= $cantidadAsignar;
-                        $asignoAlgo = true;
-                    }
+                    $candidato = $esAyala
+                        ? $detalleAyala
+                        : $detalleModelo;
 
                     /*
-                     * Si MATRIZ ya superó el plan conjunto AYALA+MODELO,
-                     * conservar el exceso en el último plan para que siga
-                     * visible y no desaparezca del modal.
+                     * Respaldo histórico: si una OT no tiene uno de los dos
+                     * planes, conservar la línea en el único plan MATRIZ que
+                     * exista, pero nunca dividir la línea.
                      */
-                    if ($cantidadRestante > 0) {
-                        $candidatoExceso = $detallesMatriz->last();
-                        $idCandidato = (int) $candidatoExceso->id;
+                    if (!$candidato) {
+                        $candidato = $esAyala
+                            ? $detalleModelo
+                            : $detalleAyala;
+                    }
 
-                        $remisionVisual = clone $remisionOriginal;
-                        $remisionVisual->cantidad = $cantidadRestante;
+                    if (!$candidato) {
+                        continue;
+                    }
 
-                        $remisionVisual->cantidad_efectiva_valorizada = min(
-                            $efectivaRestanteLinea,
-                            $cantidadRestante
+                    $idCandidato = (int) $candidato->id;
+
+                    $remisionVisual = clone $remisionOriginal;
+                    $remisionVisual->cantidad = $cantidadOriginal;
+
+                    $remisionVisual->cantidad_efectiva_valorizada =
+                        max(
+                            0,
+                            (int) (
+                                $remisionOriginal
+                                    ->cantidad_efectiva_valorizada
+                                ?? 0
+                            )
                         );
 
-                        $efectivaRestanteLinea -=
-                            $remisionVisual->cantidad_efectiva_valorizada;
+                    $remisionVisual
+                        ->cantidad_recibida_efectiva_valorizada =
+                        max(
+                            0,
+                            (int) (
+                                $remisionOriginal
+                                    ->cantidad_recibida_efectiva_valorizada
+                                ?? 0
+                            )
+                        );
 
-                        $remisionVisual
-                            ->cantidad_recibida_efectiva_valorizada = min(
-                                $recibidaEfectivaRestanteLinea,
-                                $cantidadRestante
-                            );
+                    $remisionVisual->id_detalle_visual =
+                        $idCandidato;
 
-                        $recibidaEfectivaRestanteLinea -=
-                            $remisionVisual
-                                ->cantidad_recibida_efectiva_valorizada;
+                    /*
+                     * Marcar exceso únicamente para auditoría si la línea
+                     * completa supera el plan asignado. No se redistribuye.
+                     */
+                    $capacidadPlan = max(
+                        0,
+                        (int) ($capacidad[$idCandidato] ?? 0)
+                    );
 
-                        $remisionVisual->id_detalle_visual =
-                            $idCandidato;
+                    $usoPrevio = max(
+                        0,
+                        (int) ($asignado[$idCandidato] ?? 0)
+                    );
+
+                    if ($usoPrevio + $cantidadOriginal > $capacidadPlan) {
                         $remisionVisual->exceso_plan = true;
-
-                        $asignadas[] = $remisionVisual;
-
-                        $asignado[$idCandidato] =
-                            ($asignado[$idCandidato] ?? 0)
-                            + $cantidadRestante;
-
-                        $cantidadRestante = 0;
-                        $asignoAlgo = true;
                     }
 
-                    if ($asignoAlgo) {
-                        $idsRemisionAsignada[(int) $remisionOriginal->id]
-                            = true;
-                    }
+                    $asignadas[] = $remisionVisual;
+
+                    $asignado[$idCandidato] =
+                        $usoPrevio + $cantidadOriginal;
+
+                    $idsRemisionAsignada[
+                        (int) $remisionOriginal->id
+                    ] = true;
 
                     continue;
                 }
