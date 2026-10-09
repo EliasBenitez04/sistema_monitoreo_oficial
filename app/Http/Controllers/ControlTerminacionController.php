@@ -2255,7 +2255,12 @@ class ControlTerminacionController extends Controller
      */
     private function agruparRemisionesVisualesAyala($remisiones)
     {
-        return collect($remisiones)
+        /*
+         * PASO 1:
+         * consolidar repeticiones reales del mismo código dentro de la
+         * misma remisión.
+         */
+        $agrupadas = collect($remisiones)
             ->groupBy(function ($remision) {
                 return implode('|', [
                     (string) ($remision->serie ?? ''),
@@ -2298,22 +2303,14 @@ class ControlTerminacionController extends Controller
                         );
                     });
 
-                /*
-                 * Como el groupBy ya incluye el código, todos los registros
-                 * de este grupo corresponden a la misma variante.
-                 */
-                $codigoAgrupado = trim(
+                $codigo = trim(
                     (string) ($primera->codigo ?? '')
                 );
 
                 $visual->codigo_visual =
-                    $codigoAgrupado !== ''
-                        ? $codigoAgrupado
-                        : null;
+                    $codigo !== '' ? $codigo : null;
 
                 $visual->codigo = $visual->codigo_visual;
-
-                $visual->es_bloque_ayala = true;
 
                 $visual->costo_efectivo_visual =
                     (float) $grupo->sum(function ($item) {
@@ -2388,6 +2385,157 @@ class ControlTerminacionController extends Controller
             })
             ->filter()
             ->values();
+
+        /*
+         * PASO 2:
+         * Regla especial AYALA.
+         *
+         * Cuando una remisión quedó concentrada en UN SOLO código terminado
+         * en 03, con cantidad > 3 y divisible por 3, ese bloque corresponde
+         * operativamente a las variantes 01 / 02 / 03 en partes iguales.
+         *
+         * Ejemplo:
+         *   060617783BG03 x9
+         *
+         * se presenta:
+         *   060617783BG01 x3
+         *   060617783BG02 x3
+         *   060617783BG03 x3
+         *
+         * Si ya existen 01/02/03 como filas independientes, NO se vuelve a
+         * dividir nada. Si 03 tiene solamente 3, se conserva como 03 x3.
+         */
+        $resultado = collect();
+
+        $porDocumento = $agrupadas->groupBy(function ($item) {
+            return implode('|', [
+                (string) ($item->serie ?? ''),
+                (string) ($item->numero_remision ?? ''),
+                (string) ($item->fecha_remision ?? ''),
+                (string) ($item->fecha_recepcion ?? ''),
+                (string) ($item->destino_real ?? ''),
+                (string) ($item->destino_planificado ?? ''),
+            ]);
+        });
+
+        foreach ($porDocumento as $grupoDocumento) {
+            $grupoDocumento = collect($grupoDocumento)->values();
+
+            $codigosDocumento = $grupoDocumento
+                ->pluck('codigo_visual')
+                ->filter()
+                ->map(function ($codigo) {
+                    return strtoupper(trim((string) $codigo));
+                })
+                ->values();
+
+            foreach ($grupoDocumento as $item) {
+                $codigo = strtoupper(
+                    trim((string) ($item->codigo_visual ?? ''))
+                );
+
+                $cantidad = max(
+                    0,
+                    (int) ($item->cantidad ?? 0)
+                );
+
+                $puedeDividir =
+                    $grupoDocumento->count() === 1
+                    && $cantidad > 3
+                    && $cantidad % 3 === 0
+                    && preg_match('/03$/', $codigo) === 1;
+
+                if (!$puedeDividir) {
+                    $resultado->push($item);
+                    continue;
+                }
+
+                $cantidadPorCodigo = (int) ($cantidad / 3);
+
+                foreach (['01', '02', '03'] as $sufijo) {
+                    $nuevo = clone $item;
+
+                    $codigoNuevo = preg_replace(
+                        '/03$/',
+                        $sufijo,
+                        $codigo
+                    );
+
+                    $nuevo->codigo = $codigoNuevo;
+                    $nuevo->codigo_visual = $codigoNuevo;
+                    $nuevo->cantidad = $cantidadPorCodigo;
+
+                    /*
+                     * Repartimos proporcionalmente la cantidad efectiva.
+                     * Como el bloque se divide en tres partes iguales, costo
+                     * y venta mantienen exactamente el total original.
+                     */
+                    $efectivaTotal = max(
+                        0,
+                        (int) (
+                            $item->cantidad_efectiva_valorizada
+                            ?? 0
+                        )
+                    );
+
+                    $recibidaTotal = max(
+                        0,
+                        (int) (
+                            $item
+                                ->cantidad_recibida_efectiva_valorizada
+                            ?? 0
+                        )
+                    );
+
+                    $nuevo->cantidad_efectiva_valorizada =
+                        min(
+                            $cantidadPorCodigo,
+                            (int) floor($efectivaTotal / 3)
+                        );
+
+                    $nuevo
+                        ->cantidad_recibida_efectiva_valorizada =
+                        min(
+                            $cantidadPorCodigo,
+                            (int) floor($recibidaTotal / 3)
+                        );
+
+                    /*
+                     * Si el unitario es uniforme usamos cantidad x unitario.
+                     * Esto evita arrastrar el total de 9 prendas a cada fila.
+                     */
+                    $costoUnitario =
+                        (float) ($item->costo_unitario ?? 0);
+
+                    $precioUnitario =
+                        (float) ($item->precio_venta ?? 0);
+
+                    $nuevo->costo_efectivo_visual =
+                        $nuevo->cantidad_efectiva_valorizada
+                        * $costoUnitario;
+
+                    $nuevo->venta_efectiva_visual =
+                        $nuevo->cantidad_efectiva_valorizada
+                        * $precioUnitario;
+
+                    $nuevo->costo_recibido_visual =
+                        $nuevo
+                            ->cantidad_recibida_efectiva_valorizada
+                        * $costoUnitario;
+
+                    $nuevo->venta_recibida_visual =
+                        $nuevo
+                            ->cantidad_recibida_efectiva_valorizada
+                        * $precioUnitario;
+
+                    $nuevo->es_division_ayala_0123 = true;
+
+                    $resultado->push($nuevo);
+                }
+            }
+        }
+
+        return $resultado->values();
     }
 
     /**
