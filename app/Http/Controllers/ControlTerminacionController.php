@@ -2229,6 +2229,7 @@ class ControlTerminacionController extends Controller
             'comprobante',
             'cliente',
             'local',
+            'remision',
         ] as $columna) {
             if (!Schema::hasColumn('ventas', $columna)) {
                 return;
@@ -2271,6 +2272,12 @@ class ControlTerminacionController extends Controller
                 $remision->factura_fecha = null;
                 $remision->factura_local = null;
                 $remision->factura_cantidad = null;
+                $remision->factura_remision = null;
+
+                $numeroRemisionLogistica =
+                    $this->normalizarNumeroRemisionFactura(
+                        $remision->numero_remision ?? null
+                    );
 
                 if ($codigo === '' || $cantidad <= 0 || !$fechaBase) {
                     continue;
@@ -2286,6 +2293,7 @@ class ControlTerminacionController extends Controller
                         'Y-m-d',
                         strtotime((string) $fechaBase)
                     ),
+                    'remision' => $numeroRemisionLogistica,
                 ]);
             }
         }
@@ -2342,7 +2350,8 @@ class ControlTerminacionController extends Controller
                 'comprobante',
                 'cliente',
                 'fecha',
-                'local'
+                'local',
+                'remision'
             )
             ->selectRaw('SUM(cantidad) as cantidad_facturada')
             ->groupBy(
@@ -2350,7 +2359,8 @@ class ControlTerminacionController extends Controller
                 'comprobante',
                 'cliente',
                 'fecha',
-                'local'
+                'local',
+                'remision'
             )
             ->get();
 
@@ -2386,6 +2396,7 @@ class ControlTerminacionController extends Controller
                         (string) $factura->codigo_normalizado,
                         (string) $factura->fecha,
                         (string) $factura->local,
+                        (string) $factura->remision,
                     ]);
 
                     return !isset($usadas[$clave]);
@@ -2399,6 +2410,17 @@ class ControlTerminacionController extends Controller
                             ) / 86400
                         )
                     );
+
+                    $factura->_remision_normalizada =
+                        $this->normalizarNumeroRemisionFactura(
+                            $factura->remision ?? null
+                        );
+
+                    $factura->_remision_coincide =
+                        $objetivo->remision !== null
+                        && $factura->_remision_normalizada !== null
+                        && $factura->_remision_normalizada
+                            === $objetivo->remision;
 
                     $local = strtoupper(
                         trim((string) $factura->local)
@@ -2414,7 +2436,51 @@ class ControlTerminacionController extends Controller
 
                     return $factura;
                 })
+                ->values();
+
+            /*
+             * La remisión manda. Si tenemos al menos una factura con la
+             * misma remisión logística, descartamos todas las demás antes
+             * de evaluar fecha/local.
+             *
+             * Si existen remisiones informadas pero ninguna coincide, no
+             * hacemos asociación automática: evitamos vincular una factura
+             * de otra remisión sólo porque comparte código/cantidad.
+             *
+             * El fallback por fecha queda únicamente para históricos donde
+             * el export de ventas no traía remisión.
+             */
+            if ($objetivo->remision !== null) {
+                $exactasRemision = $candidatas
+                    ->filter(function ($factura) {
+                        return $factura->_remision_coincide;
+                    })
+                    ->values();
+
+                if ($exactasRemision->isNotEmpty()) {
+                    $candidatas = $exactasRemision;
+                } else {
+                    $hayRemisionInformada = $candidatas
+                        ->contains(function ($factura) {
+                            return $factura
+                                ->_remision_normalizada !== null;
+                        });
+
+                    if ($hayRemisionInformada) {
+                        continue;
+                    }
+                }
+            }
+
+            $candidatas = $candidatas
                 ->sort(function ($a, $b) {
+                    if ($a->_remision_coincide
+                        !== $b->_remision_coincide) {
+                        return $a->_remision_coincide
+                            ? -1
+                            : 1;
+                    }
+
                     if ($a->_prioridad_local
                         !== $b->_prioridad_local) {
                         return $a->_prioridad_local
@@ -2439,7 +2505,9 @@ class ControlTerminacionController extends Controller
             $mejor = $candidatas->first();
 
             $empatadas = $candidatas->filter(function ($factura) use ($mejor) {
-                return $factura->_prioridad_local
+                return $factura->_remision_coincide
+                        === $mejor->_remision_coincide
+                    && $factura->_prioridad_local
                         === $mejor->_prioridad_local
                     && $factura->_dias === $mejor->_dias;
             });
@@ -2473,9 +2541,35 @@ class ControlTerminacionController extends Controller
                 $mejor->local;
             $objetivo->remision->factura_cantidad =
                 (int) $mejor->cantidad_facturada;
+            $objetivo->remision->factura_remision =
+                $mejor->remision;
             $objetivo->remision->factura_diferencia_dias =
                 (int) $mejor->_dias;
         }
+    }
+
+    /**
+     * Normaliza formatos como "43600", "1-43600", "REM 43600" al número
+     * operativo de remisión: "43600".
+     */
+    private function normalizarNumeroRemisionFactura($valor): ?string
+    {
+        $texto = trim((string) $valor);
+
+        if ($texto === '') {
+            return null;
+        }
+
+        preg_match_all('/\d+/', $texto, $coincidencias);
+
+        if (empty($coincidencias[0])) {
+            return null;
+        }
+
+        $numero = (string) end($coincidencias[0]);
+        $numero = ltrim($numero, '0');
+
+        return $numero === '' ? '0' : $numero;
     }
 
     /**
