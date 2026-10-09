@@ -763,8 +763,12 @@ class VentaController extends Controller
         string $tipo,
         string $buscar
     ): void {
+        /*
+         * fecha ya es DATE en PostgreSQL. Comparar directamente permite usar
+         * los índices; whereDate() agrega una función/cast innecesario.
+         */
         if ($desde) {
-            $query->whereDate(
+            $query->where(
                 'v.fecha',
                 '>=',
                 $desde
@@ -772,7 +776,7 @@ class VentaController extends Controller
         }
 
         if ($hasta) {
-            $query->whereDate(
+            $query->where(
                 'v.fecha',
                 '<=',
                 $hasta
