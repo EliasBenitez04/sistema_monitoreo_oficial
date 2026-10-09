@@ -21,6 +21,8 @@
     .td-section-label{font-size:11px;text-transform:uppercase;font-weight:800;color:#7a8796;letter-spacing:.04em}
     .td-money{white-space:nowrap;font-weight:800;color:#26364a}
     .td-money small{display:block;font-size:10px;font-weight:600;color:#7a8796}
+    .td-factura{font-weight:800;color:#2f5597;white-space:nowrap}
+    .td-cliente-factura{font-size:11px;line-height:1.15}
     .td-valor-total{border-left:4px solid #17a2b8}
     .td-valor-remitido{border-left:4px solid #28a745}
     .td-valor-retenido{border-left:4px solid #ffc107;background:#fffdf5}
@@ -324,6 +326,8 @@
                     <th>Código variante</th>
                     <th>Salida</th>
                     <th>Remisión</th>
+                    <th>Factura</th>
+                    <th>Cliente</th>
                     <th class="text-right">Remitido</th>
                     <th class="text-right">Confirmado</th>
                     <th class="text-right">Costo</th>
@@ -341,6 +345,8 @@
                             <td class="text-muted">—</td>
                             <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
                             <td class="text-muted">—</td>
+                            <td class="text-muted">—</td>
+                            <td class="text-muted">—</td>
                             <td class="text-right"><span class="td-cantidad">0</span></td>
                             <td class="text-right"><span class="text-muted font-weight-bold">0</span></td>
                             <td class="text-right"><span class="td-money">Gs 0</span></td>
@@ -350,7 +356,7 @@
                         </tr>
 
                         <tr class="td-subtotal-row">
-                            <td colspan="11">
+                            <td colspan="13">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
                                         <span class="td-plan-badge">{{ $detalle->sucursal }}</span>
@@ -420,6 +426,65 @@
                                         {{ $remision->fecha_remision ? \Carbon\Carbon::parse($remision->fecha_remision)->format('d/m/Y') : '—' }}
                                     </small>
                                 </td>
+
+                                <td>
+                                    @if(($remision->factura_estado ?? null) === 'ASOCIADA')
+                                        <span class="td-factura">
+                                            {{ $remision->factura_numero }}
+                                        </span>
+
+                                        <br>
+
+                                        <small class="text-muted">
+                                            {{ $remision->factura_fecha
+                                                ? \Carbon\Carbon::parse($remision->factura_fecha)->format('d/m/Y')
+                                                : '—' }}
+                                            · {{ number_format($remision->factura_cantidad ?? 0, 0, ',', '.') }} u.
+                                        </small>
+
+                                        <br>
+
+                                        <span class="badge badge-success mt-1">
+                                            ASOCIADA
+                                        </span>
+                                    @elseif(($remision->factura_estado ?? null) === 'AMBIGUA')
+                                        <span class="badge badge-warning">
+                                            AMBIGUA
+                                        </span>
+
+                                        <small class="d-block text-muted mt-1">
+                                            {{ number_format($remision->factura_candidatas ?? 0, 0, ',', '.') }}
+                                            facturas posibles
+                                        </small>
+                                    @elseif(($remision->factura_estado ?? null) === 'SIN COINCIDENCIA')
+                                        <span class="badge badge-light border text-muted">
+                                            SIN COINCIDENCIA
+                                        </span>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+
+                                <td>
+                                    @if(($remision->factura_estado ?? null) === 'ASOCIADA')
+                                        <strong class="td-cliente-factura">
+                                            {{ $remision->factura_cliente ?: 'SIN NOMBRE' }}
+                                        </strong>
+
+                                        @if(!empty($remision->factura_local))
+                                            <small class="d-block text-muted">
+                                                {{ $remision->factura_local }}
+                                            </small>
+                                        @endif
+                                    @elseif(($remision->factura_estado ?? null) === 'AMBIGUA')
+                                        <small class="text-warning">
+                                            Revisar coincidencia
+                                        </small>
+                                    @else
+                                        <span class="text-muted">—</span>
+                                    @endif
+                                </td>
+
                                 <td class="text-right"><span class="td-cantidad">{{ number_format($remision->cantidad, 0, ',', '.') }}</span></td>
                                 <td class="text-right">
                                     <span class="{{ $remision->fecha_recepcion ? 'td-confirmado' : 'text-muted font-weight-bold' }}">
@@ -522,7 +587,7 @@
                         @endforeach
 
                         <tr class="td-subtotal-row">
-                            <td colspan="11">
+                            <td colspan="13">
                                 <div class="d-flex justify-content-between align-items-center flex-wrap">
                                     <div>
                                         <span class="td-plan-badge">{{ $detalle->sucursal }}</span>
@@ -580,7 +645,7 @@
                     @endif
                 @empty
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-4">
+                        <td colspan="13" class="text-center text-muted py-4">
                             Esta OT todavía no tiene distribución logística.
                         </td>
                     </tr>
