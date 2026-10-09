@@ -976,6 +976,7 @@ Route::get('/seguimiento-produccion/{id}', [SeguimientoPedidoProduccionControlle
 */
 Route::get('/seguimiento-ingreso-terminacion', [SeguimientoPedidoIngresoTerminacionController::class, 'index'])->name('seguimiento-ingreso-terminacion.index');
 Route::get('/seguimiento-ingreso-terminacion/informe-gerencial', [SeguimientoPedidoIngresoTerminacionController::class, 'informeGerencial'])->name('seguimiento-ingreso-terminacion.informe-gerencial');
+Route::get('/seguimiento-ingreso-terminacion/seguimiento-diario', [SeguimientoPedidoIngresoTerminacionController::class, 'seguimientoDiario'])->name('seguimiento-ingreso-terminacion.seguimiento-diario');
 Route::get('/seguimiento-ingreso-terminacion/{id}', [SeguimientoPedidoIngresoTerminacionController::class, 'show'])->name('seguimiento-ingreso-terminacion.show');
 
 
