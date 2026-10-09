@@ -61,10 +61,18 @@
             </li>
 
             <li class="nav-item">
+                <a href="{{ route('ventas.clientes.index') }}"
+                   class="nav-link {{ request()->routeIs('ventas.clientes.*') ? 'active' : '' }}">
+                    <i class="fas fa-users nav-icon"></i>
+                    <p>Clientes</p>
+                </a>
+            </li>
+
+            <li class="nav-item">
                 <a href="{{ route('ventas.importar.form') }}"
                    class="nav-link {{ request()->routeIs('ventas.importar*') ? 'active' : '' }}">
                     <i class="fas fa-file-import nav-icon"></i>
-                    <p>Importar ventas</p>
+                    <p>Importar datos</p>
                 </a>
             </li>
         </ul>
