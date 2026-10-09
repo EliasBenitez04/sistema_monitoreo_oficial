@@ -151,7 +151,7 @@
     </div>
 
     <div class="row mb-3">
-        <div class="col-lg-6 mb-3 mb-lg-0">
+        <div class="col-lg-4 mb-3 mb-lg-0">
             <div class="it-day-highlight is-output">
                 <div>
                     <small>SALIDA REAL DEL PERÍODO</small>
@@ -162,7 +162,18 @@
             </div>
         </div>
 
-        <div class="col-lg-6">
+        <div class="col-lg-4 mb-3 mb-lg-0">
+            <div class="it-day-highlight is-request">
+                <div>
+                    <small>DE ESA SALIDA, ERA PEDIDO DEL DÍA</small>
+                    <strong>{{ number_format($resumen->salidas_reales - $resumen->salidas_otras_fechas,0,',','.') }} OT</strong>
+                    <span>salieron y correspondían al pedido de esa fecha</span>
+                </div>
+                <i class="fas fa-bullseye"></i>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
             <div class="it-day-highlight is-backlog">
                 <div>
                     <small>DE ESA SALIDA, OTRAS FECHAS</small>
@@ -206,6 +217,7 @@
                         <th class="text-center">Pendiente cierre</th>
                         <th class="text-center">Cobertura</th>
                         <th class="text-center">Salida real día</th>
+                        <th class="text-center">Era pedido del día</th>
                         <th class="text-center">De otras fechas</th>
                         <th class="text-center">Detalle</th>
                     </tr>
@@ -304,6 +316,16 @@
                         </td>
 
                         <td class="text-center">
+                            @if($dia->salidas_del_pedido > 0)
+                                <span class="badge badge-success px-2 py-1">
+                                    {{ number_format($dia->salidas_del_pedido,0,',','.') }}
+                                </span>
+                            @else
+                                <span class="text-muted">0</span>
+                            @endif
+                        </td>
+
+                        <td class="text-center">
                             @if($dia->salidas_otras_fechas > 0)
                                 <span class="badge badge-secondary px-2 py-1">
                                     {{ number_format($dia->salidas_otras_fechas,0,',','.') }}
@@ -331,7 +353,7 @@
 
                     @if($dia->ots_pedidas > 0 || $dia->salidas_reales > 0)
                         <tr class="it-day-detail-row">
-                            <td colspan="11" class="p-0 border-0">
+                            <td colspan="12" class="p-0 border-0">
                                 <div class="collapse" id="{{ $collapseId }}">
                                     <div class="it-day-detail">
 
@@ -498,7 +520,7 @@
                     @endif
                 @empty
                     <tr>
-                        <td colspan="11" class="text-center text-muted py-5">
+                        <td colspan="12" class="text-center text-muted py-5">
                             No hay información para el período seleccionado.
                         </td>
                     </tr>
@@ -603,6 +625,9 @@
 }
 .it-day-highlight.is-output{
     border-left:4px solid #22c55e;
+}
+.it-day-highlight.is-request{
+    border-left:4px solid #2563eb;
 }
 .it-day-highlight.is-backlog{
     border-left:4px solid #64748b;
