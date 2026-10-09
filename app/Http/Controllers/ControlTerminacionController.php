@@ -1739,6 +1739,24 @@ class ControlTerminacionController extends Controller
                 return $remision;
             })->values();
 
+            /*
+             * AYALA se mueve operativamente en conjuntos de variantes que
+             * normalmente forman bloques de 3. La remisión importada puede
+             * venir como tres líneas físicas de 1 (por ejemplo GR01, GR02,
+             * GR03), pero visualmente representan un único movimiento de
+             * 3 prendas para Ayala.
+             *
+             * Se agrupa únicamente para PRESENTACIÓN y por documento de
+             * remisión. No se modifica la base, la conciliación física ni
+             * la auditoría original.
+             */
+            if ($planNormalizado === 'AYALA') {
+                $detalle->remisiones =
+                    $this->agruparRemisionesVisualesAyala(
+                        $detalle->remisiones
+                    );
+            }
+
             $detalle->cantidad_remitida =
                 (int) $detalle->remisiones->sum('cantidad');
 
@@ -2185,6 +2203,132 @@ class ControlTerminacionController extends Controller
             'totalMargenRetenido',
             'porcentajeMargenProductoTerminado'
         ));
+    }
+
+    /**
+     * Agrupa las líneas físicas de AYALA por documento de remisión.
+     *
+     * Ejemplo:
+     *   1-43792 · GR01 x1
+     *   1-43792 · GR02 x1
+     *   1-43792 · GR03 x1
+     *
+     * se presenta como:
+     *   1-43792 · 3 variantes · cantidad 3
+     *
+     * Los importes efectivos se suman línea por línea para no asumir que
+     * todas las variantes necesariamente tengan el mismo costo/precio.
+     */
+    private function agruparRemisionesVisualesAyala($remisiones)
+    {
+        return collect($remisiones)
+            ->groupBy(function ($remision) {
+                return implode('|', [
+                    (string) ($remision->serie ?? ''),
+                    (string) ($remision->numero_remision ?? ''),
+                    (string) ($remision->fecha_remision ?? ''),
+                    (string) ($remision->fecha_recepcion ?? ''),
+                    (string) ($remision->destino_real ?? ''),
+                    (string) ($remision->destino_planificado ?? ''),
+                ]);
+            })
+            ->map(function ($grupo) {
+                $grupo = collect($grupo)->values();
+                $primera = $grupo->first();
+
+                if (!$primera) {
+                    return null;
+                }
+
+                $visual = clone $primera;
+
+                $visual->cantidad = (int) $grupo->sum('cantidad');
+
+                $visual->cantidad_efectiva_valorizada =
+                    (int) $grupo->sum(function ($item) {
+                        return (int) (
+                            $item->cantidad_efectiva_valorizada
+                            ?? 0
+                        );
+                    });
+
+                $visual->cantidad_recibida_efectiva_valorizada =
+                    (int) $grupo->sum(function ($item) {
+                        return (int) (
+                            $item
+                                ->cantidad_recibida_efectiva_valorizada
+                            ?? 0
+                        );
+                    });
+
+                $codigos = $grupo
+                    ->pluck('codigo')
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                $visual->codigos_variantes = $codigos->all();
+                $visual->cantidad_variantes = $codigos->count();
+
+                $visual->codigo_visual = $codigos->isNotEmpty()
+                    ? $codigos->implode(' · ')
+                    : ($visual->codigo ?? null);
+
+                $visual->costo_efectivo_visual =
+                    (float) $grupo->sum(function ($item) {
+                        return (int) (
+                            $item->cantidad_efectiva_valorizada
+                            ?? 0
+                        ) * (float) ($item->costo_unitario ?? 0);
+                    });
+
+                $visual->venta_efectiva_visual =
+                    (float) $grupo->sum(function ($item) {
+                        return (int) (
+                            $item->cantidad_efectiva_valorizada
+                            ?? 0
+                        ) * (float) ($item->precio_venta ?? 0);
+                    });
+
+                $costos = $grupo
+                    ->pluck('costo_unitario')
+                    ->filter(function ($valor) {
+                        return $valor !== null && $valor !== '';
+                    })
+                    ->map(function ($valor) {
+                        return round((float) $valor, 6);
+                    })
+                    ->unique()
+                    ->values();
+
+                $precios = $grupo
+                    ->pluck('precio_venta')
+                    ->filter(function ($valor) {
+                        return $valor !== null && $valor !== '';
+                    })
+                    ->map(function ($valor) {
+                        return round((float) $valor, 6);
+                    })
+                    ->unique()
+                    ->values();
+
+                $visual->costo_unitario_uniforme =
+                    $costos->count() === 1
+                        ? (float) $costos->first()
+                        : null;
+
+                $visual->precio_venta_uniforme =
+                    $precios->count() === 1
+                        ? (float) $precios->first()
+                        : null;
+
+                $visual->es_agrupacion_ayala = true;
+                $visual->lineas_fisicas_agrupadas = $grupo->count();
+
+                return $visual;
+            })
+            ->filter()
+            ->values();
     }
 
     /**
