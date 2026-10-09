@@ -412,16 +412,6 @@
                                     <span class="td-codigo-variante">
                                         {{ $remision->codigo_visual ?? $remision->codigo ?? '—' }}
                                     </span>
-
-                                    @if(!empty($remision->es_agrupacion_ayala))
-                                        <small class="d-block text-info mt-1">
-                                            <i class="fas fa-layer-group mr-1"></i>
-                                            {{ number_format($remision->cantidad_variantes ?? 0, 0, ',', '.') }}
-                                            variantes agrupadas ·
-                                            {{ number_format($remision->lineas_fisicas_agrupadas ?? 0, 0, ',', '.') }}
-                                            líneas físicas
-                                        </small>
-                                    @endif
                                 </td>
                                 <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
                                 <td>
