@@ -1223,6 +1223,10 @@
         route('ventas.vendedores.todos')
     );
 
+    const urlClientesResumen = @json(
+        route('ventas.clientes.resumen')
+    );
+
     const filtrosActuales = {
         desde: @json($desde),
         hasta: @json($hasta),
@@ -1421,6 +1425,274 @@
             'click',
             abrirTodosVendedores
         );
+    }
+
+    function construirUrlClientes(modo) {
+        const params = new URLSearchParams();
+
+        Object.entries(filtrosActuales).forEach(
+            function (entrada) {
+                const clave = entrada[0];
+                const valor = entrada[1];
+
+                if (
+                    valor !== null
+                    && valor !== undefined
+                    && valor !== ''
+                ) {
+                    params.set(clave, valor);
+                }
+            }
+        );
+
+        params.set('modo', modo || 'historico');
+
+        return urlClientesResumen + '?' + params.toString();
+    }
+
+    function claseSegmento(segmento) {
+        switch (segmento) {
+            case 'VIP':
+                return 'cliente-segmento-vip';
+            case 'FRECUENTE':
+                return 'cliente-segmento-frecuente';
+            case 'RECURRENTE':
+                return 'cliente-segmento-recurrente';
+            case 'A RECUPERAR':
+                return 'cliente-segmento-recuperar';
+            default:
+                return 'cliente-segmento-ocasional';
+        }
+    }
+
+    function filaCliente(item) {
+        const codigo = item.cli_cod
+            ? '<small class="d-block text-muted">Cod. '
+                + esc(item.cli_cod)
+                + '</small>'
+            : '';
+
+        const dias = item.dias_sin_compra === null
+            || item.dias_sin_compra === undefined
+                ? ''
+                : '<small class="d-block text-muted">'
+                    + num(item.dias_sin_compra)
+                    + ' día'
+                    + (Number(item.dias_sin_compra) === 1 ? '' : 's')
+                    + ' sin comprar</small>';
+
+        return ''
+            + '<tr>'
+            + '<td><strong>' + esc(item.cliente) + '</strong>'
+                + codigo + '</td>'
+            + '<td class="text-right font-weight-bold">'
+                + num(item.visitas) + '</td>'
+            + '<td class="text-right">' + num(item.tickets) + '</td>'
+            + '<td class="text-right">' + num(item.unidades_netas) + '</td>'
+            + '<td class="text-right font-weight-bold text-success">'
+                + gs(item.venta_neta) + '</td>'
+            + '<td class="text-right">' + gs(item.ticket_promedio) + '</td>'
+            + '<td>' + esc(item.ultima_compra || '-') + dias + '</td>'
+            + '<td><span class="cliente-segmento '
+                + claseSegmento(item.segmento) + '">'
+                + esc(item.segmento) + '</span></td>'
+            + '</tr>';
+    }
+
+    function itemRecuperar(item) {
+        return ''
+            + '<div class="cliente-recuperar-item">'
+            + '<strong>' + esc(item.cliente) + '</strong>'
+            + '<span>'
+                + num(item.visitas) + ' visitas · '
+                + num(item.dias_sin_compra) + ' días sin comprar'
+                + '</span>'
+            + '<span>'
+                + 'Valor histórico ' + gs(item.venta_neta)
+                + ' · Ticket prom. ' + gs(item.ticket_promedio)
+                + '</span>'
+            + '</div>';
+    }
+
+    let modoClientesActual = 'historico';
+    let clientesCargados = false;
+    let clientesCargando = false;
+
+    function activarModoClientes(modo) {
+        document.querySelectorAll('.cliente-modo-btn').forEach(
+            function (button) {
+                const activo = button.dataset.modo === modo;
+
+                button.classList.toggle('btn-primary', activo);
+                button.classList.toggle('active', activo);
+                button.classList.toggle('btn-outline-primary', !activo);
+            }
+        );
+    }
+
+    function cargarClientes(modo) {
+        if (clientesCargando) {
+            return;
+        }
+
+        modoClientesActual = modo || 'historico';
+        activarModoClientes(modoClientesActual);
+
+        const loading = document.getElementById('clientesLoading');
+        const contenido = document.getElementById('clientesContenido');
+        const errorBox = document.getElementById('clientesError');
+
+        if (!loading || !contenido || !errorBox) {
+            return;
+        }
+
+        clientesCargando = true;
+        clientesCargados = true;
+
+        loading.classList.remove('d-none');
+        contenido.classList.add('d-none');
+        errorBox.classList.add('d-none');
+
+        fetch(
+            construirUrlClientes(modoClientesActual),
+            {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                cache: 'no-store'
+            }
+        )
+            .then(async function (response) {
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.message
+                            || 'No se pudo cargar el análisis de clientes.'
+                    );
+                }
+
+                return data;
+            })
+            .then(function (data) {
+                const resumen = data.resumen || {};
+                const clientes = Array.isArray(data.clientes)
+                    ? data.clientes
+                    : [];
+                const recuperar = Array.isArray(data.recuperar)
+                    ? data.recuperar
+                    : [];
+
+                document.getElementById('cliTotal').textContent =
+                    num(resumen.clientes);
+
+                document.getElementById('cliRecurrentes').textContent =
+                    num(resumen.recurrentes);
+
+                document.getElementById('cliFrecuentes').textContent =
+                    num(resumen.frecuentes);
+
+                document.getElementById('cliVentaRecurrente').textContent =
+                    gs(resumen.venta_recurrente);
+
+                document.getElementById('cliPorcRecurrente').textContent =
+                    num(resumen.porcentaje_venta_recurrente)
+                    + '% de la venta de clientes';
+
+                document.getElementById('cliFechaRef').textContent =
+                    resumen.fecha_referencia
+                        ? 'Referencia ' + resumen.fecha_referencia
+                        : 'Sin fecha de referencia';
+
+                const frecuente = resumen.cliente_mas_frecuente;
+                const mayorValor = resumen.cliente_mayor_valor;
+
+                document.getElementById('cliMasFrecuente').textContent =
+                    frecuente ? frecuente.cliente : '-';
+
+                document.getElementById('cliMasFrecuenteMeta').textContent =
+                    frecuente
+                        ? num(frecuente.visitas)
+                            + ' visitas · '
+                            + num(frecuente.tickets)
+                            + ' tickets · '
+                            + gs(frecuente.venta_neta)
+                        : 'Sin datos';
+
+                document.getElementById('cliMayorValor').textContent =
+                    mayorValor ? mayorValor.cliente : '-';
+
+                document.getElementById('cliMayorValorMeta').textContent =
+                    mayorValor
+                        ? gs(mayorValor.venta_neta)
+                            + ' · '
+                            + num(mayorValor.visitas)
+                            + ' visitas · ticket prom. '
+                            + gs(mayorValor.ticket_promedio)
+                        : 'Sin datos';
+
+                document.getElementById('clientesRankingBody').innerHTML =
+                    clientes.length
+                        ? clientes.map(filaCliente).join('')
+                        : '<tr><td colspan="8" '
+                            + 'class="text-center text-muted py-4">'
+                            + 'No hay clientes para este análisis.'
+                            + '</td></tr>';
+
+                document.getElementById('clientesRecuperar').innerHTML =
+                    recuperar.length
+                        ? recuperar.map(itemRecuperar).join('')
+                        : '<div class="text-center text-muted py-4 px-3">'
+                            + 'No hay clientes a recuperar con este criterio.'
+                            + '</div>';
+
+                loading.classList.add('d-none');
+                contenido.classList.remove('d-none');
+            })
+            .catch(function (error) {
+                loading.classList.add('d-none');
+                errorBox.textContent =
+                    error.message
+                    || 'No se pudo cargar el análisis de clientes.';
+                errorBox.classList.remove('d-none');
+            })
+            .finally(function () {
+                clientesCargando = false;
+            });
+    }
+
+    document.querySelectorAll('.cliente-modo-btn').forEach(
+        function (button) {
+            button.addEventListener('click', function () {
+                cargarClientes(button.dataset.modo || 'historico');
+            });
+        }
+    );
+
+    const clientesSection = document.getElementById(
+        'clientesInteligencia'
+    );
+
+    if (clientesSection) {
+        if ('IntersectionObserver' in window) {
+            const clientesObserver = new IntersectionObserver(
+                function (entries, observer) {
+                    entries.forEach(function (entry) {
+                        if (entry.isIntersecting && !clientesCargados) {
+                            cargarClientes(modoClientesActual);
+                            observer.disconnect();
+                        }
+                    });
+                },
+                {
+                    rootMargin: '250px 0px'
+                }
+            );
+
+            clientesObserver.observe(clientesSection);
+        } else {
+            cargarClientes(modoClientesActual);
+        }
     }
 
     function limpiarModal() {
