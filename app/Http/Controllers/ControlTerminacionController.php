@@ -2421,14 +2421,6 @@ class ControlTerminacionController extends Controller
         foreach ($porDocumento as $grupoDocumento) {
             $grupoDocumento = collect($grupoDocumento)->values();
 
-            $codigosDocumento = $grupoDocumento
-                ->pluck('codigo_visual')
-                ->filter()
-                ->map(function ($codigo) {
-                    return strtoupper(trim((string) $codigo));
-                })
-                ->values();
-
             foreach ($grupoDocumento as $item) {
                 $codigo = strtoupper(
                     trim((string) ($item->codigo_visual ?? ''))
@@ -2452,6 +2444,23 @@ class ControlTerminacionController extends Controller
 
                 $cantidadPorCodigo = (int) ($cantidad / 3);
 
+                $efectivaRestante = max(
+                    0,
+                    (int) (
+                        $item->cantidad_efectiva_valorizada
+                        ?? 0
+                    )
+                );
+
+                $recibidaRestante = max(
+                    0,
+                    (int) (
+                        $item
+                            ->cantidad_recibida_efectiva_valorizada
+                        ?? 0
+                    )
+                );
+
                 foreach (['01', '02', '03'] as $sufijo) {
                     $nuevo = clone $item;
 
@@ -2466,43 +2475,31 @@ class ControlTerminacionController extends Controller
                     $nuevo->cantidad = $cantidadPorCodigo;
 
                     /*
-                     * Repartimos proporcionalmente la cantidad efectiva.
-                     * Como el bloque se divide en tres partes iguales, costo
-                     * y venta mantienen exactamente el total original.
+                     * Distribuir el efectivo sin perder remanentes.
+                     * Ej.: si por auditoría el bloque físico es 9 pero sólo
+                     * 8 son efectivos, queda 3 + 3 + 2, nunca 2 + 2 + 2.
                      */
-                    $efectivaTotal = max(
-                        0,
-                        (int) (
-                            $item->cantidad_efectiva_valorizada
-                            ?? 0
-                        )
+                    $nuevo->cantidad_efectiva_valorizada = min(
+                        $cantidadPorCodigo,
+                        $efectivaRestante
                     );
 
-                    $recibidaTotal = max(
-                        0,
-                        (int) (
-                            $item
-                                ->cantidad_recibida_efectiva_valorizada
-                            ?? 0
-                        )
-                    );
-
-                    $nuevo->cantidad_efectiva_valorizada =
-                        min(
-                            $cantidadPorCodigo,
-                            (int) floor($efectivaTotal / 3)
-                        );
+                    $efectivaRestante -=
+                        $nuevo->cantidad_efectiva_valorizada;
 
                     $nuevo
-                        ->cantidad_recibida_efectiva_valorizada =
-                        min(
+                        ->cantidad_recibida_efectiva_valorizada = min(
                             $cantidadPorCodigo,
-                            (int) floor($recibidaTotal / 3)
+                            $recibidaRestante
                         );
 
+                    $recibidaRestante -=
+                        $nuevo
+                            ->cantidad_recibida_efectiva_valorizada;
+
                     /*
-                     * Si el unitario es uniforme usamos cantidad x unitario.
-                     * Esto evita arrastrar el total de 9 prendas a cada fila.
+                     * El código original del bloque conserva el mismo costo y
+                     * precio unitario; sólo se redistribuye la cantidad.
                      */
                     $costoUnitario =
                         (float) ($item->costo_unitario ?? 0);
