@@ -2205,19 +2205,24 @@ class ControlTerminacionController extends Controller
     /**
      * Asocia facturación a las líneas visuales de AYALA / MODELO MUESTRA.
      *
-     * Criterio de esta prueba:
-     * - número de remisión exacto (criterio principal);
-     * - código exacto;
-     * - cantidad exacta;
-     * - fecha dentro de +/- 30 días de la remisión;
-     * - fecha más cercana;
-     * - local como desempate secundario.
+     * PASO 1:
+     * asociación normal por código + cantidad + fecha.
      *
-     * Si la facturación informa una remisión distinta, no se asocia
-     * automáticamente aunque coincidan código, cantidad y fecha.
+     * PASO 2:
+     * si dentro de una MISMA remisión logística una línea ya quedó
+     * asociada de forma inequívoca a una factura, esa factura se usa como
+     * ancla para validar las demás líneas de esa misma remisión.
      *
-     * Si dos facturas quedan empatadas en el mejor criterio, no elegimos
-     * ninguna: se marca AMBIGUA para evitar mostrar datos financieros falsos.
+     * Ejemplo:
+     *   remisión 1-43600
+     *   GR04 -> FCO F04 2989 (asociada)
+     *   GR06 -> ambigua
+     *   GR08 -> ambigua
+     *
+     * Si GR06 y GR08 existen dentro de FCO F04 2989 con la cantidad
+     * correspondiente, pasan a ASOCIADA POR REMISIÓN.
+     *
+     * No se importa ni se persiste ninguna relación nueva.
      */
     private function asociarFacturacionAyalaModelo($detalles): void
     {
@@ -2232,7 +2237,6 @@ class ControlTerminacionController extends Controller
             'comprobante',
             'cliente',
             'local',
-            'remision',
         ] as $columna) {
             if (!Schema::hasColumn('ventas', $columna)) {
                 return;
@@ -2250,7 +2254,7 @@ class ControlTerminacionController extends Controller
                 continue;
             }
 
-            foreach ($detalle->remisiones as $indice => $remision) {
+            foreach ($detalle->remisiones as $remision) {
                 $codigo = strtoupper(
                     trim((string) (
                         $remision->codigo_visual
@@ -2269,18 +2273,26 @@ class ControlTerminacionController extends Controller
                     ?: ($remision->fecha_creacion
                         ?: $remision->fecha_recepcion);
 
+                $serie = trim(
+                    (string) ($remision->serie ?? '')
+                );
+
+                $numeroRemision = trim(
+                    (string) ($remision->numero_remision ?? '')
+                );
+
+                $claveRemision = implode('|', [
+                    $serie,
+                    $numeroRemision,
+                ]);
+
                 $remision->factura_estado = 'SIN COINCIDENCIA';
                 $remision->factura_numero = null;
                 $remision->factura_cliente = null;
                 $remision->factura_fecha = null;
                 $remision->factura_local = null;
                 $remision->factura_cantidad = null;
-                $remision->factura_remision = null;
-
-                $numeroRemisionLogistica =
-                    $this->normalizarNumeroRemisionFactura(
-                        $remision->numero_remision ?? null
-                    );
+                $remision->factura_origen_asociacion = null;
 
                 if ($codigo === '' || $cantidad <= 0 || !$fechaBase) {
                     continue;
@@ -2296,7 +2308,9 @@ class ControlTerminacionController extends Controller
                         'Y-m-d',
                         strtotime((string) $fechaBase)
                     ),
-                    'remision' => $numeroRemisionLogistica,
+                    'serie' => $serie,
+                    'numero_remision' => $numeroRemision,
+                    'clave_remision' => $claveRemision,
                 ]);
             }
         }
@@ -2335,10 +2349,8 @@ class ControlTerminacionController extends Controller
         );
 
         /*
-         * Agrupamos por factura/cliente/código/fecha/local porque un mismo
-         * código puede aparecer repetido en varias líneas del export.
-         * SUM(cantidad) representa la cantidad facturada real del código
-         * dentro de ese comprobante.
+         * Una factura puede tener varias líneas del mismo código.
+         * Consolidamos por comprobante/cliente/código/fecha/local.
          */
         $facturas = DB::table('ventas')
             ->whereIn(
@@ -2353,8 +2365,7 @@ class ControlTerminacionController extends Controller
                 'comprobante',
                 'cliente',
                 'fecha',
-                'local',
-                'remision'
+                'local'
             )
             ->selectRaw('SUM(cantidad) as cantidad_facturada')
             ->groupBy(
@@ -2362,8 +2373,7 @@ class ControlTerminacionController extends Controller
                 'comprobante',
                 'cliente',
                 'fecha',
-                'local',
-                'remision'
+                'local'
             )
             ->get();
 
@@ -2375,11 +2385,13 @@ class ControlTerminacionController extends Controller
             'codigo_normalizado'
         );
 
-        /*
-         * Una misma línea de factura no debe asociarse a dos remisiones.
-         */
         $usadas = [];
 
+        /*
+         * ============================================================
+         * PASO 1: ASOCIACIÓN NORMAL
+         * ============================================================
+         */
         foreach ($objetivos as $objetivo) {
             $candidatas = collect(
                 $facturasPorCodigo->get(
@@ -2399,7 +2411,6 @@ class ControlTerminacionController extends Controller
                         (string) $factura->codigo_normalizado,
                         (string) $factura->fecha,
                         (string) $factura->local,
-                        (string) $factura->remision,
                     ]);
 
                     return !isset($usadas[$clave]);
@@ -2413,17 +2424,6 @@ class ControlTerminacionController extends Controller
                             ) / 86400
                         )
                     );
-
-                    $factura->_remision_normalizada =
-                        $this->normalizarNumeroRemisionFactura(
-                            $factura->remision ?? null
-                        );
-
-                    $factura->_remision_coincide =
-                        $objetivo->remision !== null
-                        && $factura->_remision_normalizada !== null
-                        && $factura->_remision_normalizada
-                            === $objetivo->remision;
 
                     $local = strtoupper(
                         trim((string) $factura->local)
@@ -2439,59 +2439,15 @@ class ControlTerminacionController extends Controller
 
                     return $factura;
                 })
-                ->values();
-
-            /*
-             * La remisión manda. Si tenemos al menos una factura con la
-             * misma remisión logística, descartamos todas las demás antes
-             * de evaluar fecha/local.
-             *
-             * Si existen remisiones informadas pero ninguna coincide, no
-             * hacemos asociación automática: evitamos vincular una factura
-             * de otra remisión sólo porque comparte código/cantidad.
-             *
-             * El fallback por fecha queda únicamente para históricos donde
-             * el export de ventas no traía remisión.
-             */
-            if ($objetivo->remision !== null) {
-                $exactasRemision = $candidatas
-                    ->filter(function ($factura) {
-                        return $factura->_remision_coincide;
-                    })
-                    ->values();
-
-                if ($exactasRemision->isNotEmpty()) {
-                    $candidatas = $exactasRemision;
-                } else {
-                    $hayRemisionInformada = $candidatas
-                        ->contains(function ($factura) {
-                            return $factura
-                                ->_remision_normalizada !== null;
-                        });
-
-                    if ($hayRemisionInformada) {
-                        continue;
-                    }
-                }
-            }
-
-            $candidatas = $candidatas
                 ->sort(function ($a, $b) {
-                    if ($a->_remision_coincide
-                        !== $b->_remision_coincide) {
-                        return $a->_remision_coincide
-                            ? -1
-                            : 1;
-                    }
-
-                    if ($a->_dias !== $b->_dias) {
-                        return $a->_dias <=> $b->_dias;
-                    }
-
                     if ($a->_prioridad_local
                         !== $b->_prioridad_local) {
                         return $a->_prioridad_local
                             <=> $b->_prioridad_local;
+                    }
+
+                    if ($a->_dias !== $b->_dias) {
+                        return $a->_dias <=> $b->_dias;
                     }
 
                     return strcmp(
@@ -2508,11 +2464,9 @@ class ControlTerminacionController extends Controller
             $mejor = $candidatas->first();
 
             $empatadas = $candidatas->filter(function ($factura) use ($mejor) {
-                return $factura->_remision_coincide
-                        === $mejor->_remision_coincide
-                    && $factura->_dias === $mejor->_dias
-                    && $factura->_prioridad_local
-                        === $mejor->_prioridad_local;
+                return $factura->_prioridad_local
+                        === $mejor->_prioridad_local
+                    && $factura->_dias === $mejor->_dias;
             });
 
             if ($empatadas->count() > 1) {
@@ -2523,6 +2477,12 @@ class ControlTerminacionController extends Controller
                 continue;
             }
 
+            $this->aplicarFacturaARemisionVisual(
+                $objetivo->remision,
+                $mejor,
+                'DIRECTA'
+            );
+
             $clave = implode('|', [
                 (string) $mejor->comprobante,
                 (string) $mejor->cliente,
@@ -2532,47 +2492,132 @@ class ControlTerminacionController extends Controller
             ]);
 
             $usadas[$clave] = true;
+        }
 
-            $objetivo->remision->factura_estado = 'ASOCIADA';
-            $objetivo->remision->factura_numero =
-                $mejor->comprobante;
-            $objetivo->remision->factura_cliente =
-                $mejor->cliente;
-            $objetivo->remision->factura_fecha =
-                $mejor->fecha;
-            $objetivo->remision->factura_local =
-                $mejor->local;
-            $objetivo->remision->factura_cantidad =
-                (int) $mejor->cantidad_facturada;
-            $objetivo->remision->factura_remision =
-                $mejor->remision;
-            $objetivo->remision->factura_diferencia_dias =
-                (int) $mejor->_dias;
+        /*
+         * ============================================================
+         * PASO 2: PROPAGAR FACTURA POR MISMA REMISIÓN LOGÍSTICA
+         * ============================================================
+         *
+         * Sólo se propaga cuando dentro de esa remisión existe UNA sola
+         * factura ancla inequívoca. Si aparecen dos facturas distintas ya
+         * asociadas dentro de la misma remisión, no asumimos nada.
+         */
+        foreach (
+            $objetivos->groupBy('clave_remision')
+            as $grupoRemision
+        ) {
+            $grupoRemision = collect($grupoRemision)->values();
+
+            if ($grupoRemision->isEmpty()) {
+                continue;
+            }
+
+            $anclas = $grupoRemision
+                ->filter(function ($objetivo) {
+                    return ($objetivo->remision->factura_estado ?? null)
+                        === 'ASOCIADA';
+                })
+                ->map(function ($objetivo) {
+                    return implode('|', [
+                        (string) $objetivo->remision->factura_numero,
+                        (string) $objetivo->remision->factura_cliente,
+                        (string) $objetivo->remision->factura_fecha,
+                        (string) $objetivo->remision->factura_local,
+                    ]);
+                })
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($anclas->count() !== 1) {
+                continue;
+            }
+
+            $partesAncla = explode('|', $anclas->first(), 4);
+
+            $facturaAncla = (object) [
+                'comprobante' => $partesAncla[0] ?? null,
+                'cliente' => $partesAncla[1] ?? null,
+                'fecha' => $partesAncla[2] ?? null,
+                'local' => $partesAncla[3] ?? null,
+            ];
+
+            foreach ($grupoRemision as $objetivo) {
+                if (
+                    ($objetivo->remision->factura_estado ?? null)
+                    === 'ASOCIADA'
+                ) {
+                    continue;
+                }
+
+                $coincidenciasFacturaAncla = collect(
+                    $facturasPorCodigo->get(
+                        $objetivo->codigo,
+                        collect()
+                    )
+                )
+                    ->filter(function ($factura) use (
+                        $objetivo,
+                        $facturaAncla
+                    ) {
+                        return (string) $factura->comprobante
+                                === (string) $facturaAncla->comprobante
+                            && (string) $factura->cliente
+                                === (string) $facturaAncla->cliente
+                            && (string) $factura->fecha
+                                === (string) $facturaAncla->fecha
+                            && (string) $factura->local
+                                === (string) $facturaAncla->local
+                            && (int) $factura->cantidad_facturada
+                                === (int) $objetivo->cantidad;
+                    })
+                    ->values();
+
+                if ($coincidenciasFacturaAncla->count() !== 1) {
+                    continue;
+                }
+
+                $factura = $coincidenciasFacturaAncla->first();
+
+                $factura->_dias = abs(
+                    (int) floor(
+                        (
+                            strtotime((string) $factura->fecha)
+                            - strtotime((string) $objetivo->fecha)
+                        ) / 86400
+                    )
+                );
+
+                $this->aplicarFacturaARemisionVisual(
+                    $objetivo->remision,
+                    $factura,
+                    'MISMA_REMISION'
+                );
+            }
         }
     }
 
     /**
-     * Normaliza formatos como "43600", "1-43600", "REM 43600" al número
-     * operativo de remisión: "43600".
+     * Aplica los datos de una factura a una línea visual de remisión.
      */
-    private function normalizarNumeroRemisionFactura($valor): ?string
-    {
-        $texto = trim((string) $valor);
-
-        if ($texto === '') {
-            return null;
-        }
-
-        preg_match_all('/\d+/', $texto, $coincidencias);
-
-        if (empty($coincidencias[0])) {
-            return null;
-        }
-
-        $numero = (string) end($coincidencias[0]);
-        $numero = ltrim($numero, '0');
-
-        return $numero === '' ? '0' : $numero;
+    private function aplicarFacturaARemisionVisual(
+        $remision,
+        $factura,
+        string $origen
+    ): void {
+        $remision->factura_estado = 'ASOCIADA';
+        $remision->factura_numero = $factura->comprobante;
+        $remision->factura_cliente = $factura->cliente;
+        $remision->factura_fecha = $factura->fecha;
+        $remision->factura_local = $factura->local;
+        $remision->factura_cantidad =
+            (int) $factura->cantidad_facturada;
+        $remision->factura_diferencia_dias =
+            isset($factura->_dias)
+                ? (int) $factura->_dias
+                : null;
+        $remision->factura_origen_asociacion = $origen;
     }
 
     /**
