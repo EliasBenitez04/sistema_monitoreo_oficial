@@ -442,7 +442,12 @@
                                             · {{ number_format($remision->factura_cantidad ?? 0, 0, ',', '.') }} u.
                                         </small>
 
-                                        <br>
+                                        @if(!empty($remision->factura_remision))
+                                            <small class="d-block text-success font-weight-bold">
+                                                Remisión fact.:
+                                                {{ $remision->factura_remision }}
+                                            </small>
+                                        @endif
 
                                         <span class="badge badge-success mt-1">
                                             ASOCIADA
