@@ -418,12 +418,22 @@ class OtController extends Controller
             // muestre siempre PEDIDO A PRODUCCION -> ... -> PRODUCTO
             // TERMINADO / REVISION, sin importar el orden de las fechas.
             $ot = Ot::where('nro_ot', $nroOt)
-                ->with([
-                    'trazabilidades',
-
-                    'logisticaDetalle'
-                ])
                 ->first();
+
+            /*
+             * Forzar lectura fresca de PostgreSQL.
+             *
+             * Esta pantalla se usa también para auditar correcciones manuales
+             * de distribución. Si una cantidad cambia directamente en
+             * ot_logistica_detalle (por ejemplo Rural 17 -> 18), al volver a
+             * consultar la OT debemos reflejar el valor actual inmediatamente.
+             */
+            if ($ot) {
+                $ot = $ot->fresh([
+                    'trazabilidades',
+                    'logisticaDetalle',
+                ]);
+            }
 
             if (!$ot) {
                 $mensaje = "No se encontró ninguna OT con el número \"{$nroOt}\".";
@@ -438,16 +448,23 @@ class OtController extends Controller
             }
         }
 
-        return view('dashboard.ot', [
-            'ot'                => $ot,
-            'procesos'          => $procesos,
-            'resumen'           => $resumen,
-            'labels'            => $labels,
-            'duraciones'        => $duraciones,
-            'avancesAcumulados' => $avancesAcumulados,
-            'mensaje'           => $mensaje,
-            'nroOtBuscada'      => $nroOt,
-        ]);
+        return response()
+            ->view('dashboard.ot', [
+                'ot'                => $ot,
+                'procesos'          => $procesos,
+                'resumen'           => $resumen,
+                'labels'            => $labels,
+                'duraciones'        => $duraciones,
+                'avancesAcumulados' => $avancesAcumulados,
+                'mensaje'           => $mensaje,
+                'nroOtBuscada'      => $nroOt,
+            ])
+            ->header(
+                'Cache-Control',
+                'no-store, no-cache, must-revalidate, max-age=0'
+            )
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
     /**
