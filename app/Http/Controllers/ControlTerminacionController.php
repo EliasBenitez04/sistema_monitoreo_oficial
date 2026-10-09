@@ -2226,23 +2226,32 @@ class ControlTerminacionController extends Controller
     }
 
     /**
-     * Agrupa las líneas físicas de AYALA por documento de remisión.
+     * Agrupa las líneas físicas de AYALA por REMISIÓN + CÓDIGO.
      *
-     * Ejemplo:
-     *   1-43792 · GR01 x1
-     *   1-43792 · GR02 x1
-     *   1-43792 · GR03 x1
+     * Regla correcta:
+     *
+     *   BG01 x1
+     *   BG01 x1
+     *   BG01 x1
+     *   BG02 x1
+     *   BG02 x1
+     *   BG02 x1
+     *   BG03 x1
+     *   BG03 x1
+     *   BG03 x1
      *
      * se presenta como:
-     *   1-43792 · codigo representativo terminado en 03 · cantidad 3
      *
-     * Regla operativa AYALA:
-     * si dentro del bloque existe un código terminado en 03, ese código
-     * representa el conjunto completo. No se muestran GR01/GR02/GR03 como
-     * códigos independientes en la lectura operativa.
+     *   BG01 x3
+     *   BG02 x3
+     *   BG03 x3
      *
-     * Los importes efectivos se suman línea por línea para no asumir que
-     * todas las variantes necesariamente tengan el mismo costo/precio.
+     * Nunca se mezclan códigos distintos en una sola fila. La agrupación
+     * sirve únicamente para consolidar repeticiones del MISMO código dentro
+     * de la MISMA remisión.
+     *
+     * Los importes efectivos se suman línea por línea para conservar costo
+     * y precio exactos.
      */
     private function agruparRemisionesVisualesAyala($remisiones)
     {
@@ -2255,6 +2264,9 @@ class ControlTerminacionController extends Controller
                     (string) ($remision->fecha_recepcion ?? ''),
                     (string) ($remision->destino_real ?? ''),
                     (string) ($remision->destino_planificado ?? ''),
+                    strtoupper(
+                        trim((string) ($remision->codigo ?? ''))
+                    ),
                 ]);
             })
             ->map(function ($grupo) {
@@ -2286,46 +2298,20 @@ class ControlTerminacionController extends Controller
                         );
                     });
 
-                $codigos = $grupo
-                    ->pluck('codigo')
-                    ->filter()
-                    ->unique()
-                    ->values();
-
                 /*
-                 * AYALA se identifica operativamente con el código del bloque
-                 * terminado en 03. Ejemplo:
-                 *
-                 * GR01 + GR02 + GR03 => mostrar GR03 con cantidad 3.
-                 *
-                 * Si por algún dato histórico no existe un código terminado
-                 * en 03, usamos el último código del bloque como respaldo.
+                 * Como el groupBy ya incluye el código, todos los registros
+                 * de este grupo corresponden a la misma variante.
                  */
-                $codigoRepresentativo = $codigos
-                    ->first(function ($codigo) {
-                        return preg_match(
-                            '/03$/',
-                            trim((string) $codigo)
-                        ) === 1;
-                    });
-
-                if (!$codigoRepresentativo && $codigos->isNotEmpty()) {
-                    $codigoRepresentativo = $codigos->last();
-                }
+                $codigoAgrupado = trim(
+                    (string) ($primera->codigo ?? '')
+                );
 
                 $visual->codigo_visual =
-                    $codigoRepresentativo
-                    ?: ($visual->codigo ?? null);
+                    $codigoAgrupado !== ''
+                        ? $codigoAgrupado
+                        : null;
 
-                /*
-                 * También dejamos el código del objeto visual alineado para
-                 * que cualquier otra parte de la vista que use ->codigo no
-                 * vuelva a mostrar una variante diferente.
-                 */
                 $visual->codigo = $visual->codigo_visual;
-
-                $visual->codigo_ayala_representativo =
-                    $visual->codigo_visual;
 
                 $visual->es_bloque_ayala = true;
 
