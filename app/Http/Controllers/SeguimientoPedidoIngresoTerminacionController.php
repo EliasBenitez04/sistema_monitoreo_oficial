@@ -129,16 +129,6 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
     }
 
     /**
-     * Control diario de cumplimiento de pedidos IT.
-     *
-     * Separa:
-     * - lo pedido en cada fecha;
-     * - lo que ya estaba disponible antes del pedido;
-     * - lo que realmente alcanzó TERMINACION - TERMINACION ese mismo día;
-     * - lo que quedó pendiente al cierre del día;
-     * - la salida real del día, incluso si correspondía a pedidos anteriores.
-     */
-    /**
      * Control diario de las OT que realmente alcanzaron
      * TERMINACION - TERMINACION.
      *
