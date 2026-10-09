@@ -2219,8 +2219,9 @@ class ControlTerminacionController extends Controller
      *   GR06 -> ambigua
      *   GR08 -> ambigua
      *
-     * Si GR06 y GR08 existen dentro de FCO F04 2989 con la cantidad
-     * correspondiente, pasan a ASOCIADA POR REMISIÓN.
+     * Si GR06 y GR08 existen dentro de FCO F04 2989, pasan a
+     * ASOCIADA POR REMISIÓN. La cantidad se usa como control de cuadre,
+     * pero no impide la asociación del comprobante.
      *
      * No se importa ni se persiste ninguna relación nueva.
      */
@@ -2543,6 +2544,58 @@ class ControlTerminacionController extends Controller
                 'local' => $partesAncla[3] ?? null,
             ];
 
+            /*
+             * Una vez encontrada la factura ancla, NO volvemos a competir
+             * contra otras facturas. Consultamos directamente esa factura.
+             *
+             * La presencia del código dentro del mismo comprobante es la
+             * validación principal. La cantidad se conserva como control,
+             * pero no bloquea la asociación porque puede existir una
+             * diferencia de agrupación entre remisión y facturación.
+             */
+            $codigosPendientes = $grupoRemision
+                ->filter(function ($objetivo) {
+                    return ($objetivo->remision->factura_estado ?? null)
+                        !== 'ASOCIADA';
+                })
+                ->pluck('codigo')
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($codigosPendientes->isEmpty()) {
+                continue;
+            }
+
+            $lineasFacturaAncla = DB::table('ventas')
+                ->where(
+                    'comprobante',
+                    $facturaAncla->comprobante
+                )
+                ->whereIn(
+                    DB::raw("UPPER(TRIM(codigo))"),
+                    $codigosPendientes->all()
+                )
+                ->where('cantidad', '>', 0)
+                ->select(
+                    DB::raw(
+                        "UPPER(TRIM(codigo)) as codigo_normalizado"
+                    ),
+                    'comprobante'
+                )
+                ->selectRaw(
+                    "MAX(cliente) as cliente,
+                     MIN(fecha) as fecha,
+                     MAX(local) as local,
+                     SUM(cantidad) as cantidad_facturada"
+                )
+                ->groupBy(
+                    DB::raw("UPPER(TRIM(codigo))"),
+                    'comprobante'
+                )
+                ->get()
+                ->keyBy('codigo_normalizado');
+
             foreach ($grupoRemision as $objetivo) {
                 if (
                     ($objetivo->remision->factura_estado ?? null)
@@ -2551,34 +2604,13 @@ class ControlTerminacionController extends Controller
                     continue;
                 }
 
-                $coincidenciasFacturaAncla = collect(
-                    $facturasPorCodigo->get(
-                        $objetivo->codigo,
-                        collect()
-                    )
-                )
-                    ->filter(function ($factura) use (
-                        $objetivo,
-                        $facturaAncla
-                    ) {
-                        return (string) $factura->comprobante
-                                === (string) $facturaAncla->comprobante
-                            && (string) $factura->cliente
-                                === (string) $facturaAncla->cliente
-                            && (string) $factura->fecha
-                                === (string) $facturaAncla->fecha
-                            && (string) $factura->local
-                                === (string) $facturaAncla->local
-                            && (int) $factura->cantidad_facturada
-                                === (int) $objetivo->cantidad;
-                    })
-                    ->values();
-
-                if ($coincidenciasFacturaAncla->count() !== 1) {
+                if (!$lineasFacturaAncla->has($objetivo->codigo)) {
                     continue;
                 }
 
-                $factura = $coincidenciasFacturaAncla->first();
+                $factura = $lineasFacturaAncla->get(
+                    $objetivo->codigo
+                );
 
                 $factura->_dias = abs(
                     (int) floor(
@@ -2588,6 +2620,13 @@ class ControlTerminacionController extends Controller
                         ) / 86400
                     )
                 );
+
+                $objetivo->remision->factura_cantidad_remision =
+                    (int) $objetivo->cantidad;
+
+                $objetivo->remision->factura_cantidad_coincide =
+                    (int) $factura->cantidad_facturada
+                        === (int) $objetivo->cantidad;
 
                 $this->aplicarFacturaARemisionVisual(
                     $objetivo->remision,
