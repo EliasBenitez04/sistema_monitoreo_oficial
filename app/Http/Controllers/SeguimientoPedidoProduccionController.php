@@ -295,6 +295,19 @@ class SeguimientoPedidoProduccionController extends Controller
 
         $trazasPeriodo = collect();
 
+        /*
+         * Este reporte termina en INGRESO TERMINACIÓN. No incluimos
+         * TERMINACION, PRODUCTO TERMINADO ni LOGÍSTICA porque pertenecen a
+         * etapas posteriores al objetivo de Seguimiento a Producción.
+         */
+        $procesosSeguimiento = collect($ordenProcesos)
+            ->filter(function ($orden) {
+                return $orden <= 90;
+            })
+            ->keys()
+            ->values()
+            ->all();
+
         if ($idsOt->isNotEmpty()) {
             $trazasPeriodo = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $idsOt->all())
@@ -308,6 +321,7 @@ class SeguimientoPedidoProduccionController extends Controller
                     '<=',
                     $fechaHasta->format('Y-m-d')
                 )
+                ->whereIn('proceso', $procesosSeguimiento)
                 ->select(
                     'id_trazabilidad',
                     'id_ot',
@@ -317,7 +331,25 @@ class SeguimientoPedidoProduccionController extends Controller
                 )
                 ->orderBy('fecha_proceso')
                 ->orderBy('id_trazabilidad')
-                ->get();
+                ->get()
+                ->filter(function ($traza) use ($cierresPorOt) {
+                    $cierre = $cierresPorOt->get(
+                        (int) $traza->id_ot
+                    );
+
+                    if (!$cierre || !$cierre->fecha_cierre) {
+                        return true;
+                    }
+
+                    return Carbon::parse(
+                        $traza->fecha_proceso
+                    )->startOfDay()->lte(
+                        Carbon::parse(
+                            $cierre->fecha_cierre
+                        )->startOfDay()
+                    );
+                })
+                ->values();
         }
 
         /*
