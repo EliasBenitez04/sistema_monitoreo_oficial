@@ -2219,9 +2219,8 @@ class ControlTerminacionController extends Controller
      *   GR06 -> ambigua
      *   GR08 -> ambigua
      *
-     * Si GR06 y GR08 existen dentro de FCO F04 2989, pasan a
-     * ASOCIADA POR REMISIÓN. La cantidad se usa como control de cuadre,
-     * pero no impide la asociación del comprobante.
+     * Si GR04 ya ancló FCO F04 2989, GR06/08/10 de la misma remisión
+     * y la misma base heredan esa factura directamente.
      *
      * No se importa ni se persiste ninguna relación nueva.
      */
@@ -2304,6 +2303,8 @@ class ControlTerminacionController extends Controller
                     'remision' => $remision,
                     'plan' => $plan,
                     'codigo' => $codigo,
+                    'codigo_base' =>
+                        $this->obtenerCodigoBaseFacturacion($codigo),
                     'cantidad' => $cantidad,
                     'fecha' => date(
                         'Y-m-d',
@@ -2497,106 +2498,79 @@ class ControlTerminacionController extends Controller
 
         /*
          * ============================================================
-         * PASO 2: PROPAGAR FACTURA POR MISMA REMISIÓN LOGÍSTICA
+         * PASO 2: HEREDAR FACTURA POR REMISIÓN + CÓDIGO BASE
          * ============================================================
          *
-         * Sólo se propaga cuando dentro de esa remisión existe UNA sola
-         * factura ancla inequívoca. Si aparecen dos facturas distintas ya
-         * asociadas dentro de la misma remisión, no asumimos nada.
+         * Regla operativa:
+         *
+         * 060617634GR04
+         * 060617634GR06
+         * 060617634GR08
+         * 060617634GR10
+         *
+         * comparten la base 060617634GR.
+         *
+         * Si dentro de la MISMA remisión una de esas variantes ya quedó
+         * asociada de forma inequívoca a una factura, las demás variantes
+         * de la misma base heredan esa factura. No vuelven a competir con
+         * otras facturas ni se exige encontrar cada talle por separado.
          */
         foreach (
-            $objetivos->groupBy('clave_remision')
-            as $grupoRemision
+            $objetivos->groupBy(function ($objetivo) {
+                return $objetivo->clave_remision
+                    . '|'
+                    . $objetivo->codigo_base;
+            })
+            as $grupoFamilia
         ) {
-            $grupoRemision = collect($grupoRemision)->values();
+            $grupoFamilia = collect($grupoFamilia)->values();
 
-            if ($grupoRemision->isEmpty()) {
+            if ($grupoFamilia->isEmpty()) {
                 continue;
             }
 
-            $anclas = $grupoRemision
+            $anclas = $grupoFamilia
                 ->filter(function ($objetivo) {
                     return ($objetivo->remision->factura_estado ?? null)
                         === 'ASOCIADA';
                 })
                 ->map(function ($objetivo) {
+                    return (object) [
+                        'comprobante' =>
+                            $objetivo->remision->factura_numero,
+                        'cliente' =>
+                            $objetivo->remision->factura_cliente,
+                        'fecha' =>
+                            $objetivo->remision->factura_fecha,
+                        'local' =>
+                            $objetivo->remision->factura_local,
+                    ];
+                })
+                ->filter(function ($factura) {
+                    return !empty($factura->comprobante);
+                })
+                ->unique(function ($factura) {
                     return implode('|', [
-                        (string) $objetivo->remision->factura_numero,
-                        (string) $objetivo->remision->factura_cliente,
-                        (string) $objetivo->remision->factura_fecha,
-                        (string) $objetivo->remision->factura_local,
+                        (string) $factura->comprobante,
+                        (string) $factura->cliente,
+                        (string) $factura->fecha,
+                        (string) $factura->local,
                     ]);
                 })
-                ->filter()
-                ->unique()
                 ->values();
 
+            /*
+             * Sólo heredamos cuando existe una única factura ancla para esa
+             * remisión + base. Si hubiese dos facturas diferentes realmente
+             * asociadas, no adivinamos.
+             */
             if ($anclas->count() !== 1) {
                 continue;
             }
 
-            $partesAncla = explode('|', $anclas->first(), 4);
+            $facturaAncla = $anclas->first();
 
-            $facturaAncla = (object) [
-                'comprobante' => $partesAncla[0] ?? null,
-                'cliente' => $partesAncla[1] ?? null,
-                'fecha' => $partesAncla[2] ?? null,
-                'local' => $partesAncla[3] ?? null,
-            ];
-
-            /*
-             * Una vez encontrada la factura ancla, NO volvemos a competir
-             * contra otras facturas. Consultamos directamente esa factura.
-             *
-             * La presencia del código dentro del mismo comprobante es la
-             * validación principal. La cantidad se conserva como control,
-             * pero no bloquea la asociación porque puede existir una
-             * diferencia de agrupación entre remisión y facturación.
-             */
-            $codigosPendientes = $grupoRemision
-                ->filter(function ($objetivo) {
-                    return ($objetivo->remision->factura_estado ?? null)
-                        !== 'ASOCIADA';
-                })
-                ->pluck('codigo')
-                ->filter()
-                ->unique()
-                ->values();
-
-            if ($codigosPendientes->isEmpty()) {
-                continue;
-            }
-
-            $lineasFacturaAncla = DB::table('ventas')
-                ->where(
-                    'comprobante',
-                    $facturaAncla->comprobante
-                )
-                ->whereIn(
-                    DB::raw("UPPER(TRIM(codigo))"),
-                    $codigosPendientes->all()
-                )
-                ->where('cantidad', '>', 0)
-                ->select(
-                    DB::raw(
-                        "UPPER(TRIM(codigo)) as codigo_normalizado"
-                    ),
-                    'comprobante'
-                )
-                ->selectRaw(
-                    "MAX(cliente) as cliente,
-                     MIN(fecha) as fecha,
-                     MAX(local) as local,
-                     SUM(cantidad) as cantidad_facturada"
-                )
-                ->groupBy(
-                    DB::raw("UPPER(TRIM(codigo))"),
-                    'comprobante'
-                )
-                ->get()
-                ->keyBy('codigo_normalizado');
-
-            foreach ($grupoRemision as $objetivo) {
+            foreach ($grupoFamilia as $objetivo) {
                 if (
                     ($objetivo->remision->factura_estado ?? null)
                     === 'ASOCIADA'
@@ -2604,37 +2578,87 @@ class ControlTerminacionController extends Controller
                     continue;
                 }
 
-                if (!$lineasFacturaAncla->has($objetivo->codigo)) {
-                    continue;
-                }
+                $facturaHeredada = (object) [
+                    'comprobante' => $facturaAncla->comprobante,
+                    'cliente' => $facturaAncla->cliente,
+                    'fecha' => $facturaAncla->fecha,
+                    'local' => $facturaAncla->local,
 
-                $factura = $lineasFacturaAncla->get(
-                    $objetivo->codigo
-                );
-
-                $factura->_dias = abs(
-                    (int) floor(
-                        (
-                            strtotime((string) $factura->fecha)
-                            - strtotime((string) $objetivo->fecha)
-                        ) / 86400
-                    )
-                );
-
-                $objetivo->remision->factura_cantidad_remision =
-                    (int) $objetivo->cantidad;
-
-                $objetivo->remision->factura_cantidad_coincide =
-                    (int) $factura->cantidad_facturada
-                        === (int) $objetivo->cantidad;
+                    /*
+                     * Para una asociación heredada, la cantidad mostrada
+                     * corresponde a la línea de remisión que se está
+                     * relacionando. No pretende reconstruir la línea interna
+                     * de la factura.
+                     */
+                    'cantidad_facturada' =>
+                        (int) $objetivo->cantidad,
+                    '_dias' => abs(
+                        (int) floor(
+                            (
+                                strtotime(
+                                    (string) $facturaAncla->fecha
+                                )
+                                - strtotime(
+                                    (string) $objetivo->fecha
+                                )
+                            ) / 86400
+                        )
+                    ),
+                ];
 
                 $this->aplicarFacturaARemisionVisual(
                     $objetivo->remision,
-                    $factura,
-                    'MISMA_REMISION'
+                    $facturaHeredada,
+                    'MISMA_REMISION_BASE'
                 );
             }
         }
+    }
+
+    /**
+     * Obtiene la familia del código para asociar talles de una misma prenda.
+     *
+     * Primero intenta usar maestro_codigos.cod_base. Si no existe registro,
+     * usa el formato operativo actual: código completo menos los dos
+     * caracteres finales del talle.
+     */
+    private function obtenerCodigoBaseFacturacion(
+        string $codigo
+    ): string {
+        $codigo = strtoupper(trim($codigo));
+
+        if ($codigo === '') {
+            return '';
+        }
+
+        if (
+            Schema::hasTable('maestro_codigos')
+            && Schema::hasColumn('maestro_codigos', 'cod_articulo')
+            && Schema::hasColumn('maestro_codigos', 'cod_base')
+        ) {
+            $base = DB::table('maestro_codigos')
+                ->where(
+                    DB::raw("UPPER(TRIM(cod_articulo))"),
+                    $codigo
+                )
+                ->value('cod_base');
+
+            $base = strtoupper(trim((string) $base));
+
+            if ($base !== '') {
+                return $base;
+            }
+        }
+
+        /*
+         * Los talles operativos son de 2 caracteres:
+         * 04, 06, 08, 10, TP, TM, TG, GG, etc.
+         */
+        if (strlen($codigo) > 2) {
+            return substr($codigo, 0, -2);
+        }
+
+        return $codigo;
     }
 
     /**
