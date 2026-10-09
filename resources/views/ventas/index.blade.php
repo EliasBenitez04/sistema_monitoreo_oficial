@@ -392,7 +392,7 @@
         </div>
 
         <div class="col-xl-4 mt-3 mt-xl-0">
-            <div class="card shadow-sm h-100">
+            <div class="card shadow-sm h-100 resumen-dia-card">
                 <div class="card-header">
                     <h3 class="card-title">
                         <i class="fas fa-calendar-alt mr-1"></i> Resumen por día
@@ -408,7 +408,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($porDia as $item)
+                            @forelse($porDia->sortByDesc('fecha')->take(15) as $item)
                                 <tr>
                                     <td>{{ date('d/m/Y', strtotime($item->fecha)) }}</td>
                                     <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
@@ -426,6 +426,19 @@
                             @endforelse
                         </tbody>
                     </table>
+                </div>
+
+                <div class="card-footer text-center bg-white mt-auto">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            data-toggle="modal"
+                            data-target="#todosDiasModal">
+                        <i class="fas fa-calendar-alt mr-1"></i>
+                        Ver todo
+                        <span class="badge badge-light border ml-1">
+                            {{ number_format($porDia->count(),0,',','.') }}
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -521,6 +534,87 @@
         @endif
     </div>
 
+</div>
+
+<div class="modal fade"
+     id="todosDiasModal"
+     tabindex="-1"
+     role="dialog"
+     aria-labelledby="todosDiasModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="todosDiasModalLabel">
+                        Resumen completo por día
+                    </h5>
+                    <small class="text-muted">
+                        Respeta los filtros activos de la pantalla.
+                    </small>
+                </div>
+
+                <button type="button"
+                        class="close"
+                        data-dismiss="modal"
+                        aria-label="Cerrar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 ventas-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th class="text-right">Unid.</th>
+                                <th class="text-right">Tickets</th>
+                                <th class="text-right">Devoluciones</th>
+                                <th class="text-right">Venta neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($porDia->sortByDesc('fecha') as $item)
+                                <tr>
+                                    <td>
+                                        <strong>
+                                            {{ date('d/m/Y', strtotime($item->fecha)) }}
+                                        </strong>
+                                    </td>
+                                    <td class="text-right">
+                                        {{ number_format($item->unidades_netas,0,',','.') }}
+                                    </td>
+                                    <td class="text-right">
+                                        {{ number_format($item->tickets,0,',','.') }}
+                                    </td>
+                                    <td class="text-right">
+                                        @if($item->devoluciones > 0)
+                                            <span class="text-danger">
+                                                Gs {{ number_format($item->devoluciones,0,',','.') }}
+                                            </span>
+                                        @else
+                                            -
+                                        @endif
+                                    </td>
+                                    <td class="text-right font-weight-bold text-success">
+                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5"
+                                        class="text-center text-muted py-4">
+                                        Sin datos diarios para los filtros actuales.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal fade"
@@ -739,6 +833,13 @@
 .ventas-table td{
     font-size:.79rem;
     vertical-align:middle!important;
+}
+.resumen-dia-card{
+    display:flex;
+    flex-direction:column;
+}
+.resumen-dia-card .table-responsive{
+    flex:1 1 auto;
 }
 .venta-producto-row{cursor:pointer}
 .venta-producto-row:hover{background:#f8fbff}
