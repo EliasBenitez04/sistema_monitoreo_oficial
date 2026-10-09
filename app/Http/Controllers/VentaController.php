@@ -401,16 +401,14 @@ class VentaController extends Controller
             ]);
         }
 
-        $claveCliente = "COALESCE(
-            NULLIF(BTRIM(v.cli_cod), ''),
-            'N:' || UPPER(BTRIM(v.cliente))
-        )";
+        $claveCliente = $this->expresionClaveCliente();
 
         $clientes = (clone $base)
             ->selectRaw($claveCliente . ' as cliente_key')
             ->selectRaw(
                 "MAX(NULLIF(BTRIM(v.cli_cod), '')) as cli_cod,
                  MAX(NULLIF(BTRIM(v.cliente), '')) as cliente,
+                 MAX(NULLIF(BTRIM(v.local), '')) as local_principal,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.fecha END) as visitas,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
                  COALESCE(SUM(v.cantidad), 0) as unidades_netas,
@@ -569,6 +567,7 @@ class VentaController extends Controller
             return [
                 'cli_cod' => $item->cli_cod,
                 'cliente' => $item->cliente ?: 'SIN NOMBRE',
+                'local_principal' => $item->local_principal ?? null,
                 'visitas' => (int) $item->visitas,
                 'tickets' => (int) $item->tickets,
                 'unidades_netas' => (int) $item->unidades_netas,
@@ -951,6 +950,7 @@ class VentaController extends Controller
             ->selectRaw(
                 "MAX(NULLIF(BTRIM(v.cli_cod), '')) as cli_cod,
                  MAX(NULLIF(BTRIM(v.cliente), '')) as cliente,
+                 MAX(NULLIF(BTRIM(v.local), '')) as local_principal,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.fecha END) as visitas,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
                  COALESCE(SUM(v.cantidad), 0) as unidades_netas,
@@ -1166,6 +1166,7 @@ class VentaController extends Controller
             'resumen' => [
                 'cli_cod' => $resumen->cli_cod,
                 'cliente' => $resumen->cliente,
+                'local_principal' => $resumen->local_principal,
                 'visitas' => $resumen->visitas,
                 'tickets' => $resumen->tickets,
                 'unidades_netas' => $resumen->unidades_netas,
@@ -1720,10 +1721,47 @@ class VentaController extends Controller
 
     private function expresionClaveCliente(): string
     {
-        return "COALESCE(
-            NULLIF(BTRIM(v.cli_cod), ''),
-            'N:' || UPPER(BTRIM(v.cliente))
+        /*
+         * Identidad comercial conservadora:
+         *
+         * NOMBRE + CÓDIGO + LOCAL
+         *
+         * cli_cod se repite en los datos reales, por eso jamás se usa solo.
+         * El nombre siempre forma parte de la identidad y el código/local
+         * sirven para separar homónimos y códigos reutilizados.
+         *
+         * No usamos vendedor, artículo ni comprobante porque esos datos
+         * cambian entre compras del mismo cliente y fragmentarían su historial.
+         */
+        $nombre = "UPPER(
+            REGEXP_REPLACE(
+                COALESCE(
+                    NULLIF(BTRIM(v.cliente), ''),
+                    'SIN NOMBRE'
+                ),
+                '[[:space:]]+',
+                ' ',
+                'g'
+            )
         )";
+
+        $codigo = "UPPER(
+            COALESCE(
+                NULLIF(BTRIM(v.cli_cod), ''),
+                'SIN CODIGO'
+            )
+        )";
+
+        $local = "UPPER(
+            COALESCE(
+                NULLIF(BTRIM(v.local), ''),
+                'SIN LOCAL'
+            )
+        )";
+
+        return "'N:' || " . $nombre
+            . " || '|C:' || " . $codigo
+            . " || '|L:' || " . $local;
     }
 
     private function construirClientesAgregados(
@@ -1777,6 +1815,7 @@ class VentaController extends Controller
             ->selectRaw(
                 "MAX(NULLIF(BTRIM(v.cli_cod), '')) as cli_cod,
                  MAX(NULLIF(BTRIM(v.cliente), '')) as cliente,
+                 MAX(NULLIF(BTRIM(v.local), '')) as local_principal,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.fecha END) as visitas,
                  COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
                  COALESCE(SUM(v.cantidad), 0) as unidades_netas,
