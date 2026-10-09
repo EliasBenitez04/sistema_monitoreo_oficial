@@ -292,6 +292,7 @@
                     <table class="table table-sm table-hover mb-0 ventas-table">
                         <thead>
                             <tr>
+                                <th>Sucursal</th>
                                 <th>Vendedor</th>
                                 <th class="text-right">Unid.</th>
                                 <th class="text-right">Tickets</th>
@@ -301,6 +302,11 @@
                         <tbody>
                             @forelse($porVendedor as $item)
                                 <tr>
+                                    <td>
+                                        <span class="badge badge-light border">
+                                            {{ $item->local }}
+                                        </span>
+                                    </td>
                                     <td><strong>{{ $item->vendedor }}</strong></td>
                                     <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
                                     <td class="text-right">{{ number_format($item->tickets,0,',','.') }}</td>
@@ -309,10 +315,23 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">Sin datos.</td></tr>
+                                <tr><td colspan="5" class="text-center text-muted py-3">Sin datos.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
+                </div>
+
+                <div class="card-footer text-center bg-white">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            data-toggle="modal"
+                            data-target="#todosVendedoresModal">
+                        <i class="fas fa-list mr-1"></i>
+                        Ver todos
+                        <span class="badge badge-light border ml-1">
+                            {{ number_format($porVendedorTodos->count(),0,',','.') }}
+                        </span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -506,6 +525,81 @@
         @endif
     </div>
 
+</div>
+
+<div class="modal fade"
+     id="todosVendedoresModal"
+     tabindex="-1"
+     role="dialog"
+     aria-labelledby="todosVendedoresModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="todosVendedoresModalLabel">
+                        Ranking completo de vendedores
+                    </h5>
+                    <small class="text-muted">
+                        Respeta los filtros activos de la pantalla.
+                    </small>
+                </div>
+
+                <button type="button"
+                        class="close"
+                        data-dismiss="modal"
+                        aria-label="Cerrar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 ventas-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Sucursal</th>
+                                <th>Vendedor</th>
+                                <th class="text-right">Unid.</th>
+                                <th class="text-right">Tickets</th>
+                                <th class="text-right">Venta neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($porVendedorTodos as $item)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td>
+                                        <span class="badge badge-light border">
+                                            {{ $item->local }}
+                                        </span>
+                                    </td>
+                                    <td><strong>{{ $item->vendedor }}</strong></td>
+                                    <td class="text-right">
+                                        {{ number_format($item->unidades_netas,0,',','.') }}
+                                    </td>
+                                    <td class="text-right">
+                                        {{ number_format($item->tickets,0,',','.') }}
+                                    </td>
+                                    <td class="text-right font-weight-bold text-success">
+                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6"
+                                        class="text-center text-muted py-4">
+                                        Sin vendedores para los filtros actuales.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal fade"
