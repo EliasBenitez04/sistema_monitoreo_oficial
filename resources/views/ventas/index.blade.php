@@ -324,13 +324,9 @@
                 <div class="card-footer text-center bg-white">
                     <button type="button"
                             class="btn btn-sm btn-outline-primary"
-                            data-toggle="modal"
-                            data-target="#todosVendedoresModal">
+                            id="btnTodosVendedores">
                         <i class="fas fa-list mr-1"></i>
                         Ver todos
-                        <span class="badge badge-light border ml-1">
-                            {{ number_format($porVendedorTodos->count(),0,',','.') }}
-                        </span>
                     </button>
                 </div>
             </div>
@@ -442,11 +438,11 @@
                     <i class="fas fa-list mr-1"></i> Detalle de ventas
                 </h3>
                 <small class="text-muted">
-                    {{ number_format($ventas->total(),0,',','.') }} líneas con los filtros actuales
+                    Mostrando hasta 50 líneas por página para una carga más rápida
                 </small>
             </div>
             <span class="badge badge-light border p-2">
-                100 por página
+                50 por página
             </span>
         </div>
 
@@ -554,49 +550,39 @@
             </div>
 
             <div class="modal-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 ventas-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Sucursal</th>
-                                <th>Vendedor</th>
-                                <th class="text-right">Unid.</th>
-                                <th class="text-right">Tickets</th>
-                                <th class="text-right">Venta neta</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($porVendedorTodos as $item)
-                                <tr>
-                                    <td>{{ $loop->iteration }}</td>
-                                    <td>
-                                        <span class="badge badge-light border">
-                                            {{ $item->local }}
-                                        </span>
-                                    </td>
-                                    <td><strong>{{ $item->vendedor }}</strong></td>
-                                    <td class="text-right">
-                                        {{ number_format($item->unidades_netas,0,',','.') }}
-                                    </td>
-                                    <td class="text-right">
-                                        {{ number_format($item->tickets,0,',','.') }}
-                                    </td>
-                                    <td class="text-right font-weight-bold text-success">
-                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="6"
-                                        class="text-center text-muted py-4">
-                                        Sin vendedores para los filtros actuales.
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                <div id="todosVendedoresLoading"
+                     class="text-center text-muted py-5">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                    <div>Cargando ranking completo...</div>
                 </div>
+
+                <div id="todosVendedoresContenido" class="d-none">
+                    <div class="px-3 py-2 border-bottom bg-light">
+                        <small class="text-muted">
+                            <span id="todosVendedoresTotal">0</span>
+                            combinaciones sucursal + vendedor
+                        </small>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 ventas-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Sucursal</th>
+                                    <th>Vendedor</th>
+                                    <th class="text-right">Unid.</th>
+                                    <th class="text-right">Tickets</th>
+                                    <th class="text-right">Venta neta</th>
+                                </tr>
+                            </thead>
+                            <tbody id="todosVendedoresBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="todosVendedoresError"
+                     class="alert alert-danger m-3 d-none"></div>
             </div>
         </div>
     </div>
@@ -789,6 +775,10 @@
         )
     );
 
+    const urlVendedoresTodos = @json(
+        route('ventas.vendedores.todos')
+    );
+
     const filtrosActuales = {
         desde: @json($desde),
         hasta: @json($hasta),
@@ -845,6 +835,148 @@
         const qs = params.toString();
 
         return qs ? url + '?' + qs : url;
+    }
+
+    function construirUrlVendedores() {
+        const params = new URLSearchParams();
+
+        Object.entries(filtrosActuales).forEach(
+            function (entrada) {
+                const clave = entrada[0];
+                const valor = entrada[1];
+
+                if (
+                    valor !== null
+                    && valor !== undefined
+                    && valor !== ''
+                ) {
+                    params.set(clave, valor);
+                }
+            }
+        );
+
+        const qs = params.toString();
+
+        return qs
+            ? urlVendedoresTodos + '?' + qs
+            : urlVendedoresTodos;
+    }
+
+    function abrirTodosVendedores() {
+        document.getElementById(
+            'todosVendedoresLoading'
+        ).classList.remove('d-none');
+
+        document.getElementById(
+            'todosVendedoresContenido'
+        ).classList.add('d-none');
+
+        document.getElementById(
+            'todosVendedoresError'
+        ).classList.add('d-none');
+
+        document.getElementById(
+            'todosVendedoresBody'
+        ).innerHTML = '';
+
+        $('#todosVendedoresModal').modal('show');
+
+        fetch(
+            construirUrlVendedores(),
+            {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                cache: 'no-store'
+            }
+        )
+            .then(async function (response) {
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.message
+                            || 'No se pudo cargar el ranking.'
+                    );
+                }
+
+                return data;
+            })
+            .then(function (data) {
+                const vendedores =
+                    Array.isArray(data.vendedores)
+                        ? data.vendedores
+                        : [];
+
+                document.getElementById(
+                    'todosVendedoresTotal'
+                ).textContent = num(data.total || vendedores.length);
+
+                document.getElementById(
+                    'todosVendedoresBody'
+                ).innerHTML = vendedores.length
+                    ? vendedores.map(
+                        function (item, indice) {
+                            return ''
+                                + '<tr>'
+                                + '<td>' + num(indice + 1) + '</td>'
+                                + '<td><span class="badge badge-light border">'
+                                    + esc(item.local)
+                                    + '</span></td>'
+                                + '<td><strong>'
+                                    + esc(item.vendedor)
+                                    + '</strong></td>'
+                                + '<td class="text-right">'
+                                    + num(item.unidades_netas)
+                                    + '</td>'
+                                + '<td class="text-right">'
+                                    + num(item.tickets)
+                                    + '</td>'
+                                + '<td class="text-right font-weight-bold text-success">'
+                                    + gs(item.venta_neta)
+                                    + '</td>'
+                                + '</tr>';
+                        }
+                    ).join('')
+                    : '<tr><td colspan="6" '
+                        + 'class="text-center text-muted py-4">'
+                        + 'Sin vendedores para los filtros actuales.'
+                        + '</td></tr>';
+
+                document.getElementById(
+                    'todosVendedoresLoading'
+                ).classList.add('d-none');
+
+                document.getElementById(
+                    'todosVendedoresContenido'
+                ).classList.remove('d-none');
+            })
+            .catch(function (error) {
+                document.getElementById(
+                    'todosVendedoresLoading'
+                ).classList.add('d-none');
+
+                const caja = document.getElementById(
+                    'todosVendedoresError'
+                );
+
+                caja.textContent =
+                    error.message
+                    || 'No se pudo cargar el ranking.';
+
+                caja.classList.remove('d-none');
+            });
+    }
+
+    const btnTodosVendedores = document.getElementById(
+        'btnTodosVendedores'
+    );
+
+    if (btnTodosVendedores) {
+        btnTodosVendedores.addEventListener(
+            'click',
+            abrirTodosVendedores
+        );
     }
 
     function limpiarModal() {
