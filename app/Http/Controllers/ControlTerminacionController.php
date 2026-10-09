@@ -1800,6 +1800,11 @@ class ControlTerminacionController extends Controller
             $detalle->costo_remitido = (float)
                 $detalle->remisiones->sum(
                     function ($remision) {
+                        if (isset($remision->costo_efectivo_visual)) {
+                            return (float)
+                                $remision->costo_efectivo_visual;
+                        }
+
                         return (float) (
                             $remision->cantidad_efectiva_valorizada
                             ?? 0
@@ -1810,6 +1815,11 @@ class ControlTerminacionController extends Controller
             $detalle->venta_remitida = (float)
                 $detalle->remisiones->sum(
                     function ($remision) {
+                        if (isset($remision->venta_efectiva_visual)) {
+                            return (float)
+                                $remision->venta_efectiva_visual;
+                        }
+
                         return (float) (
                             $remision->cantidad_efectiva_valorizada
                             ?? 0
@@ -1820,6 +1830,11 @@ class ControlTerminacionController extends Controller
             $detalle->costo_recibido = (float)
                 $detalle->remisiones->sum(
                     function ($remision) {
+                        if (isset($remision->costo_recibido_visual)) {
+                            return (float)
+                                $remision->costo_recibido_visual;
+                        }
+
                         return (float) (
                             $remision
                                 ->cantidad_recibida_efectiva_valorizada
@@ -1831,6 +1846,11 @@ class ControlTerminacionController extends Controller
             $detalle->venta_recibida = (float)
                 $detalle->remisiones->sum(
                     function ($remision) {
+                        if (isset($remision->venta_recibida_visual)) {
+                            return (float)
+                                $remision->venta_recibida_visual;
+                        }
+
                         return (float) (
                             $remision
                                 ->cantidad_recibida_efectiva_valorizada
@@ -2286,6 +2306,24 @@ class ControlTerminacionController extends Controller
                     (float) $grupo->sum(function ($item) {
                         return (int) (
                             $item->cantidad_efectiva_valorizada
+                            ?? 0
+                        ) * (float) ($item->precio_venta ?? 0);
+                    });
+
+                $visual->costo_recibido_visual =
+                    (float) $grupo->sum(function ($item) {
+                        return (int) (
+                            $item
+                                ->cantidad_recibida_efectiva_valorizada
+                            ?? 0
+                        ) * (float) ($item->costo_unitario ?? 0);
+                    });
+
+                $visual->venta_recibida_visual =
+                    (float) $grupo->sum(function ($item) {
+                        return (int) (
+                            $item
+                                ->cantidad_recibida_efectiva_valorizada
                             ?? 0
                         ) * (float) ($item->precio_venta ?? 0);
                     });
