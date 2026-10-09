@@ -443,8 +443,11 @@
                                         </small>
 
                                         @if(
-                                            ($remision->factura_origen_asociacion ?? null)
-                                            === 'MISMA_REMISION'
+                                            in_array(
+                                                $remision->factura_origen_asociacion ?? null,
+                                                ['MISMA_REMISION', 'MISMA_REMISION_BASE'],
+                                                true
+                                            )
                                         )
                                             <small class="d-block text-success font-weight-bold">
                                                 <i class="fas fa-link mr-1"></i>
@@ -453,7 +456,7 @@
                                             </small>
 
                                             <span class="badge badge-success mt-1">
-                                                ASOCIADA POR REMISIÓN
+                                                ASOCIADA POR REMISIÓN/BASE
                                             </span>
                                         @else
                                             <span class="badge badge-success mt-1">
