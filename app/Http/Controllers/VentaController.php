@@ -1109,6 +1109,46 @@ class VentaController extends Controller
             ->limit(20)
             ->get();
 
+        $lineasQuery = clone $query;
+
+        if (Schema::hasTable('maestro_codigos')) {
+            $lineasQuery->leftJoin(
+                'maestro_codigos as mc',
+                'mc.cod_articulo',
+                '=',
+                'v.codigo'
+            );
+        }
+
+        $lineas = $lineasQuery
+            ->select(
+                'v.fecha',
+                'v.comprobante',
+                'v.tipo_comprobante',
+                'v.local',
+                'v.vendedor',
+                'v.codigo',
+                'v.descripcion',
+                'v.cantidad',
+                'v.p_lista',
+                'v.descuento',
+                'v.p_venta'
+            )
+            ->when(
+                Schema::hasTable('maestro_codigos'),
+                function ($q) {
+                    $q->addSelect(
+                        'mc.grupo',
+                        'mc.temporada',
+                        'mc.linea'
+                    );
+                }
+            )
+            ->orderByDesc('v.fecha')
+            ->orderByDesc('v.id')
+            ->limit(300)
+            ->get();
+
         $porMes = (clone $query)
             ->selectRaw(
                 "TO_CHAR(v.fecha, 'YYYY-MM') as periodo,
@@ -1217,6 +1257,29 @@ class VentaController extends Controller
                             strtotime($item->ultima_venta)
                         )
                         : null,
+                ];
+            })->values(),
+            'lineas' => $lineas->map(function ($item) {
+                return [
+                    'fecha' => $item->fecha
+                        ? date(
+                            'd/m/Y',
+                            strtotime($item->fecha)
+                        )
+                        : null,
+                    'comprobante' => $item->comprobante,
+                    'tipo' => $item->tipo_comprobante,
+                    'local' => $item->local,
+                    'vendedor' => $item->vendedor,
+                    'codigo' => $item->codigo,
+                    'descripcion' => $item->descripcion,
+                    'grupo' => $item->grupo ?? null,
+                    'temporada' => $item->temporada ?? null,
+                    'linea' => $item->linea ?? null,
+                    'cantidad' => (int) $item->cantidad,
+                    'p_lista' => (float) $item->p_lista,
+                    'descuento' => (float) $item->descuento,
+                    'p_venta' => (float) $item->p_venta,
                 ];
             })->values(),
             'por_mes' => $porMes->map(function ($item) {
