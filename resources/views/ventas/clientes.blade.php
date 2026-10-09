@@ -523,6 +523,15 @@
                     <li class="nav-item">
                         <a class="nav-link"
                            data-toggle="tab"
+                           href="#cpLineas"
+                           role="tab">
+                            Detalle comprado
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link"
+                           data-toggle="tab"
                            href="#cpLocales"
                            role="tab">
                             Locales y vendedores
@@ -581,6 +590,33 @@
                                 </thead>
                                 <tbody id="cpProductosBody"></tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade"
+                         id="cpLineas"
+                         role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0 ventas-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Comprobante</th>
+                                        <th>Local / vendedor</th>
+                                        <th>Código / artículo</th>
+                                        <th>Grupo / temporada</th>
+                                        <th class="text-right">Cant.</th>
+                                        <th class="text-right">PLISTA</th>
+                                        <th class="text-right">DTO</th>
+                                        <th class="text-right">PVTA</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cpLineasBody"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="px-3 py-2 border-top small text-muted">
+                            Se muestran hasta 300 líneas recientes del cliente.
                         </div>
                     </div>
 
@@ -791,6 +827,7 @@
         [
             'cpFacturasBody',
             'cpProductosBody',
+            'cpLineasBody',
             'cpLocalesBody',
             'cpVendedoresBody',
             'cpMesesBody'
@@ -969,6 +1006,54 @@
                                 + '</tr>';
                         }).join('')
                         : '<tr><td colspan="7" class="text-center text-muted py-4">Sin productos.</td></tr>';
+
+                const lineas = Array.isArray(data.lineas)
+                    ? data.lineas
+                    : [];
+
+                document.getElementById('cpLineasBody').innerHTML =
+                    lineas.length
+                        ? lineas.map(function (item) {
+                            const ventaClase =
+                                Number(item.p_venta) < 0
+                                    ? 'text-danger'
+                                    : 'text-success';
+
+                            return ''
+                                + '<tr>'
+                                + '<td>' + esc(item.fecha || '-') + '</td>'
+                                + '<td><strong>'
+                                    + esc(item.comprobante || '-')
+                                    + '</strong><small class="d-block text-muted">'
+                                    + esc(item.tipo || '-')
+                                    + '</small></td>'
+                                + '<td><strong>'
+                                    + esc(item.local || '-')
+                                    + '</strong><small class="d-block text-muted">'
+                                    + esc(item.vendedor || '-')
+                                    + '</small></td>'
+                                + '<td><strong>'
+                                    + esc(item.codigo || '-')
+                                    + '</strong><small class="d-block text-muted">'
+                                    + esc(item.descripcion || '-')
+                                    + '</small></td>'
+                                + '<td>'
+                                    + esc(item.grupo || '-')
+                                    + '<small class="d-block text-muted">'
+                                    + esc(item.temporada || '-')
+                                    + '</small></td>'
+                                + '<td class="text-right">'
+                                    + num(item.cantidad) + '</td>'
+                                + '<td class="text-right">'
+                                    + gs(item.p_lista) + '</td>'
+                                + '<td class="text-right">'
+                                    + gs(item.descuento) + '</td>'
+                                + '<td class="text-right font-weight-bold '
+                                    + ventaClase + '">'
+                                    + gs(item.p_venta) + '</td>'
+                                + '</tr>';
+                        }).join('')
+                        : '<tr><td colspan="9" class="text-center text-muted py-4">Sin detalle de compra.</td></tr>';
 
                 const locales = Array.isArray(data.locales)
                     ? data.locales
