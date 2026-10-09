@@ -409,7 +409,19 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <span class="td-codigo-variante">{{ $remision->codigo ?: '—' }}</span>
+                                    <span class="td-codigo-variante">
+                                        {{ $remision->codigo_visual ?? $remision->codigo ?? '—' }}
+                                    </span>
+
+                                    @if(!empty($remision->es_agrupacion_ayala))
+                                        <small class="d-block text-info mt-1">
+                                            <i class="fas fa-layer-group mr-1"></i>
+                                            {{ number_format($remision->cantidad_variantes ?? 0, 0, ',', '.') }}
+                                            variantes agrupadas ·
+                                            {{ number_format($remision->lineas_fisicas_agrupadas ?? 0, 0, ',', '.') }}
+                                            líneas físicas
+                                        </small>
+                                    @endif
                                 </td>
                                 <td>{{ $detalle->fecha_logistica ? \Carbon\Carbon::parse($detalle->fecha_logistica)->format('d/m/Y') : '—' }}</td>
                                 <td>
@@ -429,18 +441,58 @@
                                         $remision->cantidad_efectiva_valorizada
                                         ?? 0
                                     );
+
                                     $cantidadAuditoriaLinea = max(
                                         0,
                                         (int) $remision->cantidad
                                             - $cantidadValorizadaLinea
                                     );
+
+                                    $costoLinea = isset(
+                                        $remision->costo_efectivo_visual
+                                    )
+                                        ? (float) $remision
+                                            ->costo_efectivo_visual
+                                        : $cantidadValorizadaLinea
+                                            * (float) $remision
+                                                ->costo_unitario;
+
+                                    $ventaLinea = isset(
+                                        $remision->venta_efectiva_visual
+                                    )
+                                        ? (float) $remision
+                                            ->venta_efectiva_visual
+                                        : $cantidadValorizadaLinea
+                                            * (float) $remision
+                                                ->precio_venta;
+
+                                    $costoUnitarioVisual =
+                                        $remision
+                                            ->costo_unitario_uniforme
+                                        ?? $remision->costo_unitario
+                                        ?? null;
+
+                                    $precioUnitarioVisual =
+                                        $remision
+                                            ->precio_venta_uniforme
+                                        ?? $remision->precio_venta
+                                        ?? null;
                                 @endphp
                                 <td class="text-right">
                                     <span class="td-money">
-                                        Gs {{ number_format($cantidadValorizadaLinea * ((float) $remision->costo_unitario), 0, ',', '.') }}
+                                        Gs {{ number_format($costoLinea, 0, ',', '.') }}
                                         <small>
-                                            Gs {{ number_format((float) $remision->costo_unitario, 0, ',', '.') }}/u
+                                            @if(
+                                                !empty($remision->es_agrupacion_ayala)
+                                                && $remision->costo_unitario_uniforme === null
+                                            )
+                                                valores por variante
+                                            @elseif($costoUnitarioVisual !== null)
+                                                Gs {{ number_format((float) $costoUnitarioVisual, 0, ',', '.') }}/u
+                                            @endif
+
                                             · {{ number_format($cantidadValorizadaLinea,0,',','.') }} efectivas
+
                                             @if($cantidadAuditoriaLinea > 0)
                                                 · {{ number_format($cantidadAuditoriaLinea,0,',','.') }} auditoría
                                             @endif
@@ -449,10 +501,19 @@
                                 </td>
                                 <td class="text-right">
                                     <span class="td-money text-primary">
-                                        Gs {{ number_format($cantidadValorizadaLinea * ((float) $remision->precio_venta), 0, ',', '.') }}
+                                        Gs {{ number_format($ventaLinea, 0, ',', '.') }}
                                         <small>
-                                            Gs {{ number_format((float) $remision->precio_venta, 0, ',', '.') }}/u
+                                            @if(
+                                                !empty($remision->es_agrupacion_ayala)
+                                                && $remision->precio_venta_uniforme === null
+                                            )
+                                                valores por variante
+                                            @elseif($precioUnitarioVisual !== null)
+                                                Gs {{ number_format((float) $precioUnitarioVisual, 0, ',', '.') }}/u
+                                            @endif
+
                                             · {{ number_format($cantidadValorizadaLinea,0,',','.') }} efectivas
+
                                             @if($cantidadAuditoriaLinea > 0)
                                                 · {{ number_format($cantidadAuditoriaLinea,0,',','.') }} auditoría
                                             @endif
