@@ -127,6 +127,454 @@ class SeguimientoPedidoProduccionController extends Controller
         ));
     }
 
+    /**
+     * Avance diario de los pedidos P.
+     *
+     * Una OT se cuenta una sola vez por día, aunque tenga varios registros
+     * de trazabilidad en la misma fecha. Para representar hasta dónde avanzó
+     * ese día se toma el proceso de mayor orden dentro del flujo productivo.
+     */
+    public function avanceDiario(Request $request)
+    {
+        $ordenProcesos = [
+            'DISEÑO - ORDEN DE TRABAJO'            => 10,
+            'DISEÑO - MOLDERIA'                    => 15,
+            'DISEÑO - PROTOTIPO'                   => 20,
+            'DISEÑO - DISEÑO GRAFICO'              => 25,
+
+            'PRODUCCION - TIZADAS'                 => 30,
+            'PRODUCCION - CORTE'                   => 40,
+            'PRODUCCION - LOTEO Y DISTRIBUCION'    => 45,
+            'PRODUCCION - REVELADO'                => 50,
+            'PRODUCCION - SERIGRAFIA'              => 55,
+            'PRODUCCION - BORDADO'                 => 60,
+            'PRODUCCION - COSTURA INTERNA'         => 70,
+            'PRODUCCION - ATRAQUES'                => 75,
+            'PRODUCCION - LAVANDERIA'              => 80,
+            'PRODUCCION - PRETERMINACION'          => 85,
+
+            'TERMINACION - INGRESO TERMINACION'    => 90,
+            'TERMINACION - TERMINACION'            => 95,
+            'TERMINACION - PRODUCTO TERMINADO'     => 100,
+
+            'LOGISTICA - LOGISTICA Y DISTRIBUCION' => 110,
+        ];
+
+        $pedidoId = $request->filled('pedido')
+            ? (int) $request->input('pedido')
+            : null;
+
+        $pedidosDisponibles = SeguimientoPedido::query()
+            ->where('nro_pedido', 'ILIKE', 'P%')
+            ->select('id', 'nro_pedido', 'fecha_pedido')
+            ->orderBy('fecha_pedido')
+            ->orderBy('id')
+            ->get();
+
+        $relacionesQuery = DB::table('seguimiento_pedido_detalle as spd')
+            ->join(
+                'seguimiento_pedido as sp',
+                'sp.id',
+                '=',
+                'spd.seguimiento_pedido_id'
+            )
+            ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+            ->where('sp.nro_pedido', 'ILIKE', 'P%')
+            ->select(
+                'sp.id as pedido_id',
+                'sp.nro_pedido',
+                'sp.fecha_pedido',
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden'
+            );
+
+        if ($pedidoId) {
+            $relacionesQuery->where('sp.id', $pedidoId);
+        }
+
+        $relaciones = $relacionesQuery
+            ->orderBy('sp.fecha_pedido')
+            ->orderBy('o.nro_ot')
+            ->get();
+
+        $idsOt = $relaciones
+            ->pluck('id_ot')
+            ->unique()
+            ->values();
+
+        $otInfo = $relaciones
+            ->groupBy('id_ot')
+            ->map(function ($grupo) {
+                $primera = $grupo->first();
+
+                return (object) [
+                    'id_ot' => (int) $primera->id_ot,
+                    'nro_ot' => $primera->nro_ot,
+                    'codigo' => $primera->codigo,
+                    'descripcion' => $primera->descripcion,
+                    'cantidad_orden' => (int) $primera->cantidad_orden,
+                    'pedidos' => $grupo
+                        ->pluck('nro_pedido')
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all(),
+                    'pedido_ids' => $grupo
+                        ->pluck('pedido_id')
+                        ->map(function ($id) {
+                            return (int) $id;
+                        })
+                        ->unique()
+                        ->values()
+                        ->all(),
+                ];
+            });
+
+        $fechaMaxima = null;
+
+        if ($idsOt->isNotEmpty()) {
+            $fechaMaxima = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt->all())
+                ->max('fecha_proceso');
+        }
+
+        $referencia = $fechaMaxima
+            ? Carbon::parse($fechaMaxima)->startOfDay()
+            : Carbon::today();
+
+        try {
+            $fechaHasta = $request->filled('hasta')
+                ? Carbon::parse($request->input('hasta'))->startOfDay()
+                : $referencia->copy();
+        } catch (\Throwable $e) {
+            $fechaHasta = $referencia->copy();
+        }
+
+        try {
+            $fechaDesde = $request->filled('desde')
+                ? Carbon::parse($request->input('desde'))->startOfDay()
+                : $fechaHasta->copy()->subDays(29);
+        } catch (\Throwable $e) {
+            $fechaDesde = $fechaHasta->copy()->subDays(29);
+        }
+
+        if ($fechaDesde->gt($fechaHasta)) {
+            $tmp = $fechaDesde->copy();
+            $fechaDesde = $fechaHasta->copy();
+            $fechaHasta = $tmp;
+        }
+
+        /*
+         * Para evitar una vista inmanejable, el análisis interactivo se
+         * limita a 180 días por consulta.
+         */
+        if ($fechaDesde->diffInDays($fechaHasta) > 179) {
+            $fechaDesde = $fechaHasta->copy()->subDays(179);
+        }
+
+        $cierresPorOt = collect();
+
+        if ($idsOt->isNotEmpty()) {
+            $cierresPorOt = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt->all())
+                ->whereRaw(
+                    "UPPER(TRIM(proceso)) = ?",
+                    [self::PROCESO_CIERRE]
+                )
+                ->select(
+                    'id_ot',
+                    DB::raw('MIN(fecha_proceso) as fecha_cierre')
+                )
+                ->groupBy('id_ot')
+                ->get()
+                ->keyBy('id_ot');
+        }
+
+        $trazasPeriodo = collect();
+
+        if ($idsOt->isNotEmpty()) {
+            $trazasPeriodo = DB::table('ot_trazabilidad')
+                ->whereIn('id_ot', $idsOt->all())
+                ->whereDate(
+                    'fecha_proceso',
+                    '>=',
+                    $fechaDesde->format('Y-m-d')
+                )
+                ->whereDate(
+                    'fecha_proceso',
+                    '<=',
+                    $fechaHasta->format('Y-m-d')
+                )
+                ->select(
+                    'id_trazabilidad',
+                    'id_ot',
+                    'proceso',
+                    'resultado',
+                    'fecha_proceso'
+                )
+                ->orderBy('fecha_proceso')
+                ->orderBy('id_trazabilidad')
+                ->get();
+        }
+
+        /*
+         * Colapsar por OT + día. Si la misma OT pasa por varios procesos
+         * durante la jornada, mostramos el de mayor avance del flujo.
+         */
+        $movimientosPorDia = $trazasPeriodo
+            ->groupBy(function ($traza) {
+                return Carbon::parse(
+                    $traza->fecha_proceso
+                )->format('Y-m-d');
+            })
+            ->map(function ($trazasDia) use (
+                $ordenProcesos,
+                $otInfo,
+                $cierresPorOt
+            ) {
+                return collect($trazasDia)
+                    ->groupBy('id_ot')
+                    ->map(function ($trazasOt, $idOt) use (
+                        $ordenProcesos,
+                        $otInfo,
+                        $cierresPorOt
+                    ) {
+                        $info = $otInfo->get((int) $idOt);
+
+                        if (!$info) {
+                            return null;
+                        }
+
+                        $mejor = collect($trazasOt)
+                            ->sort(function ($a, $b) use ($ordenProcesos) {
+                                $pa = strtoupper(
+                                    trim((string) $a->proceso)
+                                );
+
+                                $pb = strtoupper(
+                                    trim((string) $b->proceso)
+                                );
+
+                                $oa = $ordenProcesos[$pa] ?? 0;
+                                $ob = $ordenProcesos[$pb] ?? 0;
+
+                                if ($oa !== $ob) {
+                                    return $ob <=> $oa;
+                                }
+
+                                return ((int) $b->id_trazabilidad)
+                                    <=> ((int) $a->id_trazabilidad);
+                            })
+                            ->first();
+
+                        $fecha = Carbon::parse(
+                            $mejor->fecha_proceso
+                        )->format('Y-m-d');
+
+                        $cierre = $cierresPorOt->get((int) $idOt);
+
+                        $fechaCierre = $cierre && $cierre->fecha_cierre
+                            ? Carbon::parse(
+                                $cierre->fecha_cierre
+                            )->format('Y-m-d')
+                            : null;
+
+                        return (object) [
+                            'id_ot' => (int) $idOt,
+                            'nro_ot' => $info->nro_ot,
+                            'codigo' => $info->codigo,
+                            'descripcion' => $info->descripcion,
+                            'cantidad_orden' =>
+                                (int) $info->cantidad_orden,
+                            'pedidos' => $info->pedidos,
+                            'proceso' => trim(
+                                (string) $mejor->proceso
+                            ),
+                            'orden_proceso' =>
+                                $ordenProcesos[
+                                    strtoupper(
+                                        trim((string) $mejor->proceso)
+                                    )
+                                ] ?? 0,
+                            'resultado' =>
+                                (int) ($mejor->resultado ?? 0),
+                            'fecha' => $fecha,
+                            'cerro_hoy' =>
+                                $fechaCierre === $fecha,
+                            'eventos' => collect($trazasOt)->count(),
+                        ];
+                    })
+                    ->filter()
+                    ->values();
+            });
+
+        $totalOt = $otInfo->count();
+
+        $cierresAntes = $cierresPorOt
+            ->filter(function ($cierre) use ($fechaDesde) {
+                return $cierre->fecha_cierre
+                    && Carbon::parse($cierre->fecha_cierre)
+                        ->startOfDay()
+                        ->lt($fechaDesde);
+            })
+            ->count();
+
+        $acumulado = $cierresAntes;
+        $dias = collect();
+
+        $cursor = $fechaDesde->copy();
+
+        while ($cursor->lte($fechaHasta)) {
+            $clave = $cursor->format('Y-m-d');
+            $movimientos = collect(
+                $movimientosPorDia->get($clave, collect())
+            );
+
+            $cierresHoy = $cierresPorOt
+                ->filter(function ($cierre) use ($clave) {
+                    return $cierre->fecha_cierre
+                        && Carbon::parse($cierre->fecha_cierre)
+                            ->format('Y-m-d') === $clave;
+                });
+
+            $idsCierreHoy = $cierresHoy
+                ->keys()
+                ->map(function ($id) {
+                    return (int) $id;
+                })
+                ->values();
+
+            $acumulado += $cierresHoy->count();
+
+            $porProceso = $movimientos
+                ->groupBy(function ($item) {
+                    $proceso = trim((string) $item->proceso);
+
+                    return $proceso !== ''
+                        ? $proceso
+                        : 'SIN PROCESO';
+                })
+                ->map(function ($grupo, $proceso) {
+                    return (object) [
+                        'proceso' => $proceso,
+                        'ots' => $grupo->count(),
+                        'prendas' => (int) $grupo->sum(
+                            'cantidad_orden'
+                        ),
+                        'orden' => (int) $grupo->max(
+                            'orden_proceso'
+                        ),
+                    ];
+                })
+                ->sortByDesc('ots')
+                ->values();
+
+            $procesoPrincipal = $porProceso->first();
+
+            $pedidosDia = $movimientos
+                ->flatMap(function ($item) {
+                    return $item->pedidos;
+                })
+                ->filter()
+                ->unique()
+                ->values();
+
+            $prendasCierre = $idsCierreHoy
+                ->sum(function ($idOt) use ($otInfo) {
+                    $info = $otInfo->get($idOt);
+
+                    return $info
+                        ? (int) $info->cantidad_orden
+                        : 0;
+                });
+
+            $dias->push((object) [
+                'fecha' => $clave,
+                'fecha_label' => $cursor->format('d/m/Y'),
+                'dia_semana' => ucfirst(
+                    $cursor->locale('es')->isoFormat('dddd')
+                ),
+                'ots_movimiento' => $movimientos->count(),
+                'prendas_movimiento' =>
+                    (int) $movimientos->sum('cantidad_orden'),
+                'pedidos_movimiento' => $pedidosDia->count(),
+                'eventos' =>
+                    (int) $movimientos->sum('eventos'),
+                'ots_cierre' => $cierresHoy->count(),
+                'prendas_cierre' => $prendasCierre,
+                'ots_acumuladas' => min(
+                    $totalOt,
+                    $acumulado
+                ),
+                'avance_acumulado' => $totalOt > 0
+                    ? round(
+                        (
+                            min($totalOt, $acumulado)
+                            / $totalOt
+                        ) * 100,
+                        1
+                    )
+                    : 0,
+                'proceso_principal' =>
+                    $procesoPrincipal->proceso ?? null,
+                'por_proceso' => $porProceso,
+                'movimientos' => $movimientos
+                    ->sortByDesc('orden_proceso')
+                    ->values(),
+            ]);
+
+            $cursor->addDay();
+        }
+
+        /*
+         * Mostrar primero el día más reciente.
+         */
+        $dias = $dias
+            ->sortByDesc('fecha')
+            ->values();
+
+        $diasConMovimiento = $dias
+            ->where('ots_movimiento', '>', 0);
+
+        $resumen = (object) [
+            'dias_consultados' => $dias->count(),
+            'dias_con_movimiento' => $diasConMovimiento->count(),
+            'ots_con_movimiento' => $diasConMovimiento
+                ->flatMap(function ($dia) {
+                    return $dia->movimientos->pluck('id_ot');
+                })
+                ->unique()
+                ->count(),
+            'eventos' => (int) $dias->sum('eventos'),
+            'ots_cerradas' => (int) $dias->sum('ots_cierre'),
+            'prendas_cerradas' =>
+                (int) $dias->sum('prendas_cierre'),
+            'promedio_ot_dia' =>
+                $diasConMovimiento->count() > 0
+                    ? round(
+                        $diasConMovimiento->avg('ots_movimiento'),
+                        1
+                    )
+                    : 0,
+            'total_ot_base' => $totalOt,
+        ];
+
+        return view(
+            'seguimiento_pedidos_produccion.avance_diario',
+            compact(
+                'dias',
+                'resumen',
+                'pedidosDisponibles',
+                'pedidoId',
+                'fechaDesde',
+                'fechaHasta'
+            )
+        );
+    }
+
     public function informeGerencial(Request $request)
     {
         $hoy = Carbon::today();
