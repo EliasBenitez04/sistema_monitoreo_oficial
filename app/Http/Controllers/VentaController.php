@@ -331,6 +331,313 @@ class VentaController extends Controller
     }
 
     /**
+     * Inteligencia comercial de clientes.
+     *
+     * Se carga por AJAX para no hacer más pesada la apertura del módulo.
+     * - historico: ignora desde/hasta y analiza todo el histórico disponible.
+     * - periodo: respeta todos los filtros activos, incluidas las fechas.
+     */
+    public function clientesResumen(Request $request)
+    {
+        $this->asegurarTablas();
+
+        $modo = $request->input('modo') === 'periodo'
+            ? 'periodo'
+            : 'historico';
+
+        $desde = $modo === 'periodo'
+            ? $request->input('desde')
+            : null;
+
+        $hasta = $modo === 'periodo'
+            ? $request->input('hasta')
+            : null;
+
+        $local = trim((string) $request->input('local', ''));
+        $vendedor = trim((string) $request->input('vendedor', ''));
+        $tipo = trim((string) $request->input('tipo', ''));
+        $buscar = trim((string) $request->input('buscar', ''));
+
+        $base = DB::table('ventas as v');
+
+        $this->aplicarFiltros(
+            $base,
+            $desde,
+            $hasta,
+            $local,
+            $vendedor,
+            $tipo,
+            $buscar
+        );
+
+        $base->where(function ($q) {
+            $q->where(function ($q2) {
+                $q2->whereNotNull('v.cli_cod')
+                    ->whereRaw("BTRIM(v.cli_cod) <> ''");
+            })->orWhere(function ($q2) {
+                $q2->whereNotNull('v.cliente')
+                    ->whereRaw("BTRIM(v.cliente) <> ''");
+            });
+        });
+
+        $fechaReferencia = (clone $base)->max('v.fecha');
+
+        if (!$fechaReferencia) {
+            return response()->json([
+                'modo' => $modo,
+                'resumen' => [
+                    'clientes' => 0,
+                    'recurrentes' => 0,
+                    'frecuentes' => 0,
+                    'venta_recurrente' => 0,
+                    'porcentaje_venta_recurrente' => 0,
+                    'valor_promedio_cliente' => 0,
+                    'cliente_mas_frecuente' => null,
+                    'cliente_mayor_valor' => null,
+                    'fecha_referencia' => null,
+                ],
+                'clientes' => [],
+                'recuperar' => [],
+            ]);
+        }
+
+        $claveCliente = "COALESCE(
+            NULLIF(BTRIM(v.cli_cod), ''),
+            'N:' || UPPER(BTRIM(v.cliente))
+        )";
+
+        $clientes = (clone $base)
+            ->selectRaw($claveCliente . ' as cliente_key')
+            ->selectRaw(
+                "MAX(NULLIF(BTRIM(v.cli_cod), '')) as cli_cod,
+                 MAX(NULLIF(BTRIM(v.cliente), '')) as cliente,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.fecha END) as visitas,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN COALESCE(v.local, '') || '|' || COALESCE(v.comprobante, '') END) as tickets,
+                 COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                 COALESCE(SUM(v.p_venta), 0) as venta_neta,
+                 MIN(CASE WHEN v.cantidad > 0 THEN v.fecha END) as primera_compra,
+                 MAX(CASE WHEN v.cantidad > 0 THEN v.fecha END) as ultima_compra,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.local END) as locales,
+                 COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.codigo END) as codigos"
+            )
+            ->groupBy(DB::raw($claveCliente))
+            ->havingRaw(
+                "COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.fecha END) > 0"
+            )
+            ->get()
+            ->map(function ($item) use ($fechaReferencia) {
+                $item->visitas = (int) $item->visitas;
+                $item->tickets = (int) $item->tickets;
+                $item->unidades_netas = (int) $item->unidades_netas;
+                $item->venta_neta = (float) $item->venta_neta;
+                $item->locales = (int) $item->locales;
+                $item->codigos = (int) $item->codigos;
+
+                $item->ticket_promedio =
+                    $item->tickets > 0
+                        ? $item->venta_neta / $item->tickets
+                        : 0;
+
+                $item->unidades_por_visita =
+                    $item->visitas > 0
+                        ? $item->unidades_netas / $item->visitas
+                        : 0;
+
+                $item->dias_sin_compra =
+                    $item->ultima_compra
+                        ? max(
+                            0,
+                            (int) floor(
+                                (
+                                    strtotime((string) $fechaReferencia)
+                                    - strtotime((string) $item->ultima_compra)
+                                ) / 86400
+                            )
+                        )
+                        : null;
+
+                return $item;
+            })
+            ->values();
+
+        if ($clientes->isEmpty()) {
+            return response()->json([
+                'modo' => $modo,
+                'resumen' => [
+                    'clientes' => 0,
+                    'recurrentes' => 0,
+                    'frecuentes' => 0,
+                    'venta_recurrente' => 0,
+                    'porcentaje_venta_recurrente' => 0,
+                    'valor_promedio_cliente' => 0,
+                    'cliente_mas_frecuente' => null,
+                    'cliente_mayor_valor' => null,
+                    'fecha_referencia' => $fechaReferencia,
+                ],
+                'clientes' => [],
+                'recuperar' => [],
+            ]);
+        }
+
+        $ventasOrdenadas = $clientes
+            ->pluck('venta_neta')
+            ->map(function ($valor) {
+                return (float) $valor;
+            })
+            ->sort()
+            ->values();
+
+        $indiceP80 = max(
+            0,
+            (int) floor(($ventasOrdenadas->count() - 1) * 0.80)
+        );
+
+        $umbralVip = (float) $ventasOrdenadas->get(
+            $indiceP80,
+            0
+        );
+
+        $clientes = $clientes
+            ->map(function ($item) use ($umbralVip) {
+                if (
+                    $item->dias_sin_compra !== null
+                    && $item->dias_sin_compra >= 30
+                    && $item->visitas >= 2
+                ) {
+                    $item->segmento = 'A RECUPERAR';
+                } elseif (
+                    $item->visitas >= 2
+                    && $item->venta_neta >= $umbralVip
+                ) {
+                    $item->segmento = 'VIP';
+                } elseif ($item->visitas >= 4) {
+                    $item->segmento = 'FRECUENTE';
+                } elseif ($item->visitas >= 2) {
+                    $item->segmento = 'RECURRENTE';
+                } else {
+                    $item->segmento = 'OCASIONAL';
+                }
+
+                return $item;
+            })
+            ->values();
+
+        $clientesOrdenados = $clientes
+            ->sort(function ($a, $b) {
+                if ($a->visitas !== $b->visitas) {
+                    return $b->visitas <=> $a->visitas;
+                }
+
+                if ($a->venta_neta !== $b->venta_neta) {
+                    return $b->venta_neta <=> $a->venta_neta;
+                }
+
+                return strcmp(
+                    (string) $a->cliente,
+                    (string) $b->cliente
+                );
+            })
+            ->values();
+
+        $recurrentes = $clientes->filter(function ($item) {
+            return $item->visitas >= 2;
+        });
+
+        $frecuentes = $clientes->filter(function ($item) {
+            return $item->visitas >= 4;
+        });
+
+        $ventaTotalClientes = (float) $clientes->sum('venta_neta');
+        $ventaRecurrente = (float) $recurrentes->sum('venta_neta');
+
+        $clienteMasFrecuente = $clientesOrdenados->first();
+
+        $clienteMayorValor = $clientes
+            ->sortByDesc('venta_neta')
+            ->values()
+            ->first();
+
+        $recuperar = $clientes
+            ->filter(function ($item) {
+                return $item->segmento === 'A RECUPERAR';
+            })
+            ->sortByDesc('venta_neta')
+            ->take(10)
+            ->values();
+
+        $serializarCliente = function ($item) {
+            return [
+                'cli_cod' => $item->cli_cod,
+                'cliente' => $item->cliente ?: 'SIN NOMBRE',
+                'visitas' => (int) $item->visitas,
+                'tickets' => (int) $item->tickets,
+                'unidades_netas' => (int) $item->unidades_netas,
+                'venta_neta' => (float) $item->venta_neta,
+                'ticket_promedio' => (float) $item->ticket_promedio,
+                'unidades_por_visita' =>
+                    round((float) $item->unidades_por_visita, 1),
+                'primera_compra' => $item->primera_compra
+                    ? date(
+                        'd/m/Y',
+                        strtotime((string) $item->primera_compra)
+                    )
+                    : null,
+                'ultima_compra' => $item->ultima_compra
+                    ? date(
+                        'd/m/Y',
+                        strtotime((string) $item->ultima_compra)
+                    )
+                    : null,
+                'dias_sin_compra' => $item->dias_sin_compra,
+                'locales' => (int) $item->locales,
+                'codigos' => (int) $item->codigos,
+                'segmento' => $item->segmento,
+            ];
+        };
+
+        return response()->json([
+            'modo' => $modo,
+            'resumen' => [
+                'clientes' => $clientes->count(),
+                'recurrentes' => $recurrentes->count(),
+                'frecuentes' => $frecuentes->count(),
+                'venta_recurrente' => $ventaRecurrente,
+                'porcentaje_venta_recurrente' =>
+                    $ventaTotalClientes != 0
+                        ? round(
+                            ($ventaRecurrente / $ventaTotalClientes) * 100,
+                            1
+                        )
+                        : 0,
+                'valor_promedio_cliente' =>
+                    $clientes->count() > 0
+                        ? $ventaTotalClientes / $clientes->count()
+                        : 0,
+                'cliente_mas_frecuente' =>
+                    $clienteMasFrecuente
+                        ? $serializarCliente($clienteMasFrecuente)
+                        : null,
+                'cliente_mayor_valor' =>
+                    $clienteMayorValor
+                        ? $serializarCliente($clienteMayorValor)
+                        : null,
+                'fecha_referencia' => date(
+                    'd/m/Y',
+                    strtotime((string) $fechaReferencia)
+                ),
+                'umbral_vip' => $umbralVip,
+            ],
+            'clientes' => $clientesOrdenados
+                ->take(25)
+                ->map($serializarCliente)
+                ->values(),
+            'recuperar' => $recuperar
+                ->map($serializarCliente)
+                ->values(),
+        ]);
+    }
+
+    /**
      * Ranking completo de vendedores, cargado sólo cuando se solicita.
      */
     public function vendedoresTodos(Request $request)
