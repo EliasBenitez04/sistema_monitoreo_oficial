@@ -1782,7 +1782,7 @@
                                                                             <input type="date"
                                                                                    name="fecha_proceso"
                                                                                    class="form-control"
-                                                                                   value="{{ CarbonCarbon::parse($trazabilidad->fecha_proceso)->format('Y-m-d') }}"
+                                                                                   value="{{ \Carbon\Carbon::parse($trazabilidad->fecha_proceso)->format('Y-m-d') }}"
                                                                                    required>
                                                                         </div>
                                                                     </div>
