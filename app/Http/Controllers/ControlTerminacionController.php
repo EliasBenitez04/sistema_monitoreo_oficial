@@ -2205,13 +2205,16 @@ class ControlTerminacionController extends Controller
     /**
      * Asocia facturación a las líneas visuales de AYALA / MODELO MUESTRA.
      *
-     * Criterio de esta primera prueba:
+     * Criterio de esta prueba:
+     * - número de remisión exacto (criterio principal);
      * - código exacto;
      * - cantidad exacta;
-     * - factura positiva;
      * - fecha dentro de +/- 30 días de la remisión;
-     * - se prioriza facturación de CASA CENTRAL / MATRIZ;
-     * - luego la fecha más cercana.
+     * - fecha más cercana;
+     * - local como desempate secundario.
+     *
+     * Si la facturación informa una remisión distinta, no se asocia
+     * automáticamente aunque coincidan código, cantidad y fecha.
      *
      * Si dos facturas quedan empatadas en el mejor criterio, no elegimos
      * ninguna: se marca AMBIGUA para evitar mostrar datos financieros falsos.
@@ -2481,14 +2484,14 @@ class ControlTerminacionController extends Controller
                             : 1;
                     }
 
+                    if ($a->_dias !== $b->_dias) {
+                        return $a->_dias <=> $b->_dias;
+                    }
+
                     if ($a->_prioridad_local
                         !== $b->_prioridad_local) {
                         return $a->_prioridad_local
                             <=> $b->_prioridad_local;
-                    }
-
-                    if ($a->_dias !== $b->_dias) {
-                        return $a->_dias <=> $b->_dias;
                     }
 
                     return strcmp(
@@ -2507,9 +2510,9 @@ class ControlTerminacionController extends Controller
             $empatadas = $candidatas->filter(function ($factura) use ($mejor) {
                 return $factura->_remision_coincide
                         === $mejor->_remision_coincide
+                    && $factura->_dias === $mejor->_dias
                     && $factura->_prioridad_local
-                        === $mejor->_prioridad_local
-                    && $factura->_dias === $mejor->_dias;
+                        === $mejor->_prioridad_local;
             });
 
             if ($empatadas->count() > 1) {
