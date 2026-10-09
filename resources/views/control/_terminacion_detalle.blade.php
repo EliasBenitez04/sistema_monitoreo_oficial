@@ -21,8 +21,47 @@
     .td-section-label{font-size:11px;text-transform:uppercase;font-weight:800;color:#7a8796;letter-spacing:.04em}
     .td-money{white-space:nowrap;font-weight:800;color:#26364a}
     .td-money small{display:block;font-size:10px;font-weight:600;color:#7a8796}
-    .td-factura{font-weight:800;color:#2f5597;white-space:nowrap}
-    .td-cliente-factura{font-size:11px;line-height:1.15}
+    .td-factura{
+        display:block;
+        font-weight:800;
+        color:#2f5597;
+        white-space:nowrap;
+        line-height:1.15;
+    }
+    .td-factura-meta{
+        display:block;
+        margin-top:2px;
+        font-size:10px;
+        line-height:1.2;
+        color:#7a8796;
+        white-space:nowrap;
+    }
+    .td-factura-remision{
+        display:block;
+        margin-top:3px;
+        font-size:10px;
+        font-weight:700;
+        line-height:1.2;
+        color:#198754;
+        white-space:nowrap;
+    }
+    .td-factura-estado{
+        display:inline-block;
+        margin-top:4px;
+    }
+    .td-cliente-factura{
+        display:block;
+        font-size:11px;
+        font-weight:800;
+        line-height:1.2;
+    }
+    .td-cliente-local{
+        display:block;
+        margin-top:3px;
+        font-size:10px;
+        line-height:1.2;
+        color:#7a8796;
+    }
     .td-valor-total{border-left:4px solid #17a2b8}
     .td-valor-remitido{border-left:4px solid #28a745}
     .td-valor-retenido{border-left:4px solid #ffc107;background:#fffdf5}
@@ -433,14 +472,12 @@
                                             {{ $remision->factura_numero }}
                                         </span>
 
-                                        <br>
-
-                                        <small class="text-muted">
+                                        <span class="td-factura-meta">
                                             {{ $remision->factura_fecha
                                                 ? \Carbon\Carbon::parse($remision->factura_fecha)->format('d/m/Y')
                                                 : '—' }}
                                             · {{ number_format($remision->factura_cantidad ?? 0, 0, ',', '.') }} u.
-                                        </small>
+                                        </span>
 
                                         @if(
                                             in_array(
@@ -449,20 +486,15 @@
                                                 true
                                             )
                                         )
-                                            <small class="d-block text-success font-weight-bold">
+                                            <span class="td-factura-remision">
                                                 <i class="fas fa-link mr-1"></i>
-                                                Misma remisión:
-                                                {{ $remision->numero_remision }}
-                                            </small>
-
-                                            <span class="badge badge-success mt-1">
-                                                ASOCIADA POR REMISIÓN/BASE
-                                            </span>
-                                        @else
-                                            <span class="badge badge-success mt-1">
-                                                ASOCIADA
+                                                Remisión {{ $remision->numero_remision }}
                                             </span>
                                         @endif
+
+                                        <span class="badge badge-success td-factura-estado">
+                                            ASOCIADA
+                                        </span>
                                     @elseif(($remision->factura_estado ?? null) === 'AMBIGUA')
                                         <span class="badge badge-warning">
                                             AMBIGUA
@@ -483,14 +515,14 @@
 
                                 <td>
                                     @if(($remision->factura_estado ?? null) === 'ASOCIADA')
-                                        <strong class="td-cliente-factura">
+                                        <span class="td-cliente-factura">
                                             {{ $remision->factura_cliente ?: 'SIN NOMBRE' }}
-                                        </strong>
+                                        </span>
 
                                         @if(!empty($remision->factura_local))
-                                            <small class="d-block text-muted">
+                                            <span class="td-cliente-local">
                                                 {{ $remision->factura_local }}
-                                            </small>
+                                            </span>
                                         @endif
                                     @elseif(($remision->factura_estado ?? null) === 'AMBIGUA')
                                         <small class="text-warning">
