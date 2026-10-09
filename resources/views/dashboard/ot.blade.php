@@ -1281,6 +1281,20 @@
 
                     @if ($ot->logisticaDetalle && $ot->logisticaDetalle->count() > 0)
 
+                        @if (session('success_distribucion'))
+                            <div class="alert alert-success shadow-sm">
+                                <i class="bi bi-check-circle mr-1"></i>
+                                {{ session('success_distribucion') }}
+                            </div>
+                        @endif
+
+                        @if ($errors->has('distribucion'))
+                            <div class="alert alert-danger shadow-sm">
+                                <i class="bi bi-exclamation-triangle mr-1"></i>
+                                {{ $errors->first('distribucion') }}
+                            </div>
+                        @endif
+
                         <div class="section-card logistica-section">
 
                             <div class="section-header">
@@ -1563,7 +1577,17 @@
                                             </div>
 
 
-                                            <div>
+                                            <div class="d-flex align-items-center">
+
+                                                @can('ot edit')
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-primary mr-2"
+                                                            data-toggle="modal"
+                                                            data-target="#editarDistribucion{{ $trazabilidad->id_trazabilidad }}">
+                                                        <i class="bi bi-pencil-square mr-1"></i>
+                                                        Editar distribución
+                                                    </button>
+                                                @endcan
 
                                                 <strong>
                                                     Total: {{ $totalDistribuido }}
@@ -1698,6 +1722,168 @@
                                             </div>
 
                                         </div>
+
+                                        @can('ot edit')
+                                            <div class="modal fade"
+                                                 id="editarDistribucion{{ $trazabilidad->id_trazabilidad }}"
+                                                 tabindex="-1"
+                                                 role="dialog"
+                                                 aria-hidden="true">
+                                                <div class="modal-dialog modal-lg modal-dialog-scrollable"
+                                                     role="document">
+                                                    <div class="modal-content">
+                                                        <form method="POST"
+                                                              action="{{ route('dashboard.ot.distribucion.actualizar', $trazabilidad->id_trazabilidad) }}"
+                                                              class="editar-distribucion-form">
+                                                            @csrf
+
+                                                            <div class="modal-header">
+                                                                <div>
+                                                                    <h5 class="modal-title mb-0">
+                                                                        Editar distribución #{{ $trazabilidad->id_trazabilidad }}
+                                                                    </h5>
+                                                                    <small class="text-muted">
+                                                                        OT {{ $ot->nro_ot }} · los totales se recalculan automáticamente
+                                                                    </small>
+                                                                </div>
+
+                                                                <button type="button"
+                                                                        class="close"
+                                                                        data-dismiss="modal"
+                                                                        aria-label="Cerrar">
+                                                                    <span aria-hidden="true">&times;</span>
+                                                                </button>
+                                                            </div>
+
+                                                            <div class="modal-body">
+                                                                <div class="alert alert-light border py-2 small">
+                                                                    <strong>Editable:</strong>
+                                                                    fecha, resultado esperado y cantidad por sucursal.
+                                                                    <br>
+                                                                    <span class="text-muted">
+                                                                        Producto Terminado, Total Distribuido, Estado y Diferencia son calculados y no se editan manualmente.
+                                                                    </span>
+                                                                </div>
+
+                                                                <div class="row">
+                                                                    <div class="col-md-4">
+                                                                        <div class="form-group">
+                                                                            <label>Producto Terminado</label>
+                                                                            <input type="number"
+                                                                                   class="form-control"
+                                                                                   value="{{ $productoTerminado }}"
+                                                                                   readonly>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col-md-4">
+                                                                        <div class="form-group">
+                                                                            <label>Fecha distribución</label>
+                                                                            <input type="date"
+                                                                                   name="fecha_proceso"
+                                                                                   class="form-control"
+                                                                                   value="{{ CarbonCarbon::parse($trazabilidad->fecha_proceso)->format('Y-m-d') }}"
+                                                                                   required>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col-md-4">
+                                                                        <div class="form-group">
+                                                                            <label>Resultado esperado</label>
+                                                                            <input type="number"
+                                                                                   min="0"
+                                                                                   name="resultado"
+                                                                                   class="form-control resultado-esperado-input"
+                                                                                   value="{{ $resultadoEsperado }}"
+                                                                                   required>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <hr>
+
+                                                                <h6 class="font-weight-bold mb-3">
+                                                                    Cantidad por sucursal
+                                                                </h6>
+
+                                                                <div class="row">
+                                                                    @foreach ($sucursalesAgrupadas as $sucursalEditar => $cantidadEditar)
+                                                                        <div class="col-md-4 col-sm-6">
+                                                                            <div class="form-group">
+                                                                                <label>
+                                                                                    {{ $sucursalEditar }}
+                                                                                </label>
+
+                                                                                <input type="hidden"
+                                                                                       name="sucursales[{{ $loop->index }}][nombre]"
+                                                                                       value="{{ $sucursalEditar }}">
+
+                                                                                <input type="number"
+                                                                                       min="0"
+                                                                                       name="sucursales[{{ $loop->index }}][cantidad]"
+                                                                                       class="form-control cantidad-sucursal-input"
+                                                                                       value="{{ $cantidadEditar }}"
+                                                                                       required>
+                                                                            </div>
+                                                                        </div>
+                                                                    @endforeach
+                                                                </div>
+
+                                                                <div class="row mt-2">
+                                                                    <div class="col-md-4">
+                                                                        <div class="branch-card logistica-total">
+                                                                            <div class="branch-name">
+                                                                                Total calculado
+                                                                            </div>
+                                                                            <div class="branch-value text-success preview-total">
+                                                                                {{ $totalDistribuido }}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col-md-4">
+                                                                        <div class="branch-card">
+                                                                            <div class="branch-name">
+                                                                                Esperado
+                                                                            </div>
+                                                                            <div class="branch-value preview-esperado">
+                                                                                {{ $resultadoEsperado }}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="col-md-4">
+                                                                        <div class="branch-card logistica-diferencia">
+                                                                            <div class="branch-name">
+                                                                                Diferencia
+                                                                            </div>
+                                                                            <div class="branch-value preview-diferencia">
+                                                                                {{ $diferencia }}
+                                                                            </div>
+                                                                            <small class="preview-estado text-muted"></small>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="modal-footer">
+                                                                <button type="button"
+                                                                        class="btn btn-light border"
+                                                                        data-dismiss="modal">
+                                                                    Cancelar
+                                                                </button>
+
+                                                                <button type="submit"
+                                                                        class="btn btn-primary">
+                                                                    <i class="bi bi-save mr-1"></i>
+                                                                    Guardar cambios
+                                                                </button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        @endcan
 
                                     </div>
 
@@ -1941,6 +2127,59 @@
 
                 });
 
+            });
+
+            document.querySelectorAll('.editar-distribucion-form').forEach(function(form) {
+                const cantidades = form.querySelectorAll('.cantidad-sucursal-input');
+                const esperado = form.querySelector('.resultado-esperado-input');
+                const totalEl = form.querySelector('.preview-total');
+                const esperadoEl = form.querySelector('.preview-esperado');
+                const diferenciaEl = form.querySelector('.preview-diferencia');
+                const estadoEl = form.querySelector('.preview-estado');
+
+                function recalcularDistribucion() {
+                    let total = 0;
+
+                    cantidades.forEach(function(input) {
+                        total += parseInt(input.value || '0', 10) || 0;
+                    });
+
+                    const esperadoValor =
+                        parseInt(esperado.value || '0', 10) || 0;
+
+                    const diferencia = esperadoValor - total;
+
+                    totalEl.textContent = total;
+                    esperadoEl.textContent = esperadoValor;
+
+                    diferenciaEl.classList.remove(
+                        'text-danger',
+                        'text-success',
+                        'text-warning'
+                    );
+
+                    if (diferencia > 0) {
+                        diferenciaEl.textContent = '+' + diferencia;
+                        diferenciaEl.classList.add('text-danger');
+                        estadoEl.textContent = 'Faltan ' + diferencia;
+                    } else if (diferencia < 0) {
+                        diferenciaEl.textContent = diferencia;
+                        diferenciaEl.classList.add('text-warning');
+                        estadoEl.textContent = 'Exceso ' + Math.abs(diferencia);
+                    } else {
+                        diferenciaEl.textContent = '0';
+                        diferenciaEl.classList.add('text-success');
+                        estadoEl.textContent = 'Correcto';
+                    }
+                }
+
+                cantidades.forEach(function(input) {
+                    input.addEventListener('input', recalcularDistribucion);
+                });
+
+                esperado.addEventListener('input', recalcularDistribucion);
+
+                recalcularDistribucion();
             });
 
         });
