@@ -21,7 +21,6 @@ use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
 use App\Http\Controllers\PedidosController;
 use App\Http\Controllers\MaestroCodigoController;
 use App\Http\Controllers\VentaController;
-use App\Http\Controllers\AsistenteVentasController;
 
 
 /*
@@ -331,13 +330,6 @@ Route::get(
     '/ventas',
     [VentaController::class, 'index']
 )->name('ventas.index');
-
-Route::get('/ventas/asistente', [AsistenteVentasController::class, 'index'])
-    ->name('ventas.asistente.index');
-
-Route::post('/ventas/asistente/preguntar', [AsistenteVentasController::class, 'preguntar'])
-    ->middleware('throttle:15,1')
-    ->name('ventas.asistente.preguntar');
 
 Route::get(
     '/ventas/vendedores/todos',

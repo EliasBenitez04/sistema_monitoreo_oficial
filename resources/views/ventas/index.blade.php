@@ -10,16 +10,10 @@
                     Resumen comercial, devoluciones, locales, productos y vendedores.
                 </p>
             </div>
-            <div class="d-flex flex-wrap align-items-center mt-2 mt-md-0">
-                <a href="{{ route('ventas.asistente.index') }}"
-                   class="btn btn-primary shadow-sm mr-2 mb-2 mb-md-0">
-                    <i class="fas fa-robot mr-1"></i> Asistente de Ventas
-                </a>
-                <a href="{{ route('ventas.importar.form') }}"
-                   class="btn btn-success shadow-sm">
+            <a href="{{ route('ventas.importar.form') }}"
+               class="btn btn-success shadow-sm mt-2 mt-md-0">
                 <i class="fas fa-file-import mr-1"></i> Importar ventas
-                </a>
-            </div>
+            </a>
         </div>
     </div>
 </section>
