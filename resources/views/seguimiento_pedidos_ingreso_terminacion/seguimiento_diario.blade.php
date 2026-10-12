@@ -8,7 +8,7 @@
             <div class="it-day-eyebrow">CONTROL DE PEDIDOS · INGRESO TERMINACIÓN</div>
             <h1 class="it-day-title mb-1">
                 <i class="fas fa-calendar-check mr-2"></i>
-                Control diario de OT
+                Control mensual y diario de OT
             </h1>
             <p class="text-muted mb-0">
                 Elegí una fecha para ver las OT que realmente salieron en
@@ -173,7 +173,7 @@
                                     @if($dia->con_pedido > 0)
                                         <span class="it-calendar-chip is-success">
                                             <i class="fas fa-check mr-1"></i>
-                                            {{ $dia->con_pedido }} pedido
+                                            {{ $dia->con_pedido }} con pedido
                                         </span>
                                     @endif
 
