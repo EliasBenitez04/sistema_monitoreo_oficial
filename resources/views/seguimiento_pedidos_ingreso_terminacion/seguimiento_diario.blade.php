@@ -57,6 +57,166 @@
         </div>
     </div>
 
+    <div class="card shadow-sm it-calendar-card mb-3">
+        <div class="card-header bg-white border-0 pb-0">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <div class="it-calendar-eyebrow">DASHBOARD MENSUAL</div>
+                    <h3 class="it-calendar-title mb-1">
+                        <i class="far fa-calendar-alt mr-2 text-primary"></i>
+                        {{ ucfirst($mesControl->locale('es')->translatedFormat('F Y')) }}
+                    </h3>
+                    <small class="text-muted">
+                        Cada día muestra las OT que llegaron a TERMINACION - TERMINACION
+                        y si estaban justificadas por un pedido IT vigente.
+                    </small>
+                </div>
+
+                <div class="it-calendar-nav mt-2 mt-md-0">
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                           'fecha' => $fechaControl->format('Y-m-d'),
+                           'mes' => $mesControl->copy()->subMonth()->format('Y-m')
+                       ]) }}">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+
+                    <a class="btn btn-outline-primary btn-sm"
+                       href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                           'fecha' => $fechaControl->format('Y-m-d'),
+                           'mes' => $fechaControl->format('Y-m')
+                       ]) }}">
+                        Mes de la fecha
+                    </a>
+
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                           'fecha' => $fechaControl->format('Y-m-d'),
+                           'mes' => $mesControl->copy()->addMonth()->format('Y-m')
+                       ]) }}">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-body pt-3">
+            <div class="row mb-3">
+                <div class="col-xl-3 col-md-6 mb-2 mb-xl-0">
+                    <div class="it-month-kpi">
+                        <small>DÍAS CON SALIDA</small>
+                        <strong>{{ number_format($resumenMensual->dias_con_salida,0,',','.') }}</strong>
+                        <span>días con movimiento T-T</span>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-2 mb-xl-0">
+                    <div class="it-month-kpi">
+                        <small>OT DEL MES</small>
+                        <strong>{{ number_format($resumenMensual->ots_unicas,0,',','.') }}</strong>
+                        <span>{{ number_format($resumenMensual->registros_ot_dia,0,',','.') }} registros OT/día</span>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-2 mb-md-0">
+                    <div class="it-month-kpi is-success">
+                        <small>CON PEDIDO</small>
+                        <strong>{{ number_format($resumenMensual->salidas_con_pedido,0,',','.') }}</strong>
+                        <span>{{ number_format($resumenMensual->porcentaje_justificado,1,',','.') }}% justificado</span>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6">
+                    <div class="it-month-kpi {{ $resumenMensual->salidas_sin_pedido > 0 ? 'is-danger' : 'is-success' }}">
+                        <small>SIN PEDIDO</small>
+                        <strong>{{ number_format($resumenMensual->salidas_sin_pedido,0,',','.') }}</strong>
+                        <span>{{ $resumenMensual->salidas_sin_pedido > 0 ? 'registros para revisar' : 'sin desvíos' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="it-calendar-weekdays">
+                <div>LUN</div>
+                <div>MAR</div>
+                <div>MIÉ</div>
+                <div>JUE</div>
+                <div>VIE</div>
+                <div>SÁB</div>
+                <div>DOM</div>
+            </div>
+
+            <div class="it-calendar-grid">
+                @foreach($semanasCalendario as $semana)
+                    @foreach($semana as $dia)
+                        <a href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                                'fecha' => $dia->fecha,
+                                'mes' => $mesControl->format('Y-m')
+                            ]) }}"
+                           class="it-calendar-day
+                                  {{ !$dia->es_mes ? 'is-outside' : '' }}
+                                  {{ $dia->es_hoy ? 'is-today' : '' }}
+                                  {{ $dia->seleccionado ? 'is-selected' : '' }}
+                                  {{ $dia->sin_pedido > 0 ? 'has-danger' : ($dia->ot_total > 0 ? 'has-success' : '') }}">
+
+                            <div class="it-calendar-day-top">
+                                <span class="it-calendar-day-number">{{ $dia->numero }}</span>
+
+                                @if($dia->ot_total > 0)
+                                    <span class="it-calendar-day-total">
+                                        {{ $dia->ot_total }} OT
+                                    </span>
+                                @endif
+                            </div>
+
+                            @if($dia->ot_total > 0)
+                                <div class="it-calendar-statuses">
+                                    @if($dia->con_pedido > 0)
+                                        <span class="it-calendar-chip is-success">
+                                            <i class="fas fa-check mr-1"></i>
+                                            {{ $dia->con_pedido }} pedido
+                                        </span>
+                                    @endif
+
+                                    @if($dia->sin_pedido > 0)
+                                        <span class="it-calendar-chip is-danger">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                                            {{ $dia->sin_pedido }} sin pedido
+                                        </span>
+                                    @endif
+                                </div>
+
+                                @if($dia->pedidos->isNotEmpty())
+                                    <div class="it-calendar-orders">
+                                        @foreach($dia->pedidos->take(3) as $pedidoDia)
+                                            <span>{{ $pedidoDia }}</span>
+                                        @endforeach
+
+                                        @if($dia->pedidos->count() > 3)
+                                            <span>+{{ $dia->pedidos->count() - 3 }}</span>
+                                        @endif
+                                    </div>
+                                @endif
+
+                                <div class="it-calendar-units">
+                                    {{ number_format($dia->prendas_salida,0,',','.') }} prendas T-T
+                                </div>
+                            @else
+                                <div class="it-calendar-empty">Sin salida</div>
+                            @endif
+                        </a>
+                    @endforeach
+                @endforeach
+            </div>
+
+            <div class="it-calendar-legend mt-3">
+                <span><i class="it-legend-dot is-success"></i> Todo con pedido</span>
+                <span><i class="it-legend-dot is-danger"></i> Tiene OT sin pedido</span>
+                <span><i class="it-legend-dot is-selected"></i> Día seleccionado</span>
+                <span class="text-muted">Hacé clic en un día para ver el detalle de OT debajo.</span>
+            </div>
+        </div>
+    </div>
+
     <div class="it-day-hero mb-3">
         <div class="row align-items-center">
             <div class="col-lg-7">
@@ -240,9 +400,208 @@
 </section>
 @endsection
 
-@push('page_styles')
+@push('page_css')
 <style>
 .it-day-shell{max-width:1650px}
+.it-calendar-card{
+    border:1px solid #e2e8f0;
+    border-radius:14px;
+    overflow:hidden;
+}
+.it-calendar-eyebrow{
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.12em;
+    color:#94a3b8;
+}
+.it-calendar-title{
+    font-size:22px;
+    font-weight:900;
+    color:#0f172a;
+}
+.it-calendar-nav{
+    display:flex;
+    gap:6px;
+}
+.it-month-kpi{
+    height:100%;
+    min-height:92px;
+    border:1px solid #e2e8f0;
+    border-left:4px solid #334155;
+    border-radius:10px;
+    padding:12px 13px;
+    background:#fff;
+}
+.it-month-kpi.is-success{border-left-color:#22c55e}
+.it-month-kpi.is-danger{border-left-color:#ef4444}
+.it-month-kpi small{
+    display:block;
+    color:#94a3b8;
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.04em;
+}
+.it-month-kpi strong{
+    display:block;
+    margin:4px 0 2px;
+    font-size:25px;
+    line-height:1;
+    color:#0f172a;
+}
+.it-month-kpi span{
+    color:#64748b;
+    font-size:10px;
+}
+.it-calendar-weekdays,
+.it-calendar-grid{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(0,1fr));
+}
+.it-calendar-weekdays{
+    border:1px solid #e2e8f0;
+    border-bottom:0;
+    border-radius:10px 10px 0 0;
+    overflow:hidden;
+    background:#f8fafc;
+}
+.it-calendar-weekdays div{
+    padding:8px 6px;
+    color:#64748b;
+    font-size:9px;
+    font-weight:900;
+    text-align:center;
+    letter-spacing:.06em;
+}
+.it-calendar-grid{
+    border-top:1px solid #e2e8f0;
+    border-left:1px solid #e2e8f0;
+}
+.it-calendar-day{
+    position:relative;
+    min-height:128px;
+    padding:9px;
+    border-right:1px solid #e2e8f0;
+    border-bottom:1px solid #e2e8f0;
+    background:#fff;
+    color:#334155;
+    text-decoration:none!important;
+    transition:background .15s ease, box-shadow .15s ease;
+}
+.it-calendar-day:hover{
+    z-index:2;
+    background:#f8fafc;
+    color:#0f172a;
+    box-shadow:inset 0 0 0 2px #bfdbfe;
+}
+.it-calendar-day.is-outside{
+    background:#f8fafc;
+    opacity:.5;
+}
+.it-calendar-day.has-success{
+    background:#f7fff9;
+}
+.it-calendar-day.has-danger{
+    background:#fff7f7;
+}
+.it-calendar-day.is-selected{
+    z-index:3;
+    box-shadow:inset 0 0 0 3px #2563eb;
+}
+.it-calendar-day.is-today .it-calendar-day-number{
+    background:#2563eb;
+    color:#fff;
+}
+.it-calendar-day-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+}
+.it-calendar-day-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:50%;
+    font-size:12px;
+    font-weight:900;
+    color:#0f172a;
+}
+.it-calendar-day-total{
+    font-size:10px;
+    font-weight:900;
+    color:#475569;
+}
+.it-calendar-statuses{
+    display:flex;
+    flex-wrap:wrap;
+    gap:4px;
+    margin-top:8px;
+}
+.it-calendar-chip{
+    display:inline-block;
+    border-radius:999px;
+    padding:4px 6px;
+    font-size:8px;
+    font-weight:900;
+    line-height:1.2;
+}
+.it-calendar-chip.is-success{
+    background:#dcfce7;
+    color:#166534;
+}
+.it-calendar-chip.is-danger{
+    background:#fee2e2;
+    color:#991b1b;
+}
+.it-calendar-orders{
+    display:flex;
+    flex-wrap:wrap;
+    gap:3px;
+    margin-top:7px;
+}
+.it-calendar-orders span{
+    display:inline-block;
+    border:1px solid #dbeafe;
+    border-radius:5px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    padding:2px 4px;
+    font-size:8px;
+    font-weight:900;
+}
+.it-calendar-units{
+    margin-top:7px;
+    color:#64748b;
+    font-size:8px;
+    font-weight:700;
+}
+.it-calendar-empty{
+    margin-top:12px;
+    color:#cbd5e1;
+    font-size:9px;
+}
+.it-calendar-legend{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:12px;
+    font-size:9px;
+}
+.it-legend-dot{
+    display:inline-block;
+    width:9px;
+    height:9px;
+    margin-right:4px;
+    border-radius:50%;
+}
+.it-legend-dot.is-success{background:#22c55e}
+.it-legend-dot.is-danger{background:#ef4444}
+.it-legend-dot.is-selected{
+    background:#2563eb;
+    box-shadow:0 0 0 2px #bfdbfe;
+}
 .it-day-eyebrow{
     font-size:10px;
     font-weight:900;
@@ -360,9 +719,18 @@
     color:#991b1b;
     border:1px solid #fecaca;
 }
+@media(max-width:991.98px){
+    .it-calendar-day{min-height:112px;padding:7px}
+    .it-calendar-orders span{font-size:7px}
+}
 @media(max-width:767.98px){
     .it-day-title{font-size:22px}
     .it-day-date{font-size:25px}
+    .it-calendar-card .card-body{overflow-x:auto}
+    .it-calendar-weekdays,
+    .it-calendar-grid{
+        min-width:760px;
+    }
 }
 </style>
 @endpush
