@@ -284,7 +284,7 @@ class SeguimientoPedidoProduccionController extends Controller
                 'ultima_fecha' => $ultimo ? $ultimo->fecha_proceso : null,
                 'dias_quieto' => $diasQuieto,
                 'prioridad' => $diasQuieto === null ? 'SIN DATOS'
-                    : ($diasQuieto >= 7 ? 'URGENTE' : ($diasQuieto >= 3 ? 'REVISAR' : 'NORMAL')),
+                    : ($diasQuieto > 14 ? 'URGENTE' : ($diasQuieto > 7 ? 'REVISAR' : 'NORMAL')),
             ];
         })->filter()->values();
 
