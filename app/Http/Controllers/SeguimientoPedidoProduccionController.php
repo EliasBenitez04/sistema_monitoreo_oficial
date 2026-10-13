@@ -217,9 +217,10 @@ class SeguimientoPedidoProduccionController extends Controller
         if (!$fechaLimite) {
             $vinculos = collect();
         }
-        // Excluir anulaciones manuales, incluso ante una reimportación antigua.
+        // Aplicar anulaciones únicamente si ya existían en la fecha de corte.
         $cambiosAnulados = DB::table('pedido_ot_cambios')
             ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
+            ->where('created_at', '<=', $fechaLimite->format('Y-m-d H:i:s'))
             ->select('pedido_id', 'ot_anterior')
             ->get()
             ->mapWithKeys(function ($c) {
@@ -233,7 +234,7 @@ class SeguimientoPedidoProduccionController extends Controller
             ->whereIn('id_ot', $idsOt)
             ->where('fecha_proceso', '<=', $fechaLimite->format('Y-m-d H:i:s'))
             ->select('id_ot', 'proceso', 'resultado', 'fecha_proceso')
-            ->orderBy('fecha_proceso')->get()->groupBy('id_ot');
+            ->orderBy('fecha_proceso')->orderBy('id_trazabilidad')->get()->groupBy('id_ot');
 
         // Corte histórico: una anulación posterior no elimina una OT del
         // análisis de una fecha anterior. La asociación P del pedido sí
