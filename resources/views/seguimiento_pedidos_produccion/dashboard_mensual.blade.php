@@ -16,16 +16,13 @@
 </div><div class="card-body">
 <p class="text-muted small">Fecha de corte: <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin movimientos del período' }}</strong>. Las salidas muestran OT/día; una misma OT puede aparecer más de una vez en diferentes fechas. Una OT asociada a un pedido P se reconoce aunque el pedido tenga fecha posterior a la salida.</p>
 <div class="row">
-@foreach([
-['OT/día procesadas',number_format($indicadores->ot_dia,0,',','.'),'Registros agrupados por día'],
-['TOTAL PRENDAS INGRESADAS',number_format($indicadores->prendas,0,',','.'),'100% del total'],
-['PRENDAS CON PEDIDO P',number_format($indicadores->con,0,',','.'),number_format($indicadores->efectividad,1,',','.').'% del total'],
-['PRENDAS SIN PEDIDO P',number_format($indicadores->sin,0,',','.'),'Sin asociación P']
-] as $kpi)
-<div class="col-xl-3 col-md-6 mb-3"><div class="border rounded p-3 h-100 bg-light">
-    <small class="text-muted d-block">{{ $kpi[0] }}</small><h2 class="font-weight-bold my-1">{{ $kpi[1] }}</h2><small>{{ $kpi[2] }}</small>
-</div></div>
-@endforeach
+    <div class="col-md-4 mb-3">
+        <div class="border rounded p-3 bg-light h-100">
+            <small class="text-muted d-block">OT/día procesadas</small>
+            <h2 class="font-weight-bold my-1">{{ number_format($indicadores->ot_dia,0,',','.') }}</h2>
+            <small>Registros agrupados por OT y día</small>
+        </div>
+    </div>
 </div>
 <div class="card border-primary mb-3">
     <div class="card-header"><strong>Distribución de prendas ingresadas según pedidos P</strong></div>
