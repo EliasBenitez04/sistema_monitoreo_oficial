@@ -115,6 +115,7 @@
                         <small>OT DEL MES</small>
                         <strong>{{ number_format($resumenMensual->ots_unicas,0,',','.') }}</strong>
                         <span>{{ number_format($resumenMensual->registros_ot_dia,0,',','.') }} registros OT/día</span>
+                        <span>{{ number_format($resumenMensual->prendas_salida,0,',','.') }} prendas procesadas</span>
                     </div>
                 </div>
 
@@ -123,6 +124,7 @@
                         <small>CON PEDIDO</small>
                         <strong>{{ number_format($resumenMensual->salidas_con_pedido,0,',','.') }}</strong>
                         <span>{{ number_format($resumenMensual->porcentaje_justificado,1,',','.') }}% justificado</span>
+                        <span>{{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }} prendas con pedido</span>
                     </div>
                 </div>
 
@@ -131,6 +133,7 @@
                         <small>SIN PEDIDO</small>
                         <strong>{{ number_format($resumenMensual->salidas_sin_pedido,0,',','.') }}</strong>
                         <span>{{ $resumenMensual->salidas_sin_pedido > 0 ? 'registros para revisar' : 'sin desvíos' }}</span>
+                        <span>{{ number_format($resumenMensual->prendas_sin_pedido,0,',','.') }} prendas sin pedido</span>
                     </div>
                 </div>
             </div>
