@@ -1,57 +1,82 @@
 @extends('layouts.app')
 @section('content')
-<section class="content-header"><div class="container-fluid d-flex justify-content-between align-items-center flex-wrap">
-    <div><h1><i class="fas fa-chart-line mr-2"></i>Control mensual de Producción P</h1>
-    <p class="text-muted mb-0">Hito: <strong>TERMINACION - INGRESO TERMINACION</strong>. Producción real, pedidos P pendientes y prioridades.</p></div>
-    <a href="{{ route('seguimiento-produccion.index') }}" class="btn btn-outline-secondary">Volver a Producción</a>
-</div></section>
+<style>
+    .prod-month-header{background:linear-gradient(115deg,#183153,#285587);color:#fff;border-radius:12px;padding:23px 26px;margin-bottom:18px}
+    .prod-month-header h1{font-size:1.65rem;font-weight:700;margin:0 0 7px}
+    .prod-month-header .prod-subtitle{color:#dce8f8;font-size:.9rem;margin:0}
+    .prod-overview{border:1px solid #e3e9f0;border-radius:12px;overflow:hidden;background:#fff;margin-bottom:18px;box-shadow:0 4px 15px rgba(20,45,72,.05)}
+    .prod-overview-head{padding:16px 20px;background:#f8fafc;border-bottom:1px solid #e7edf3}
+    .prod-kpi{padding:19px 20px;height:100%;border-right:1px solid #e8edf3}
+    .prod-kpi:last-child{border-right:0}
+    .prod-kpi-label{font-size:.76rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+    .prod-kpi-value{font-size:2rem;line-height:1.22;font-weight:750;margin:6px 0;color:#1e293b}
+    .prod-kpi-desc{font-size:.82rem;color:#64748b}
+    .prod-kpi-value.good{color:#168052}.prod-kpi-value.bad{color:#b64040}
+    .prod-progress{height:13px;border-radius:30px;overflow:hidden;background:#e9edf2;display:flex}
+    .prod-progress > div{height:100%}
+    .prod-section-title{font-size:1.1rem;font-weight:700;color:#24394f;margin-bottom:6px}
+    @media(max-width:767px){.prod-kpi{border-right:0;border-bottom:1px solid #e8edf3}.prod-kpi:last-child{border-bottom:0}.prod-month-header{padding:18px}.prod-kpi-value{font-size:1.7rem}}
+</style>
 <section class="content"><div class="container-fluid">
-<div class="card"><div class="card-header d-flex justify-content-between align-items-center flex-wrap">
-    <h3 class="card-title">Dashboard · {{ ucfirst($mes->locale('es')->translatedFormat('F Y')) }}</h3>
-    <div class="btn-group btn-group-sm">
-        <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual',['mes'=>$mes->copy()->subMonth()->format('Y-m')]) }}"><i class="fas fa-chevron-left"></i></a>
-        <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual') }}">Último mes cargado</a>
-        <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual',['mes'=>$mes->copy()->addMonth()->format('Y-m')]) }}"><i class="fas fa-chevron-right"></i></a>
+<div class="prod-month-header d-flex justify-content-between align-items-center flex-wrap">
+    <div class="mr-3 mb-2">
+        <h1><i class="fas fa-chart-line mr-2"></i>Control mensual de Producción P</h1>
+        <p class="prod-subtitle">Hito: <strong>TERMINACION - INGRESO TERMINACION</strong> · Pedidos P y prioridades</p>
     </div>
-</div><div class="card-body">
-<p class="text-muted small">Fecha de corte: <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin movimientos del período' }}</strong>. Las salidas muestran OT/día; una misma OT puede aparecer más de una vez en diferentes fechas. Una OT asociada a un pedido P se reconoce aunque el pedido tenga fecha posterior a la salida.</p>
-<div class="row">
-    <div class="col-md-4 mb-3">
-        <div class="border rounded p-3 bg-light h-100">
-            <small class="text-muted d-block">OT/día procesadas</small>
-            <h2 class="font-weight-bold my-1">{{ number_format($indicadores->ot_dia,0,',','.') }}</h2>
-            <small>Registros agrupados por OT y día</small>
+    <a href="{{ route('seguimiento-produccion.index') }}" class="btn btn-light btn-sm mb-2"><i class="fas fa-arrow-left mr-1"></i>Volver a Producción</a>
+</div>
+<div class="prod-overview">
+    <div class="prod-overview-head d-flex align-items-center justify-content-between flex-wrap">
+        <div class="mb-2 mb-md-0">
+            <h2 class="prod-section-title mb-1">Resumen · {{ ucfirst($mes->locale('es')->translatedFormat('F Y')) }}</h2>
+            <small class="text-muted"><i class="far fa-calendar-check mr-1"></i>Fecha de corte: <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin movimientos del período' }}</strong></small>
+        </div>
+        <div class="btn-group btn-group-sm" aria-label="Navegar meses">
+            <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual',['mes'=>$mes->copy()->subMonth()->format('Y-m')]) }}" title="Mes anterior"><i class="fas fa-chevron-left"></i></a>
+            <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual') }}">Último mes cargado</a>
+            <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual',['mes'=>$mes->copy()->addMonth()->format('Y-m')]) }}" title="Mes siguiente"><i class="fas fa-chevron-right"></i></a>
         </div>
     </div>
+    <div class="row no-gutters">
+        <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
+            <div class="prod-kpi-label">OT/día procesadas</div>
+            <div class="prod-kpi-value">{{ number_format($indicadores->ot_dia,0,',','.') }}</div>
+            <div class="prod-kpi-desc">Registros agrupados por OT y día</div>
+        </div></div>
+        <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
+            <div class="prod-kpi-label">Total prendas ingresadas</div>
+            <div class="prod-kpi-value">{{ number_format($indicadores->prendas,0,',','.') }}</div>
+            <div class="prod-kpi-desc">100% de las prendas del mes</div>
+        </div></div>
+        <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
+            <div class="prod-kpi-label">Con pedido P</div>
+            <div class="prod-kpi-value good">{{ number_format($indicadores->con,0,',','.') }}</div>
+            <div class="prod-kpi-desc">{{ number_format($indicadores->efectividad,1,',','.') }}% del total</div>
+        </div></div>
+        <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
+            <div class="prod-kpi-label">Sin pedido P</div>
+            <div class="prod-kpi-value bad">{{ number_format($indicadores->sin,0,',','.') }}</div>
+            <div class="prod-kpi-desc">{{ number_format($indicadores->prendas > 0 ? $indicadores->sin * 100 / $indicadores->prendas : 0,1,',','.') }}% del total</div>
+        </div></div>
+    </div>
+    <div class="px-4 pt-2 pb-3">
+        <div class="d-flex justify-content-between mb-2">
+            <small class="font-weight-bold text-success">Con pedido P</small>
+            <small class="font-weight-bold text-danger">Sin pedido P</small>
+        </div>
+        <div class="prod-progress">
+            <div class="bg-success" style="width:{{ $indicadores->efectividad }}%"></div>
+            <div class="bg-danger" style="width:{{ $indicadores->prendas > 0 ? 100 - $indicadores->efectividad : 0 }}%"></div>
+        </div>
+        <p class="small text-muted mb-0 mt-2">Las prendas con pedido P más las prendas sin pedido P equivalen al total ingresado. Una OT puede vincularse a un pedido de fecha posterior al movimiento.</p>
+    </div>
 </div>
-<div class="card border-primary mb-3">
-    <div class="card-header"><strong>Distribución de prendas ingresadas según pedidos P</strong></div>
+<div class="card mb-3">
+    <div class="card-header bg-white">
+        <h3 class="prod-section-title mb-1"><i class="far fa-calendar-alt mr-2 text-primary"></i>Calendario de ingresos a Producción</h3>
+        <small class="text-muted">Cada día muestra OT procesadas, prendas ingresadas y asociación P. Seleccioná «Ver OT» para consultar el detalle.</small>
+    </div>
     <div class="card-body">
-        <div class="row text-center">
-            <div class="col-md-4 mb-3">
-                <small class="text-muted d-block">TOTAL INGRESADO</small>
-                <h2 class="font-weight-bold">{{ number_format($indicadores->prendas,0,',','.') }}</h2>
-                <small>100% de las prendas del mes</small>
-            </div>
-            <div class="col-md-4 mb-3">
-                <small class="text-success d-block">CON PEDIDO P</small>
-                <h2 class="font-weight-bold text-success">{{ number_format($indicadores->con,0,',','.') }}</h2>
-                <small>{{ number_format($indicadores->efectividad,1,',','.') }}% del total</small>
-            </div>
-            <div class="col-md-4 mb-3">
-                <small class="text-danger d-block">SIN PEDIDO P</small>
-                <h2 class="font-weight-bold text-danger">{{ number_format($indicadores->sin,0,',','.') }}</h2>
-                <small>{{ number_format($indicadores->prendas > 0 ? $indicadores->sin * 100 / $indicadores->prendas : 0,1,',','.') }}% del total</small>
-            </div>
-        </div>
-        <div class="progress" style="height:16px">
-            <div class="progress-bar bg-success" style="width:{{ $indicadores->efectividad }}%" title="Con pedido P"></div>
-            <div class="progress-bar bg-danger" style="width:{{ $indicadores->prendas > 0 ? 100 - $indicadores->efectividad : 0 }}%" title="Sin pedido P"></div>
-        </div>
-        <small class="text-muted d-block mt-2">Conciliación: prendas con pedido P + prendas sin pedido P = total ingresado. Incluye pedidos P asociados aunque su fecha sea posterior al movimiento.</small>
-    </div>
-</div>
-<h5 class="mb-3">Calendario de ingresos a Producción</h5>
 <div class="table-responsive">
 <table class="table table-sm table-bordered text-center" style="min-width:740px">
 <thead class="thead-light"><tr><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th></tr></thead><tbody>
@@ -79,7 +104,8 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 @endforeach</tr>
 @endforeach
 </tbody></table></div>
-</div></div>
+    </div>
+</div>
 
 {{-- Detalle diario de las mismas OT y prendas que utiliza el calendario. --}}
 @foreach($dias as $diaDetalle)
