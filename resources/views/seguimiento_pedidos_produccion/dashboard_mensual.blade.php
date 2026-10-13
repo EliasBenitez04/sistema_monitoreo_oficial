@@ -16,6 +16,30 @@
     .prod-progress > div{height:100%}
     .prod-section-title{font-size:1.1rem;font-weight:700;color:#24394f;margin-bottom:6px}
     @media(max-width:767px){.prod-kpi{border-right:0;border-bottom:1px solid #e8edf3}.prod-kpi:last-child{border-bottom:0}.prod-month-header{padding:18px}.prod-kpi-value{font-size:1.7rem}}
+    /* Presentación operativa: calendario, indicadores y tablas */
+    .prod-calendar{border-collapse:separate;border-spacing:5px;background:#f3f6fa}
+    .prod-calendar th{background:#edf2f7;border:0!important;color:#526579;font-size:.76rem;text-transform:uppercase;letter-spacing:.06em;padding:11px}
+    .prod-calendar td{height:143px;border:1px solid #e5eaf1!important;border-radius:9px;background:#fff;padding:10px!important;text-align:left;min-width:112px}
+    .prod-calendar td.prod-day-risk{background:#fff9f5;border-color:#f0d9c9!important}
+    .prod-calendar td.prod-day-idle{background:#f9fafb;color:#9aa5b1}
+    .prod-day-number{font-size:.86rem;font-weight:800;color:#334155;margin-bottom:5px}
+    .prod-day-count{font-weight:800;color:#223850;font-size:1.08rem}
+    .prod-day-metric{font-size:.76rem;line-height:1.6}
+    .prod-day-qty{font-size:.76rem;color:#64748b;font-weight:600;margin:5px 0}
+    .prod-section-card{border:1px solid #e5eaf1!important;border-radius:11px!important;overflow:hidden;box-shadow:0 3px 13px rgba(20,45,72,.04);margin-bottom:18px}
+    .prod-section-card>.card-header{background:#f8fafc!important;border-bottom:1px solid #e5eaf1;padding:15px 18px;font-weight:700;color:#24394f}
+    .prod-section-card>.card-header strong{font-size:1rem}
+    .prod-table{font-size:.86rem}
+    .prod-table thead th{position:sticky;top:0;z-index:2;background:#edf2f7;color:#45596e;border:0;white-space:nowrap;padding:11px 12px}
+    .prod-table tbody td{padding:10px 12px;vertical-align:middle;border-top:1px solid #edf1f5}
+    .prod-table tbody tr:hover{background:#f2f7fb}
+    .prod-table td:last-child{white-space:nowrap}
+    .prod-stat{border:1px solid #e5eaf1;border-radius:9px;padding:15px;background:#fff;height:100%}
+    .prod-stat small{display:block;color:#64748b;font-size:.78rem}
+    .prod-stat h3{font-size:1.65rem;font-weight:800;margin:7px 0 0;color:#24394f}
+    .prod-stage-bar{height:5px;background:#e9eef4;border-radius:9px;overflow:hidden;margin-top:6px}
+    .prod-stage-bar span{display:block;height:100%;background:#547cae;border-radius:9px}
+    @media(max-width:768px){.prod-calendar td{height:120px;padding:6px!important}.prod-day-count{font-size:.91rem}.prod-calendar{border-spacing:2px}}
 </style>
 <section class="content"><div class="container-fluid">
 <div class="prod-month-header d-flex justify-content-between align-items-center flex-wrap">
@@ -78,7 +102,7 @@
     </div>
     <div class="card-body">
 <div class="table-responsive">
-<table class="table table-sm table-bordered text-center" style="min-width:740px">
+<table class="table prod-calendar mb-0" style="min-width:840px">
 <thead class="thead-light"><tr><th>Lun</th><th>Mar</th><th>Mié</th><th>Jue</th><th>Vie</th><th>Sáb</th><th>Dom</th></tr></thead><tbody>
 @php
 $primerDia = $mes->copy()->startOfMonth();
@@ -89,15 +113,15 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 @endphp
 @foreach(array_chunk($casillas,7) as $semana)
 <tr>@foreach($semana as $dia)
-<td style="width:14.28%;vertical-align:top;min-height:90px" class="{{ $dia && $dia->sin ? 'table-warning' : '' }}">
+<td style="width:14.28%;vertical-align:top" class="{{ !$dia || !$dia->total ? 'prod-day-idle' : ($dia->sin ? 'prod-day-risk' : '') }}">
 @if($dia)
-<strong>{{ $dia->numero }}</strong>
+<div class="prod-day-number">{{ $dia->numero }}</div>
 @if($dia->total)
-<div class="small"><strong>{{ $dia->total }} OT</strong></div>
-<div class="small text-success">{{ $dia->con }} con P</div>
-@if($dia->sin)<div class="small text-danger">{{ $dia->sin }} sin P</div>@endif
-<div class="small">{{ number_format($dia->prendas,0,',','.') }} prendas</div>
-<button type="button" class="btn btn-outline-primary btn-sm mt-1" data-toggle="modal" data-target="#detalleProduccion{{ $dia->numero }}">Ver OT</button>
+<div class="prod-day-count">{{ $dia->total }} OT</div>
+<div class="prod-day-metric text-success"><i class="fas fa-check-circle mr-1"></i>{{ $dia->con }} con P</div>
+@if($dia->sin)<div class="prod-day-metric text-danger"><i class="fas fa-exclamation-circle mr-1"></i>{{ $dia->sin }} sin P</div>@endif
+<div class="prod-day-qty">{{ number_format($dia->prendas,0,',','.') }} prendas</div>
+<button type="button" class="btn btn-outline-primary btn-sm mt-1 btn-block" data-toggle="modal" data-target="#detalleProduccion{{ $dia->numero }}">Ver OT</button>
 @else <div class="small text-muted">Sin salida</div> @endif
 @endif
 </td>
@@ -146,7 +170,7 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 @endif
 @endforeach
 
-<div class="card border-info"><div class="card-header"><strong>Análisis de producción y proyección por días hábiles</strong></div>
+<div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-chart-area text-primary mr-2"></i>Análisis de producción y proyección por días hábiles</strong></div>
 <div class="card-body">
 <div class="row">
 @foreach([
@@ -155,7 +179,7 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 ['Adicional proyectado',$indicadores->proyeccion_adicional],
 ['Total proyectado al cierre',$indicadores->proyeccion_cierre]
 ] as $elemento)
-<div class="col-xl-3 col-md-6 mb-3"><div class="border rounded p-3">
+<div class="col-xl-3 col-md-6 mb-3"><div class="prod-stat">
 <small class="d-block text-muted">{{ $elemento[0] }}</small>
 <h3 class="mb-0">{{ number_format($elemento[1],is_float($elemento[1])?1:0,',','.') }}</h3>
 </div></div>
@@ -167,21 +191,21 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 </p></div></div>
 
 <div class="row">
-<div class="col-xl-5"><div class="card"><div class="card-header"><strong>Cuello de botella · etapa de OT pendientes</strong></div><div class="table-responsive">
-<table class="table table-sm mb-0"><thead><tr><th>Proceso actual</th><th>OT</th><th>Prendas</th></tr></thead><tbody>
+<div class="col-xl-5"><div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de botella · etapa de OT pendientes</strong></div><div class="table-responsive">
+<table class="table prod-table mb-0"><thead><tr><th>Proceso actual</th><th>OT</th><th>Prendas</th></tr></thead><tbody>
 @forelse($porEtapa as $fila)<tr><td>{{ $fila->etapa }}</td><td>{{ $fila->ots }}</td><td>{{ number_format($fila->prendas,0,',','.') }}</td></tr>
 @empty<tr><td colspan="3" class="text-muted">Sin OT pendientes</td></tr>@endforelse
 </tbody></table></div></div></div>
-<div class="col-xl-7"><div class="card"><div class="card-header"><strong>OT pendientes de pedidos P</strong></div>
+<div class="col-xl-7"><div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-clipboard-list text-primary mr-2"></i>OT pendientes de pedidos P</strong></div>
 <div class="card-body"><div class="row">
 <div class="col-4"><small class="text-muted">OT pendientes</small><h3>{{ number_format($indicadores->pendientes,0,',','.') }}</h3></div>
 <div class="col-4"><small class="text-muted">Prendas según último proceso</small><h3>{{ number_format($indicadores->prendas_pendientes,0,',','.') }}</h3></div>
-<div class="col-4"><small class="text-muted">Espera ≥7 días</small><h3 class="text-danger">{{ number_format($indicadores->urgentes,0,',','.') }}</h3></div>
+<div class="col-4"><small class="text-muted">Urgentes · 15 días o más</small><h3 class="text-danger">{{ number_format($indicadores->urgentes,0,',','.') }}</h3></div>
 </div><p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último movimiento, lo que sea posterior. Normal: 0 a 7 días; revisar: 8 a 14 días; urgente: 15 días o más. Sin datos: no puede clasificarse por falta de fecha. Una OT deja de estar pendiente cuando registra TERMINACION - INGRESO TERMINACION, aunque la cantidad ingresada difiera de la cantidad ordenada. Para OT sin ese hito, las prendas pendientes se basan en el resultado del último movimiento disponible, sin depender de CORTE.</p></div>
 </div></div></div>
 
-<div class="card"><div class="card-header"><strong>Prioridades y pendientes para intervenir</strong></div>
-<div class="table-responsive" style="max-height:540px;overflow:auto"><table class="table table-sm table-hover mb-0">
+<div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Prioridades y pendientes para intervenir</strong><div class="small text-muted font-weight-normal mt-1">Ordenadas por días sin movimiento, de mayor a menor.</div></div>
+<div class="table-responsive" style="max-height:540px;overflow:auto"><table class="table table-hover prod-table mb-0">
 <thead class="thead-light"><tr><th>OT</th><th>Pedido P</th><th>Descripción</th><th>Etapa actual</th><th>Última actividad</th><th>Sin movimiento</th><th>Prendas OT</th><th>Ingresadas a IT</th><th>Cant. último proceso</th><th>Prioridad</th></tr></thead><tbody>
 @forelse($pendientes->sort(function($a, $b) { if ($a->dias_quieto === null) return $b->dias_quieto === null ? strcmp((string)$a->nro_ot, (string)$b->nro_ot) : 1; if ($b->dias_quieto === null) return -1; return ($b->dias_quieto <=> $a->dias_quieto) ?: strcmp((string)$a->nro_ot, (string)$b->nro_ot); }) as $fila)
 <tr><td><strong>{{ $fila->nro_ot }}</strong></td><td>{{ $fila->pedidos }}</td><td>{{ $fila->descripcion }}</td>
@@ -190,7 +214,7 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 <td><span class="badge badge-{{ $fila->prioridad==='URGENTE'?'danger':($fila->prioridad==='REVISAR'?'warning':($fila->prioridad==='SIN DATOS'?'secondary':'success')) }}">{{ $fila->prioridad }}</span></td></tr>
 @empty<tr><td colspan="10" class="text-center text-muted">Sin pendientes para este corte</td></tr>@endforelse
 </tbody></table></div></div>
-<div class="card"><div class="card-header"><strong>Movimientos del hito durante el mes · Asociación con pedidos P</strong></div>
+<div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-truck-loading text-primary mr-2"></i>Movimientos del hito durante el mes · Asociación con pedidos P</strong></div>
 <div class="table-responsive" style="max-height:450px;overflow:auto"><table class="table table-sm mb-0">
 <thead><tr><th>Fecha</th><th>OT</th><th>Descripción</th><th>Prendas</th><th>Pedido P</th><th>Situación</th></tr></thead><tbody>
 @forelse($salidas as $fila)<tr><td>{{ date('d/m/Y',strtotime($fila->fecha)) }}</td><td>{{ $fila->nro_ot }}</td>
