@@ -175,14 +175,14 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 <div class="col-xl-7"><div class="card"><div class="card-header"><strong>OT pendientes de pedidos P</strong></div>
 <div class="card-body"><div class="row">
 <div class="col-4"><small class="text-muted">OT pendientes</small><h3>{{ number_format($indicadores->pendientes,0,',','.') }}</h3></div>
-<div class="col-4"><small class="text-muted">Prendas pendientes</small><h3>{{ number_format($indicadores->prendas_pendientes,0,',','.') }}</h3></div>
+<div class="col-4"><small class="text-muted">Prendas según último proceso</small><h3>{{ number_format($indicadores->prendas_pendientes,0,',','.') }}</h3></div>
 <div class="col-4"><small class="text-muted">Espera ≥7 días</small><h3 class="text-danger">{{ number_format($indicadores->urgentes,0,',','.') }}</h3></div>
-</div><p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último movimiento, lo que sea posterior. Normal: 0 a 7 días; revisar: 8 a 14 días; urgente: 15 días o más. Sin datos: no puede clasificarse por falta de fecha. Las OT con ingreso parcial mantienen su saldo pendiente.</p></div>
+</div><p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último movimiento, lo que sea posterior. Normal: 0 a 7 días; revisar: 8 a 14 días; urgente: 15 días o más. Sin datos: no puede clasificarse por falta de fecha. Una OT deja de estar pendiente cuando registra TERMINACION - INGRESO TERMINACION, aunque la cantidad ingresada difiera de la cantidad ordenada. Para OT sin ese hito, las prendas pendientes se basan en el resultado del último movimiento disponible, sin depender de CORTE.</p></div>
 </div></div></div>
 
 <div class="card"><div class="card-header"><strong>Prioridades y pendientes para intervenir</strong></div>
 <div class="table-responsive" style="max-height:540px;overflow:auto"><table class="table table-sm table-hover mb-0">
-<thead class="thead-light"><tr><th>OT</th><th>Pedido P</th><th>Descripción</th><th>Etapa actual</th><th>Última actividad</th><th>Sin movimiento</th><th>Prendas OT</th><th>Ingresadas</th><th>Saldo</th><th>Prioridad</th></tr></thead><tbody>
+<thead class="thead-light"><tr><th>OT</th><th>Pedido P</th><th>Descripción</th><th>Etapa actual</th><th>Última actividad</th><th>Sin movimiento</th><th>Prendas OT</th><th>Ingresadas a IT</th><th>Cant. último proceso</th><th>Prioridad</th></tr></thead><tbody>
 @forelse($pendientes->sort(function($a, $b) { if ($a->dias_quieto === null) return $b->dias_quieto === null ? strcmp((string)$a->nro_ot, (string)$b->nro_ot) : 1; if ($b->dias_quieto === null) return -1; return ($b->dias_quieto <=> $a->dias_quieto) ?: strcmp((string)$a->nro_ot, (string)$b->nro_ot); }) as $fila)
 <tr><td><strong>{{ $fila->nro_ot }}</strong></td><td>{{ $fila->pedidos }}</td><td>{{ $fila->descripcion }}</td>
 <td>{{ $fila->etapa }}</td><td>{{ $fila->ultima_fecha ? date('d/m/Y',strtotime($fila->ultima_fecha)) : '-' }}</td>
