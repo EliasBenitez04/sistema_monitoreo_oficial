@@ -971,6 +971,7 @@ Route::get('/seguimiento-terminacion/{id}', [SeguimientoPedidoController::class,
 |--------------------------------------------------------------------------
 */
 Route::get('/seguimiento-produccion', [SeguimientoPedidoProduccionController::class, 'index'])->name('seguimiento-produccion.index');
+Route::get('/seguimiento-produccion/dashboard-mensual', [SeguimientoPedidoProduccionController::class, 'dashboardMensual'])->name('seguimiento-produccion.dashboard-mensual');
 Route::get('/seguimiento-produccion/informe-gerencial', [SeguimientoPedidoProduccionController::class, 'informeGerencial'])->name('seguimiento-produccion.informe-gerencial');
 Route::post('/seguimiento-produccion/importar', [SeguimientoPedidoController::class, 'importar'])->name('seguimiento-produccion.importar');
 Route::get('/seguimiento-produccion/{id}', [SeguimientoPedidoProduccionController::class, 'show'])->name('seguimiento-produccion.show');
