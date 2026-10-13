@@ -127,6 +127,151 @@ class SeguimientoPedidoProduccionController extends Controller
         ));
     }
 
+    public function dashboardMensual(Request $request)
+    {
+        $ultimoDato = DB::table('ot_trazabilidad')
+            ->whereRaw("UPPER(TRIM(proceso)) = ?", [self::PROCESO_CIERRE])
+            ->max('fecha_proceso');
+        $corte = $ultimoDato ? Carbon::parse($ultimoDato)->startOfDay() : Carbon::today();
+        try {
+            $mes = $request->filled('mes')
+                ? Carbon::createFromFormat('Y-m', $request->input('mes'))->startOfMonth()
+                : $corte->copy()->startOfMonth();
+        } catch (\Exception $e) {
+            $mes = $corte->copy()->startOfMonth();
+        }
+        $inicio = $mes->copy()->startOfMonth();
+        $fin = $mes->copy()->endOfMonth();
+        $esActual = $mes->format('Y-m') === $corte->format('Y-m');
+        $corteMes = $mes->lt($corte->copy()->startOfMonth())
+            ? $fin->copy()->startOfDay()
+            : ($esActual ? $corte->copy() : null);
+        $fechaLimite = $corteMes ? $corteMes->copy()->endOfDay() : null;
+
+        // Se toma TODA la salida registrada del hito, incluso OT sin pedido P.
+        $salidas = DB::table('ot_trazabilidad as t')
+            ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
+            ->whereRaw("UPPER(TRIM(t.proceso)) = ?", [self::PROCESO_CIERRE])
+            ->whereBetween('t.fecha_proceso', [
+                $inicio->format('Y-m-d 00:00:00'),
+                $fin->format('Y-m-d 23:59:59'),
+            ])
+            ->select('o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden',
+                DB::raw('DATE(t.fecha_proceso) as fecha'),
+                DB::raw('SUM(COALESCE(t.resultado,0)) as prendas'))
+            ->groupBy('o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden', DB::raw('DATE(t.fecha_proceso)'))
+            ->orderBy('fecha')->get();
+
+        $idsSalida = $salidas->pluck('id_ot')->unique()->all();
+        $pedidosSalida = empty($idsSalida) ? collect()
+            : DB::table('seguimiento_pedido_detalle as d')
+                ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
+                ->whereIn('d.id_ot', $idsSalida)
+                ->where('p.nro_pedido', 'ILIKE', 'P%')
+                ->whereNotNull('p.fecha_pedido')
+                ->select('d.id_ot', 'p.nro_pedido', 'p.fecha_pedido')
+                ->get()->groupBy('id_ot');
+
+        $salidas = $salidas->map(function ($fila) use ($pedidosSalida) {
+            $pedidos = collect($pedidosSalida->get($fila->id_ot, collect()))
+                ->filter(function ($p) use ($fila) {
+                    return substr((string) $p->fecha_pedido, 0, 10) <= $fila->fecha;
+                });
+            $fila->pedidos = $pedidos->pluck('nro_pedido')->unique()->implode(', ');
+            $fila->justificada = $pedidos->isNotEmpty();
+            return $fila;
+        });
+
+        $dias = collect();
+        $cursor = $inicio->copy();
+        while ($cursor->lte($fin)) {
+            $fecha = $cursor->format('Y-m-d');
+            $filas = $salidas->where('fecha', $fecha);
+            $dias->push((object) [
+                'fecha' => $fecha, 'numero' => $cursor->day,
+                'habil' => $cursor->isWeekday(),
+                'total' => $filas->count(),
+                'con' => $filas->where('justificada', true)->count(),
+                'sin' => $filas->where('justificada', false)->count(),
+                'prendas' => (int) $filas->sum('prendas'),
+            ]);
+            $cursor->addDay();
+        }
+        $total = (int) $salidas->sum('prendas');
+        $con = (int) $salidas->where('justificada', true)->sum('prendas');
+        $sin = (int) $salidas->where('justificada', false)->sum('prendas');
+
+        // Pedidos P activos y trazabilidad de su etapa actual.
+        $vinculos = DB::table('seguimiento_pedido_detalle as d')
+            ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
+            ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+            ->where('p.nro_pedido', 'ILIKE', 'P%')
+            ->when($fechaLimite, function ($q) use ($fechaLimite) {
+                $q->whereDate('p.fecha_pedido', '<=', $fechaLimite->format('Y-m-d'));
+            })
+            ->select('p.id as pedido_id', 'p.nro_pedido', 'p.fecha_pedido',
+                'o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden')->get();
+        if (!$fechaLimite) {
+            $vinculos = collect();
+        }
+        $idsOt = $vinculos->pluck('id_ot')->unique()->all();
+        $movimientos = empty($idsOt) ? collect() : DB::table('ot_trazabilidad')
+            ->whereIn('id_ot', $idsOt)
+            ->where('fecha_proceso', '<=', $fechaLimite->format('Y-m-d H:i:s'))
+            ->select('id_ot', 'proceso', 'resultado', 'fecha_proceso')
+            ->orderBy('fecha_proceso')->get()->groupBy('id_ot');
+
+        $pendientes = $vinculos->groupBy('id_ot')->map(function ($registros, $idOt) use ($movimientos, $corteMes) {
+            $historial = collect($movimientos->get($idOt, collect()));
+            $hito = $historial->first(function ($tr) {
+                return strtoupper(trim($tr->proceso)) === self::PROCESO_CIERRE;
+            });
+            if ($hito) return null;
+            $base = $registros->first();
+            $ultimo = $historial->last();
+            $fechaMovimiento = $ultimo ? Carbon::parse($ultimo->fecha_proceso)->startOfDay() : null;
+            $diasQuieto = $fechaMovimiento ? $fechaMovimiento->diffInDays($corteMes) : null;
+            $etapa = $ultimo ? trim($ultimo->proceso) : 'SIN MOVIMIENTO';
+            return (object) [
+                'nro_ot' => $base->nro_ot, 'descripcion' => $base->descripcion,
+                'cantidad' => (int) $base->cantidad_orden,
+                'pedidos' => $registros->pluck('nro_pedido')->unique()->implode(', '),
+                'etapa' => $etapa, 'ultima_fecha' => $ultimo ? $ultimo->fecha_proceso : null,
+                'dias_quieto' => $diasQuieto,
+                'prioridad' => $diasQuieto === null || $diasQuieto >= 7 ? 'URGENTE' : ($diasQuieto >= 3 ? 'REVISAR' : 'NORMAL'),
+            ];
+        })->filter()->values();
+
+        $porEtapa = $pendientes->groupBy('etapa')->map(function ($items, $etapa) {
+            return (object) ['etapa' => $etapa, 'ots' => $items->count(), 'prendas' => (int) $items->sum('cantidad')];
+        })->sortByDesc('ots')->values();
+
+        $habilesTranscurridos = $dias->filter(function ($d) use ($corteMes) {
+            return $corteMes && $d->fecha <= $corteMes->format('Y-m-d') && $d->habil;
+        })->count();
+        $habilesRestantes = $dias->filter(function ($d) use ($corteMes) {
+            return $corteMes && $d->fecha > $corteMes->format('Y-m-d') && $d->habil;
+        })->count();
+        $promedio = $habilesTranscurridos > 0 ? $total / $habilesTranscurridos : 0;
+
+        $indicadores = (object) [
+            'fecha_corte' => $corteMes, 'ot_dia' => $salidas->count(),
+            'prendas' => $total, 'con' => $con, 'sin' => $sin,
+            'efectividad' => $total > 0 ? round($con * 100 / $total, 1) : 0,
+            'pendientes' => $pendientes->count(),
+            'prendas_pendientes' => (int) $pendientes->sum('cantidad'),
+            'urgentes' => $pendientes->where('prioridad', 'URGENTE')->count(),
+            'promedio' => round($promedio, 1),
+            'habiles_transcurridos' => $habilesTranscurridos,
+            'habiles_restantes' => $habilesRestantes,
+            'proyeccion_adicional' => (int) round($promedio * $habilesRestantes),
+            'proyeccion_cierre' => (int) round($total + $promedio * $habilesRestantes),
+        ];
+        return view('seguimiento_pedidos_produccion.dashboard_mensual', compact(
+            'mes', 'dias', 'salidas', 'pendientes', 'porEtapa', 'indicadores'
+        ));
+    }
+
     public function informeGerencial(Request $request)
     {
         $hoy = Carbon::today();
