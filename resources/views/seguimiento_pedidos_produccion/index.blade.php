@@ -13,6 +13,9 @@
             <a href="{{ route('pedidos.index') }}" class="btn btn-dark shadow-sm mr-1">
                 <i class="fas fa-th-large mr-1"></i> PEDIDOS
             </a>
+            <a href="{{ route('seguimiento-produccion.dashboard-mensual') }}" class="btn btn-success shadow-sm mr-1">
+                <i class="fas fa-calendar-alt mr-1"></i> Dashboard mensual
+            </a>
             <a href="{{ route('seguimiento-produccion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
                 <i class="fas fa-chart-line mr-1"></i> Informe gerencial
             </a>
