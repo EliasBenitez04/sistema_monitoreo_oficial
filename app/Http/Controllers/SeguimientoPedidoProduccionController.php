@@ -251,15 +251,20 @@ class SeguimientoPedidoProduccionController extends Controller
             $movimientosHito = $historial->filter(function ($tr) {
                 return strtoupper(trim((string) $tr->proceso)) === self::PROCESO_CIERRE;
             });
-            $cantidadIngresada = max(0, (int) $movimientosHito->sum('resultado'));
-            $cantidadPendiente = max(0, $cantidadOrden - $cantidadIngresada);
-
-            // Un hito parcial NO significa OT completa.
-            if ($cantidadPendiente === 0 && $cantidadOrden > 0) {
+            // Una OT se considera atendida en cuanto llega al hito.
+            // No comparar el resultado del hito contra la cantidad original:
+            // las cantidades pueden variar entre procesos.
+            if ($movimientosHito->isNotEmpty()) {
                 return null;
             }
 
             $ultimo = $historial->last();
+            // Para OT todavía pendientes, tomar el resultado del último
+            // movimiento disponible, sea cual sea el proceso (sin exigir CORTE).
+            $cantidadIngresada = 0;
+            $cantidadPendiente = $ultimo && $ultimo->resultado !== null
+                ? max(0, (int) $ultimo->resultado)
+                : $cantidadOrden;
             $fechaMovimiento = $ultimo ? Carbon::parse($ultimo->fecha_proceso)->startOfDay() : null;
 
             // La espera nunca comienza antes de solicitar la OT.
@@ -274,9 +279,7 @@ class SeguimientoPedidoProduccionController extends Controller
                 $inicioEspera = $fechaMovimiento;
             }
             $diasQuieto = $inicioEspera ? max(0, $inicioEspera->diffInDays($corteMes, false)) : null;
-            $etapa = $cantidadIngresada > 0
-                ? 'INGRESO TERMINACION PARCIAL'
-                : ($ultimo ? trim((string) $ultimo->proceso) : 'SIN MOVIMIENTO REGISTRADO');
+            $etapa = $ultimo ? trim((string) $ultimo->proceso) : 'SIN MOVIMIENTO REGISTRADO';
 
             return (object) [
                 'nro_ot' => $base->nro_ot, 'descripcion' => $base->descripcion,
