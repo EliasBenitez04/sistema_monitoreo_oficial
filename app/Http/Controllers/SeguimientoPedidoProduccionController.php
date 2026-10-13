@@ -214,6 +214,13 @@ class SeguimientoPedidoProduccionController extends Controller
         if (!$fechaLimite) {
             $vinculos = collect();
         }
+        // Excluir anulaciones manuales, incluso ante una reimportación antigua.
+        $vinculos = $vinculos->reject(function ($v) {
+            return DB::table('pedido_ot_cambios')
+                ->where('pedido_id', $v->pedido_id)
+                ->where('ot_anterior', (string) $v->nro_ot)
+                ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])->exists();
+        })->values();
         $idsOt = $vinculos->pluck('id_ot')->unique()->all();
         $movimientos = empty($idsOt) ? collect() : DB::table('ot_trazabilidad')
             ->whereIn('id_ot', $idsOt)
