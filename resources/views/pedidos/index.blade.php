@@ -24,6 +24,16 @@
             </div>
         </a>
 
+        <a href="{{ route('pedidos.administrar.index') }}" class="pd-card is-admin">
+            <div class="pd-icon"><i class="fas fa-edit"></i></div>
+            <div class="pd-card-body">
+                <div class="pd-tag">GESTIÓN</div>
+                <h3>Administrar pedidos y OT</h3>
+                <p>Listar pedidos P, T e IT; corregir numeración, reemplazar o desvincular OT con historial.</p>
+                <span>Abrir administración <i class="fas fa-arrow-right ml-1"></i></span>
+            </div>
+        </a>
+
         <a href="{{ route('seguimiento-produccion.index') }}" class="pd-card is-prod">
             <div class="pd-icon"><i class="fas fa-industry"></i></div>
             <div class="pd-card-body">
@@ -75,7 +85,7 @@
 }
 .pd-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(15,23,42,.09);border-color:#cbd5e1}
 .pd-card:before{content:'';position:absolute;left:0;right:0;top:0;height:5px;background:#64748b}
-.pd-card.is-import:before{background:#0f172a}.pd-card.is-prod:before{background:#2563eb}.pd-card.is-it:before{background:#6366f1}.pd-card.is-term:before{background:#16a34a}
+.pd-card.is-admin:before{background:#eab308}.pd-card.is-import:before{background:#0f172a}.pd-card.is-prod:before{background:#2563eb}.pd-card.is-it:before{background:#6366f1}.pd-card.is-term:before{background:#16a34a}
 .pd-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#334155;font-size:20px;margin-bottom:22px}
 .pd-card.is-prod .pd-icon{background:#eff6ff;color:#2563eb}.pd-card.is-it .pd-icon{background:#eef2ff;color:#4f46e5}.pd-card.is-term .pd-icon{background:#f0fdf4;color:#15803d}
 .pd-tag{font-size:9px;font-weight:900;letter-spacing:.1em;color:#94a3b8;margin-bottom:5px}
