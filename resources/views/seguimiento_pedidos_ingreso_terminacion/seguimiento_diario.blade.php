@@ -138,6 +138,34 @@
                 </div>
             </div>
 
+            <div class="card border-success mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <div>
+                            <div class="text-success font-weight-bold small">EFECTIVIDAD DE SALIDA DEL MES</div>
+                            <h3 class="mb-1 font-weight-bold">{{ number_format($resumenMensual->efectividad_prendas,1,',','.') }}%</h3>
+                            <span class="text-muted small">
+                                {{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }} prendas con pedido IT
+                                de {{ number_format($resumenMensual->prendas_salida,0,',','.') }} procesadas.
+                            </span>
+                        </div>
+                        <div class="text-muted small mt-2 mt-md-0">
+                            Efectividad = prendas con pedido / prendas procesadas × 100
+                        </div>
+                    </div>
+                    <div class="progress mt-3" style="height:14px">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width:{{ $resumenMensual->efectividad_prendas }}%"
+                             aria-valuenow="{{ $resumenMensual->efectividad_prendas }}"
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <small class="d-block mt-2 text-muted">
+                        Mide qué porcentaje de prendas T-T corresponde a pedidos IT vigentes.
+                        No representa el porcentaje de cumplimiento de todos los pedidos pendientes.
+                    </small>
+                </div>
+            </div>
+
             <div class="card border-primary mb-3">
                 <div class="card-header bg-light">
                     <strong><i class="fas fa-calculator text-primary mr-1"></i>
