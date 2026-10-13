@@ -27,6 +27,33 @@
 </div></div>
 @endforeach
 </div>
+<div class="card border-primary mb-3">
+    <div class="card-header"><strong>Distribución de prendas ingresadas según pedidos P</strong></div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-4 mb-3">
+                <small class="text-muted d-block">TOTAL INGRESADO</small>
+                <h2 class="font-weight-bold">{{ number_format($indicadores->prendas,0,',','.') }}</h2>
+                <small>100% de las prendas del mes</small>
+            </div>
+            <div class="col-md-4 mb-3">
+                <small class="text-success d-block">CON PEDIDO P</small>
+                <h2 class="font-weight-bold text-success">{{ number_format($indicadores->con,0,',','.') }}</h2>
+                <small>{{ number_format($indicadores->efectividad,1,',','.') }}% del total</small>
+            </div>
+            <div class="col-md-4 mb-3">
+                <small class="text-danger d-block">SIN PEDIDO P</small>
+                <h2 class="font-weight-bold text-danger">{{ number_format($indicadores->sin,0,',','.') }}</h2>
+                <small>{{ number_format($indicadores->prendas > 0 ? $indicadores->sin * 100 / $indicadores->prendas : 0,1,',','.') }}% del total</small>
+            </div>
+        </div>
+        <div class="progress" style="height:16px">
+            <div class="progress-bar bg-success" style="width:{{ $indicadores->efectividad }}%" title="Con pedido P"></div>
+            <div class="progress-bar bg-danger" style="width:{{ $indicadores->prendas > 0 ? 100 - $indicadores->efectividad : 0 }}%" title="Sin pedido P"></div>
+        </div>
+        <small class="text-muted d-block mt-2">Conciliación: prendas con pedido P + prendas sin pedido P = total ingresado. Incluye pedidos P asociados aunque su fecha sea posterior al movimiento.</small>
+    </div>
+</div>
 <h5 class="mb-3">Calendario de ingresos a Producción</h5>
 <div class="table-responsive">
 <table class="table table-sm table-bordered text-center" style="min-width:740px">
