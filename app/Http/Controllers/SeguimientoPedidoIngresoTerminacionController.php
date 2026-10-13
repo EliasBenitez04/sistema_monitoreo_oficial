@@ -564,6 +564,76 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             ),
         ];
 
+        /*
+         * Oportunidad de atención de pedidos IT.
+         * Corte para mes actual = última fecha importada T-T; para meses
+         * cerrados = último día del mes. No se incluyen pedidos futuros.
+         * Una OT en varios pedidos cuenta una sola vez.
+         * Una salida previa al pedido no se trata como OT pendiente.
+         */
+        $cortePendientes = $esMesActual
+            ? $fechaCorteMes
+            : $finMes->copy()->startOfDay();
+        $otsPendientesIt = collect();
+        $analisisPendientes = (object) [
+            'disponible' => $cortePendientes !== null,
+            'fecha_corte' => $cortePendientes,
+            'solicitadas' => 0,
+            'atendidas' => 0,
+            'pendientes' => 0,
+            'sin_pedido_mes' => (int) $resumenMensual->salidas_sin_pedido,
+            'oportunidad' => 0,
+            'porcentaje_atencion' => 0,
+        ];
+
+        if ($cortePendientes) {
+            $fechaLimite = $cortePendientes->format('Y-m-d');
+            $otPedidos = DB::table('seguimiento_pedido_detalle as d')
+                ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
+                ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+                ->where('p.nro_pedido', 'ILIKE', self::PREFIJO . '%')
+                ->whereNotNull('p.fecha_pedido')
+                ->whereDate('p.fecha_pedido', '<=', $fechaLimite)
+                ->select('o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden',
+                    'p.nro_pedido', 'p.fecha_pedido')
+                ->get()->groupBy('id_ot');
+
+            $idsPedidosActivos = $otPedidos->keys()->all();
+            $primerHito = empty($idsPedidosActivos) ? collect()
+                : DB::table('ot_trazabilidad')
+                    ->whereIn('id_ot', $idsPedidosActivos)
+                    ->whereRaw("UPPER(TRIM(proceso)) = ?", [self::PROCESO_CIERRE])
+                    ->whereDate('fecha_proceso', '<=', $fechaLimite)
+                    ->select('id_ot', DB::raw('MIN(fecha_proceso) as primera_fecha'))
+                    ->groupBy('id_ot')
+                    ->pluck('primera_fecha', 'id_ot');
+
+            $otsPendientesIt = $otPedidos->map(function ($pedidosOt, $idOt) use ($primerHito) {
+                $primeraFecha = $primerHito->get($idOt);
+                $base = $pedidosOt->first();
+                return (object) [
+                    'nro_ot' => $base->nro_ot,
+                    'descripcion' => $base->descripcion,
+                    'cantidad_orden' => (int) $base->cantidad_orden,
+                    'pedidos' => $pedidosOt->pluck('nro_pedido')->unique()->implode(', '),
+                    'atendida' => $primeraFecha !== null,
+                ];
+            })->values();
+
+            $otsPendientes = $otsPendientesIt->where('atendida', false)->values();
+            $analisisPendientes->solicitadas = $otsPendientesIt->count();
+            $analisisPendientes->atendidas = $otsPendientesIt->where('atendida', true)->count();
+            $analisisPendientes->pendientes = $otsPendientes->count();
+            $analisisPendientes->oportunidad = min(
+                $analisisPendientes->pendientes,
+                $analisisPendientes->sin_pedido_mes
+            );
+            $analisisPendientes->porcentaje_atencion = $analisisPendientes->solicitadas > 0
+                ? round($analisisPendientes->atendidas * 100 / $analisisPendientes->solicitadas, 1)
+                : 0;
+            $otsPendientesIt = $otsPendientes->sortBy('nro_ot')->values();
+        }
+
         $inicioCalendario = $inicioMes
             ->copy()
             ->startOfWeek(Carbon::MONDAY);
@@ -633,6 +703,8 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'mesControl',
                 'resumenMensual',
                 'proyeccionDiasHabiles',
+                'analisisPendientes',
+                'otsPendientesIt',
                 'semanasCalendario'
             )
         );
