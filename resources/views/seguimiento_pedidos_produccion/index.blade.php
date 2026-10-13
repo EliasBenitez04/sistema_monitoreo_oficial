@@ -46,6 +46,104 @@
         $avance = $resumen->ots > 0 ? min(100, round(($resumen->ots_completas / $resumen->ots) * 100)) : 0;
     @endphp
 
+    <div class="card border-primary shadow-sm mb-3">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
+            <strong><i class="fas fa-chart-line text-primary mr-2"></i>Panel de decisiones de Producción</strong>
+            <span class="text-muted small">Datos registrados hasta: {{ $resumenDecision->fecha_corte->format('d/m/Y') }}</span>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="trk-kpi">
+                        <div><strong>{{ number_format($resumen->ots > 0 ? $resumen->ots_completas * 100 / $resumen->ots : 0,1,',','.') }}%</strong>
+                            <span>Avance de OT</span><small>{{ $resumen->ots_completas }} de {{ $resumen->ots }} OT con hito alcanzado</small></div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="trk-kpi is-success">
+                        <div><strong>{{ $resumenDecision->variacion_7_dias >= 0 ? '+' : '' }}{{ number_format($resumenDecision->variacion_7_dias,1,',','.') }} pp</strong>
+                            <span>Evolución en 7 días</span><small>Cambio de avance de OT · puntos porcentuales</small></div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="trk-kpi is-warning">
+                        <div><strong>{{ number_format($resumenDecision->urgentes,0,',','.') }}</strong>
+                            <span>Pedidos requieren atención</span><small>Sin actividad ≥7 días, sin movimientos o ≥30 días de antigüedad</small></div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 mb-3">
+                    <div class="trk-kpi is-volume">
+                        <div><strong>{{ number_format($resumenDecision->prendas_pendientes,0,',','.') }}</strong>
+                            <span>Prendas pendientes</span><small>{{ number_format($resumenDecision->porcentaje_prendas,1,',','.') }}% ingresado sobre cantidad solicitada</small></div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-lg-6 mb-3">
+                    <h6 class="font-weight-bold">Evolución del cumplimiento del hito (últimos 14 días)</h6>
+                    <div class="table-responsive" style="max-height:250px;overflow-y:auto">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead><tr><th>Fecha</th><th class="text-right">OT con hito</th><th class="text-right">Avance</th></tr></thead>
+                            <tbody>
+                                @foreach($serieAvance as $punto)
+                                    <tr>
+                                        <td>{{ $punto->fecha }}</td>
+                                        <td class="text-right">{{ number_format($punto->ot_completas,0,',','.') }}</td>
+                                        <td class="text-right font-weight-bold">{{ number_format($punto->porcentaje,1,',','.') }}%</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted">Comparación de OT de los pedidos P actuales; una OT cuenta cuando llega a TERMINACION - INGRESO TERMINACION.</small>
+                </div>
+                <div class="col-lg-6 mb-3">
+                    <h6 class="font-weight-bold">Situación general</h6>
+                    <div class="progress mb-2" style="height:23px">
+                        <div class="progress-bar bg-success" style="width:{{ $resumenDecision->porcentaje_prendas }}%">
+                            {{ $resumenDecision->porcentaje_prendas >= 15 ? number_format($resumenDecision->porcentaje_prendas,1,',','.') . '%' : '' }}
+                        </div>
+                        <div class="progress-bar bg-warning" style="width:{{ 100 - $resumenDecision->porcentaje_prendas }}%"></div>
+                    </div>
+                    <p class="small mb-2">Prendas ingresadas: <strong>{{ number_format($resumenDecision->prendas_ingresadas,0,',','.') }}</strong> /
+                        {{ number_format($resumenDecision->prendas_pedidas,0,',','.') }} solicitadas.</p>
+                    <p class="mb-1"><span class="badge badge-danger">{{ $resumenDecision->urgentes }} urgentes</span>
+                        <span class="badge badge-warning">{{ $resumenDecision->revisar }} a revisar</span>
+                        <span class="badge badge-success">{{ $resumenDecision->avanzando }} con actividad reciente</span></p>
+                    <small class="text-muted">Los estados indican actividad reciente, no garantía de cumplimiento del plazo.</small>
+                </div>
+            </div>
+            <h6 class="font-weight-bold mt-1">Pedidos para atender primero</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="thead-light">
+                        <tr><th>Pedido</th><th class="text-right">Avance OT</th><th class="text-right">Prendas pendientes</th><th>Última actividad</th><th>Sin movimiento</th><th>Prioridad</th><th>Acción</th></tr>
+                    </thead>
+                    <tbody>
+                    @forelse($rankingPrioridad as $prioridad)
+                        <tr>
+                            <td><strong>{{ $prioridad->nro_pedido }}</strong></td>
+                            <td class="text-right">{{ number_format($prioridad->porcentaje,1,',','.') }}%</td>
+                            <td class="text-right">{{ number_format($prioridad->pendiente_prendas,0,',','.') }}</td>
+                            <td>{{ $prioridad->ultima_actividad ? date('d/m/Y',strtotime($prioridad->ultima_actividad)) : 'Sin registro' }}</td>
+                            <td>{{ $prioridad->dias_sin_movimiento !== null ? $prioridad->dias_sin_movimiento . ' días' : 'Sin registro' }}</td>
+                            <td>
+                                <span class="badge badge-{{ $prioridad->prioridad === 'URGENTE' ? 'danger' : ($prioridad->prioridad === 'REVISAR' ? 'warning' : 'success') }}">
+                                    {{ $prioridad->prioridad }}
+                                </span>
+                            </td>
+                            <td><a class="btn btn-sm btn-outline-primary" href="{{ route('seguimiento-produccion.show',$prioridad->id) }}">Ver OT</a></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="text-center text-muted">No hay pedidos pendientes.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <small class="text-muted">Criterios iniciales: urgente sin actividad registrada, 7+ días sin movimiento o 30+ días desde el pedido; revisar 3 a 6 días sin movimiento. Se preserva la diferencia entre avance por OT (hito alcanzado) y avance por prendas.</small>
+        </div>
+    </div>
+
     <div class="trk-hero mb-4">
         <div class="row align-items-center">
             <div class="col-lg-8">
