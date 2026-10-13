@@ -215,11 +215,15 @@ class SeguimientoPedidoProduccionController extends Controller
             $vinculos = collect();
         }
         // Excluir anulaciones manuales, incluso ante una reimportación antigua.
-        $vinculos = $vinculos->reject(function ($v) {
-            return DB::table('pedido_ot_cambios')
-                ->where('pedido_id', $v->pedido_id)
-                ->where('ot_anterior', (string) $v->nro_ot)
-                ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])->exists();
+        $cambiosAnulados = DB::table('pedido_ot_cambios')
+            ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
+            ->select('pedido_id', 'ot_anterior')
+            ->get()
+            ->mapWithKeys(function ($c) {
+                return [$c->pedido_id . ':' . $c->ot_anterior => true];
+            });
+        $vinculos = $vinculos->reject(function ($v) use ($cambiosAnulados) {
+            return $cambiosAnulados->has($v->pedido_id . ':' . $v->nro_ot);
         })->values();
         $idsOt = $vinculos->pluck('id_ot')->unique()->all();
         $movimientos = empty($idsOt) ? collect() : DB::table('ot_trazabilidad')
