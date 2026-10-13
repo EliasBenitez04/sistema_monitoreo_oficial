@@ -86,19 +86,19 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 <div class="card-body"><div class="row">
 <div class="col-4"><small class="text-muted">OT pendientes</small><h3>{{ number_format($indicadores->pendientes,0,',','.') }}</h3></div>
 <div class="col-4"><small class="text-muted">Prendas pendientes</small><h3>{{ number_format($indicadores->prendas_pendientes,0,',','.') }}</h3></div>
-<div class="col-4"><small class="text-muted">Sin avance ≥7 días</small><h3 class="text-danger">{{ number_format($indicadores->urgentes,0,',','.') }}</h3></div>
-</div><p class="small text-muted mb-0">Las etapas y alertas provienen del último movimiento importado de cada OT. Urgente: sin movimientos o 7+ días sin actividad; revisar: 3 a 6 días.</p></div>
+<div class="col-4"><small class="text-muted">Espera ≥7 días</small><h3 class="text-danger">{{ number_format($indicadores->urgentes,0,',','.') }}</h3></div>
+</div><p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último movimiento, lo que sea posterior. Urgente: 7+ días; revisar: 3 a 6 días. Sin datos: no puede clasificarse por falta de fecha. Las OT con ingreso parcial mantienen su saldo pendiente.</p></div>
 </div></div></div>
 
 <div class="card"><div class="card-header"><strong>Prioridades y pendientes para intervenir</strong></div>
 <div class="table-responsive" style="max-height:540px;overflow:auto"><table class="table table-sm table-hover mb-0">
-<thead class="thead-light"><tr><th>OT</th><th>Pedido P</th><th>Descripción</th><th>Etapa actual</th><th>Última actividad</th><th>Sin movimiento</th><th>Prendas OT</th><th>Prioridad</th></tr></thead><tbody>
-@forelse($pendientes->sortBy(function($item){return ($item->prioridad==='URGENTE'?'0':($item->prioridad==='REVISAR'?'1':'2')).$item->nro_ot;}) as $fila)
+<thead class="thead-light"><tr><th>OT</th><th>Pedido P</th><th>Descripción</th><th>Etapa actual</th><th>Última actividad</th><th>Sin movimiento</th><th>Prendas OT</th><th>Ingresadas</th><th>Saldo</th><th>Prioridad</th></tr></thead><tbody>
+@forelse($pendientes->sortBy(function($item){return ($item->prioridad==='URGENTE'?'0':($item->prioridad==='REVISAR'?'1':($item->prioridad==='SIN DATOS'?'3':'2'))).$item->nro_ot;}) as $fila)
 <tr><td><strong>{{ $fila->nro_ot }}</strong></td><td>{{ $fila->pedidos }}</td><td>{{ $fila->descripcion }}</td>
 <td>{{ $fila->etapa }}</td><td>{{ $fila->ultima_fecha ? date('d/m/Y',strtotime($fila->ultima_fecha)) : '-' }}</td>
-<td>{{ $fila->dias_quieto !== null ? $fila->dias_quieto.' días' : 'Sin datos' }}</td><td>{{ number_format($fila->cantidad,0,',','.') }}</td>
-<td><span class="badge badge-{{ $fila->prioridad==='URGENTE'?'danger':($fila->prioridad==='REVISAR'?'warning':'success') }}">{{ $fila->prioridad }}</span></td></tr>
-@empty<tr><td colspan="8" class="text-center text-muted">Sin pendientes para este corte</td></tr>@endforelse
+<td>{{ $fila->dias_quieto !== null ? $fila->dias_quieto.' días' : 'Sin datos' }}</td><td>{{ number_format($fila->cantidad,0,',','.') }}</td><td>{{ number_format($fila->cantidad_ingresada,0,',','.') }}</td><td><strong>{{ number_format($fila->cantidad_pendiente,0,',','.') }}</strong></td>
+<td><span class="badge badge-{{ $fila->prioridad==='URGENTE'?'danger':($fila->prioridad==='REVISAR'?'warning':($fila->prioridad==='SIN DATOS'?'secondary':'success')) }}">{{ $fila->prioridad }}</span></td></tr>
+@empty<tr><td colspan="10" class="text-center text-muted">Sin pendientes para este corte</td></tr>@endforelse
 </tbody></table></div></div>
 <div class="card"><div class="card-header"><strong>Movimientos del hito durante el mes · Asociación con pedidos P</strong></div>
 <div class="table-responsive" style="max-height:450px;overflow:auto"><table class="table table-sm mb-0">
