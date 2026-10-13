@@ -208,6 +208,116 @@
                 </div>
             </div>
 
+
+            <div class="card border-info mb-3">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-chart-bar mr-1 text-info"></i> Proyección gerencial · próximos 3 meses</strong>
+                </div>
+                <div class="card-body">
+                    @if($proyeccionTrimestral->disponible)
+                        <p class="small text-muted">
+                            <strong>Último movimiento importado:</strong>
+                            {{ $proyeccionTrimestral->fecha_corte->format('d/m/Y') }}.
+                            Comparación histórica real y tres escenarios futuros basados en el ritmo observado.
+                            El análisis siempre usa el último movimiento disponible, aunque estés viendo otro mes del calendario.
+                        </p>
+                        <div class="row mb-3">
+                            <div class="col-md-4 mb-2">
+                                <div class="it-month-kpi">
+                                    <small>RITMO HISTÓRICO · 3 MESES</small>
+                                    <strong>{{ number_format($proyeccionTrimestral->ritmo_historico,1,',','.') }}</strong>
+                                    <span>prendas/día calendario</span>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-2">
+                                <div class="it-month-kpi">
+                                    <small>RITMO DEL MES ACTUAL</small>
+                                    <strong>{{ number_format($proyeccionTrimestral->ritmo_actual,1,',','.') }}</strong>
+                                    <span>prendas/día hasta la fecha de corte</span>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-2">
+                                <div class="it-month-kpi">
+                                    <small>RITMO BASE PROYECTADO</small>
+                                    <strong>{{ number_format($proyeccionTrimestral->ritmo_base,1,',','.') }}</strong>
+                                    <span>prendas/día · promedio ponderado</span>
+                                </div>
+                            </div>
+                        </div>
+                        <h6 class="font-weight-bold">Comparativo de meses anteriores</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>Mes cerrado</th>
+                                        <th class="text-right">Prendas reales T-T</th>
+                                        <th class="text-right">Variación mensual</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($proyeccionTrimestral->historico as $periodo)
+                                        <tr>
+                                            <td>{{ $periodo->nombre }}</td>
+                                            <td class="text-right">{{ number_format($periodo->prendas,0,',','.') }}</td>
+                                            <td class="text-right">
+                                                {{ $periodo->variacion !== null ? number_format($periodo->variacion,1,',','.') . '%' : 'Sin base comparable' }}
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                    <tr class="table-info">
+                                        <td>{{ $proyeccionTrimestral->mes_actual->nombre }} · parcial</td>
+                                        <td class="text-right">
+                                            {{ number_format($proyeccionTrimestral->mes_actual->real,0,',','.') }} reales
+                                            / {{ number_format($proyeccionTrimestral->mes_actual->cierre_estimado,0,',','.') }} cierre estimado
+                                        </td>
+                                        <td class="text-right">
+                                            {{ $proyeccionTrimestral->mes_actual->variacion_vs_anterior !== null ? number_format($proyeccionTrimestral->mes_actual->variacion_vs_anterior,1,',','.') . '% estimado' : 'Sin base comparable' }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <h6 class="font-weight-bold">Escenarios para los próximos tres meses</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>Mes futuro</th>
+                                        <th class="text-right">Conservador (-10%)</th>
+                                        <th class="text-right">Base</th>
+                                        <th class="text-right">Optimista (+10%)</th>
+                                        <th class="text-right">Variación base vs. cierre mes actual</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($proyeccionTrimestral->futuro as $periodo)
+                                        <tr>
+                                            <td>{{ $periodo->nombre }}</td>
+                                            <td class="text-right text-danger">{{ number_format($periodo->conservador,0,',','.') }}</td>
+                                            <td class="text-right font-weight-bold">{{ number_format($periodo->base,0,',','.') }}</td>
+                                            <td class="text-right text-success">{{ number_format($periodo->optimista,0,',','.') }}</td>
+                                            <td class="text-right">{{ $periodo->variacion_vs_mes_actual !== null ? number_format($periodo->variacion_vs_mes_actual,1,',','.') . '%' : '—' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <small class="text-muted">
+                            <strong>Método:</strong> 60% del promedio diario de los últimos 3 meses completos
+                            + 40% del promedio diario del mes en curso (cuando existen datos).
+                            Se incluyen días calendario sin movimientos; la estimación base se multiplica por los días
+                            de cada mes futuro. Escenarios ±10% sobre esa base.
+                            Las variaciones históricas comparan meses cerrados; la variación futura compara cada
+                            escenario base con el cierre estimado del mes actual.
+                            Son simulaciones orientativas, no objetivos ni pronósticos garantizados.
+                            Se recalculan al ingresar nuevos movimientos T-T y recargar el dashboard.
+                        </small>
+                    @else
+                        <p class="text-muted mb-0">No hay movimientos T-T importados para calcular la proyección.</p>
+                    @endif
+                </div>
+            </div>
+
             <div class="it-calendar-weekdays">
                 <div>LUN</div>
                 <div>MAR</div>
