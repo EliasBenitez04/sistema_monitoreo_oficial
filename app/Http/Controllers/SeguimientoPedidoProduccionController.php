@@ -176,6 +176,7 @@ class SeguimientoPedidoProduccionController extends Controller
             })->count();
             $serieAvance->push((object) [
                 'fecha' => date('d/m', strtotime($fechaSerie)),
+                'fin_de_semana' => in_array((int) date('N', strtotime($fechaSerie)), [6, 7], true),
                 'porcentaje' => $detalles->count() > 0
                     ? round($completasAlDia * 100 / $detalles->count(), 1)
                     : 0,
