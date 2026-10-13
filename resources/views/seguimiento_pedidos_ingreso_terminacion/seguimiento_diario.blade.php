@@ -138,6 +138,76 @@
                 </div>
             </div>
 
+
+            <div class="card border-primary mb-3">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-chart-line mr-1 text-primary"></i> Simulación gerencial a 30 días</strong>
+                </div>
+                <div class="card-body">
+                    @if($proyeccionMensual->disponible)
+                        <p class="text-muted small">
+                            Datos reales hasta <strong>{{ $proyeccionMensual->fecha_corte->format('d/m/Y') }}</strong>
+                            · {{ $proyeccionMensual->dias_observados }} días calendario observados
+                            · {{ $proyeccionMensual->dias_con_salida }} días con movimientos.
+                        </p>
+                        <div class="row">
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>PROMEDIO DIARIO</small>
+                                    <strong>{{ number_format($proyeccionMensual->ritmo_diario,1,',','.') }}</strong>
+                                    <span>prendas T-T / día calendario</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>PRÓXIMOS 30 DÍAS</small>
+                                    <strong>{{ number_format($proyeccionMensual->prendas_30_dias,0,',','.') }}</strong>
+                                    <span>prendas adicionales estimadas</span>
+                                    <span>hasta {{ $proyeccionMensual->fecha_horizonte->format('d/m/Y') }}</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-success">
+                                    <small>PRENDAS CON PEDIDO</small>
+                                    <strong>{{ number_format($proyeccionMensual->porcentaje_prendas_con_pedido,1,',','.') }}%</strong>
+                                    <span>{{ number_format($proyeccionMensual->prendas_con_pedido_30_dias,0,',','.') }} prendas estimadas / 30 días</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-danger">
+                                    <small>PRENDAS SIN PEDIDO</small>
+                                    <strong>{{ number_format($proyeccionMensual->porcentaje_prendas_sin_pedido,1,',','.') }}%</strong>
+                                    <span>{{ number_format($proyeccionMensual->prendas_sin_pedido_30_dias,0,',','.') }} prendas estimadas / 30 días</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="progress mb-2" style="height:18px">
+                            <div class="progress-bar bg-success"
+                                 style="width:{{ $proyeccionMensual->porcentaje_prendas_con_pedido }}%"></div>
+                            <div class="progress-bar bg-danger"
+                                 style="width:{{ $proyeccionMensual->porcentaje_prendas_sin_pedido }}%"></div>
+                        </div>
+                        <p class="small mb-1">
+                            <strong>Simulación al cierre de {{ ucfirst($mesControl->locale('es')->translatedFormat('F')) }}:</strong>
+                            {{ number_format($proyeccionMensual->proyeccion_cierre_mes,0,',','.') }} prendas procesadas
+                            si se mantiene el ritmo.
+                        </p>
+                        <small class="text-muted">
+                            Se calcula con el total de prendas T-T desde el primer día del mes hasta el último registro,
+                            dividido entre días calendario (incluye días sin movimientos).
+                            La simulación es lineal, no una meta ni una garantía.
+                            Los porcentajes indican prendas con/sin pedido IT vigente, no cumplimiento de pedidos.
+                            Se actualiza al incorporar nuevos movimientos y volver a abrir el dashboard.
+                        </small>
+                    @else
+                        <p class="text-muted mb-0">
+                            La simulación se muestra en el mes actual cuando existen registros T-T.
+                            Los meses históricos mantienen sus resultados reales sin proyectar.
+                        </p>
+                    @endif
+                </div>
+            </div>
+
             <div class="it-calendar-weekdays">
                 <div>LUN</div>
                 <div>MAR</div>
