@@ -89,7 +89,7 @@
                                     <tr>
                                         <td>{{ $punto->fecha }}</td>
                                         <td class="text-right">{{ number_format($punto->ot_completas,0,',','.') }}</td>
-                                        <td class="text-right font-weight-bold">{{ number_format($punto->porcentaje,1,',','.') }}%</td>
+                                        <td class="text-right font-weight-bold" style="min-width:170px">{{ number_format($punto->porcentaje,1,',','.') }}%<div class="progress mt-1" style="height:7px"><div class="progress-bar bg-primary" style="width:{{ $punto->porcentaje }}%"></div></div></td>
                                     </tr>
                                 @endforeach
                             </tbody>
