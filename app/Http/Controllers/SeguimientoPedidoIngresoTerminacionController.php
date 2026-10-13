@@ -513,6 +513,62 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 : 0,
         ];
 
+        /*
+         * Proyección simple de ritmo calendario (incluye días sin salida).
+         * Corte = última salida registrada del mes; nunca fecha del navegador.
+         * Si el mes aún está en curso, no proyectamos meses históricos.
+         */
+        $ultimaSalidaMes = $salidasMes->max('fecha_salida');
+        $fechaCorteProyeccion = $ultimaSalidaMes
+            ? Carbon::parse($ultimaSalidaMes)->startOfDay()
+            : null;
+
+        $diasObservados = $fechaCorteProyeccion
+            ? $inicioMes->copy()->diffInDays($fechaCorteProyeccion) + 1
+            : 0;
+
+        $prendasReales = (int) $resumenMensual->prendas_salida;
+        $conPedidoReales = (int) $resumenMensual->prendas_con_pedido;
+        $sinPedidoReales = (int) $resumenMensual->prendas_sin_pedido;
+        $ritmoDiario = $diasObservados > 0
+            ? $prendasReales / $diasObservados
+            : 0;
+
+        $porcentajePrendasConPedido = $prendasReales > 0
+            ? round(100 * $conPedidoReales / $prendasReales, 1)
+            : 0;
+        $porcentajePrendasSinPedido = $prendasReales > 0
+            ? round(100 * $sinPedidoReales / $prendasReales, 1)
+            : 0;
+
+        $mesEnCurso = $mesControl->format('Y-m') === Carbon::today()->format('Y-m');
+        $proyeccionMensual = (object) [
+            'disponible' => $mesEnCurso && $diasObservados > 0,
+            'fecha_corte' => $fechaCorteProyeccion,
+            'dias_observados' => $diasObservados,
+            'dias_con_salida' => $resumenMensual->dias_con_salida,
+            'ritmo_diario' => round($ritmoDiario, 1),
+            'prendas_reales' => $prendasReales,
+            'porcentaje_prendas_con_pedido' => $porcentajePrendasConPedido,
+            'porcentaje_prendas_sin_pedido' => $porcentajePrendasSinPedido,
+            'prendas_30_dias' => (int) round($ritmoDiario * 30),
+            'prendas_con_pedido_30_dias' => (int) round(
+                $diasObservados > 0 ? ($conPedidoReales / $diasObservados) * 30 : 0
+            ),
+            'prendas_sin_pedido_30_dias' => (int) round(
+                $diasObservados > 0 ? ($sinPedidoReales / $diasObservados) * 30 : 0
+            ),
+            'fecha_horizonte' => $fechaCorteProyeccion
+                ? $fechaCorteProyeccion->copy()->addDays(30)
+                : null,
+            'dias_restantes_mes' => $fechaCorteProyeccion
+                ? $fechaCorteProyeccion->diffInDays($finMes->copy()->startOfDay())
+                : 0,
+            'proyeccion_cierre_mes' => $fechaCorteProyeccion
+                ? (int) round($prendasReales + $ritmoDiario * $fechaCorteProyeccion->diffInDays($finMes->copy()->startOfDay()))
+                : 0,
+        ];
+
         $inicioCalendario = $inicioMes
             ->copy()
             ->startOfWeek(Carbon::MONDAY);
@@ -581,6 +637,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'resumen',
                 'mesControl',
                 'resumenMensual',
+                'proyeccionMensual',
                 'semanasCalendario'
             )
         );
