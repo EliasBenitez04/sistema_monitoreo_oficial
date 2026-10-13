@@ -75,6 +75,7 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 <div class="small text-success">{{ $dia->con }} con P</div>
 @if($dia->sin)<div class="small text-danger">{{ $dia->sin }} sin P</div>@endif
 <div class="small">{{ number_format($dia->prendas,0,',','.') }} prendas</div>
+<button type="button" class="btn btn-outline-primary btn-sm mt-1" data-toggle="modal" data-target="#detalleProduccion{{ $dia->numero }}">Ver OT</button>
 @else <div class="small text-muted">Sin salida</div> @endif
 @endif
 </td>
@@ -82,6 +83,45 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 @endforeach
 </tbody></table></div>
 </div></div>
+
+{{-- Detalle diario de las mismas OT y prendas que utiliza el calendario. --}}
+@foreach($dias as $diaDetalle)
+@if($diaDetalle->total > 0)
+<div class="modal fade" id="detalleProduccion{{ $diaDetalle->numero }}" tabindex="-1" role="dialog" aria-labelledby="tituloDetalleProduccion{{ $diaDetalle->numero }}" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tituloDetalleProduccion{{ $diaDetalle->numero }}">
+                    OT ingresadas a IT · {{ date('d/m/Y', strtotime($diaDetalle->fecha)) }}
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted">Hito TERMINACION - INGRESO TERMINACION. {{ $diaDetalle->total }} OT; {{ $diaDetalle->con }} con pedido P y {{ $diaDetalle->sin }} sin pedido P.</p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead><tr><th>Nº OT</th><th>Descripción</th><th class="text-right">Cantidad ingresada</th><th>Pedido P</th><th>Estado</th></tr></thead>
+                        <tbody>
+                        @foreach($salidas->where('fecha', $diaDetalle->fecha) as $salidaDetalle)
+                        <tr>
+                            <td><strong>{{ $salidaDetalle->nro_ot }}</strong></td>
+                            <td>{{ $salidaDetalle->descripcion }}</td>
+                            <td class="text-right">{{ number_format($salidaDetalle->prendas,0,',','.') }}</td>
+                            <td>{{ $salidaDetalle->pedidos ?: '-' }}</td>
+                            <td><span class="badge badge-{{ $salidaDetalle->justificada ? 'success' : 'danger' }}">{{ !$salidaDetalle->justificada ? 'SIN PEDIDO' : ($salidaDetalle->pedido_posterior ? 'PEDIDO POSTERIOR' : 'CON PEDIDO') }}</span></td>
+                        </tr>
+                        @endforeach
+                        </tbody>
+                        <tfoot><tr class="font-weight-bold"><td colspan="2">Total del día</td><td class="text-right">{{ number_format($diaDetalle->prendas,0,',','.') }}</td><td colspan="2"></td></tr></tfoot>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
+@endif
+@endforeach
 
 <div class="card border-info"><div class="card-header"><strong>Análisis de producción y proyección por días hábiles</strong></div>
 <div class="card-body">
