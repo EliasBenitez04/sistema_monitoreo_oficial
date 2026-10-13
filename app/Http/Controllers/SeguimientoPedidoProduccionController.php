@@ -229,18 +229,22 @@ class SeguimientoPedidoProduccionController extends Controller
         $vinculos = $vinculos->reject(function ($v) use ($cambiosAnulados) {
             return $cambiosAnulados->has($v->pedido_id . ':' . $v->nro_ot);
         })->values();
-        $idsOt = $vinculos->pluck('id_ot')->unique()->all();
-        $movimientos = empty($idsOt) ? collect() : DB::table('ot_trazabilidad')
-            ->whereIn('id_ot', $idsOt)
-            ->where('fecha_proceso', '<=', $fechaLimite->format('Y-m-d H:i:s'))
-            ->select('id_ot', 'proceso', 'resultado', 'fecha_proceso')
-            ->orderBy('fecha_proceso')->orderBy('id_trazabilidad')->get()->groupBy('id_ot');
+        // Conciliar trazabilidad por número de OT: el mismo identificador que
+        // se muestra en pendientes. Incluir el día completo del corte.
+        $numerosOt = $vinculos->pluck('nro_ot')->filter()->unique()->values()->all();
+        $movimientos = empty($numerosOt) ? collect() : DB::table('ot_trazabilidad as t')
+            ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
+            ->whereIn('o.nro_ot', $numerosOt)
+            ->whereDate('t.fecha_proceso', '<=', $corteMes->format('Y-m-d'))
+            ->select('o.nro_ot', 't.proceso', 't.resultado', 't.fecha_proceso', 't.id_trazabilidad')
+            ->orderBy('t.fecha_proceso')->orderBy('t.id_trazabilidad')
+            ->get()->groupBy('nro_ot');
 
         // Corte histórico: una anulación posterior no elimina una OT del
         // análisis de una fecha anterior. La asociación P del pedido sí
         // debe estar solicitada hasta la fecha de corte.
-        $pendientes = $vinculos->groupBy('id_ot')->map(function ($registros, $idOt) use ($movimientos, $corteMes) {
-            $historial = collect($movimientos->get($idOt, collect()));
+        $pendientes = $vinculos->groupBy('nro_ot')->map(function ($registros, $nroOt) use ($movimientos, $corteMes) {
+            $historial = collect($movimientos->get($nroOt, collect()));
             $base = $registros->first();
             $cantidadOrden = max(0, (int) $base->cantidad_orden);
 
