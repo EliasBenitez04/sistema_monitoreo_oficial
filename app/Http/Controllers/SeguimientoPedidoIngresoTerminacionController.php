@@ -600,7 +600,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                     $q->select(DB::raw(1))
                         ->from('pedido_ot_cambios as c')
                         ->whereColumn('c.pedido_id', 'p.id')
-                        ->whereColumn('c.ot_anterior', 'o.nro_ot')
+                        ->whereRaw('c.ot_anterior = CAST(o.nro_ot AS TEXT)')
                         ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
                 })
                 ->select('o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden',
