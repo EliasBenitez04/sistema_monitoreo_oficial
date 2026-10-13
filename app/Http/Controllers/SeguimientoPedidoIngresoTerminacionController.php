@@ -513,6 +513,11 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 : 0,
         ];
 
+        // Efectividad del volumen: prendas con pedido IT / prendas procesadas.
+        $resumenMensual->efectividad_prendas = $resumenMensual->prendas_salida > 0
+            ? round(100 * $resumenMensual->prendas_con_pedido / $resumenMensual->prendas_salida, 1)
+            : 0;
+
         /*
          * Proyección de prendas T-T para el mes seleccionado.
          * Promedio por días hábiles (lunes-viernes) transcurridos hasta
