@@ -168,17 +168,20 @@ class SeguimientoPedidoProduccionController extends Controller
                 ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
                 ->whereIn('d.id_ot', $idsSalida)
                 ->where('p.nro_pedido', 'ILIKE', 'P%')
-                ->whereNotNull('p.fecha_pedido')
-                ->select('d.id_ot', 'p.nro_pedido', 'p.fecha_pedido')
+                ->select('d.id_ot', 'p.id as pedido_id', 'p.nro_pedido', 'p.fecha_pedido')
                 ->get()->groupBy('id_ot');
 
+        // La asociación vigente con P cuenta aunque la OT haya llegado
+        // al hito antes de la fecha del pedido. Se muestra esa diferencia.
         $salidas = $salidas->map(function ($fila) use ($pedidosSalida) {
-            $pedidos = collect($pedidosSalida->get($fila->id_ot, collect()))
-                ->filter(function ($p) use ($fila) {
-                    return substr((string) $p->fecha_pedido, 0, 10) <= $fila->fecha;
-                });
+            $pedidos = collect($pedidosSalida->get($fila->id_ot, collect()));
             $fila->pedidos = $pedidos->pluck('nro_pedido')->unique()->implode(', ');
             $fila->justificada = $pedidos->isNotEmpty();
+            $fila->pedido_posterior = $pedidos->isNotEmpty()
+                && !$pedidos->contains(function ($p) use ($fila) {
+                    return !$p->fecha_pedido
+                        || substr((string) $p->fecha_pedido, 0, 10) <= $fila->fecha;
+                });
             return $fila;
         });
 
