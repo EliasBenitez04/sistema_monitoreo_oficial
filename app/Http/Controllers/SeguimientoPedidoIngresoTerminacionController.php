@@ -576,9 +576,12 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
          * Una OT en varios pedidos cuenta una sola vez.
          * Una salida previa al pedido no se trata como OT pendiente.
          */
-        $cortePendientes = $esMesActual
-            ? $fechaCorteMes
-            : $finMes->copy()->startOfDay();
+        // Los pedidos IT se evalúan hasta hoy si el mes seleccionado es el actual.
+// El corte de movimientos T-T sigue independiente para el calendario y la proyección.
+        $hoyPedidos = Carbon::today()->startOfDay();
+        $cortePendientes = $mesControl->format('Y-m') === $hoyPedidos->format('Y-m')
+            ? $hoyPedidos
+            : ($inicioMes->gt($hoyPedidos) ? null : $finMes->copy()->startOfDay());
         $otsPendientesIt = collect();
         $analisisPendientes = (object) [
             'disponible' => $cortePendientes !== null,
