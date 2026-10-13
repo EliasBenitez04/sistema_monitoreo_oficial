@@ -289,7 +289,7 @@ class SeguimientoPedidoProduccionController extends Controller
         })->filter()->values();
 
         $porEtapa = $pendientes->groupBy('etapa')->map(function ($items, $etapa) {
-            return (object) ['etapa' => $etapa, 'ots' => $items->count(), 'prendas' => (int) $items->sum('cantidad')];
+            return (object) ['etapa' => $etapa, 'ots' => $items->count(), 'prendas' => (int) $items->sum('cantidad_pendiente')];
         })->sortByDesc('ots')->values();
 
         $habilesTranscurridos = $dias->filter(function ($d) use ($corteMes) {
