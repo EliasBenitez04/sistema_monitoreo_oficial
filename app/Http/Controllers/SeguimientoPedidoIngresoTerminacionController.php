@@ -494,6 +494,12 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 ->where('tiene_pedido', false)
                 ->count(),
             'prendas_salida' => (int) $salidasMes->sum('resultado_dia'),
+            'prendas_con_pedido' => (int) $salidasMes
+                ->where('tiene_pedido', true)
+                ->sum('resultado_dia'),
+            'prendas_sin_pedido' => (int) $salidasMes
+                ->where('tiene_pedido', false)
+                ->sum('resultado_dia'),
             'porcentaje_justificado' => $salidasMes->count() > 0
                 ? round(
                     (
