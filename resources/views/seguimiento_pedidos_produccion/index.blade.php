@@ -80,13 +80,19 @@
             </div>
             <div class="row">
                 <div class="col-lg-6 mb-3">
-                    <h6 class="font-weight-bold">Evolución del cumplimiento del hito (últimos 14 días)</h6>
+                    <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                        <h6 class="font-weight-bold mb-1">Evolución del cumplimiento del hito (últimos 14 días)</h6>
+                        <button type="button" id="btnFindeProduccion" class="btn btn-sm btn-outline-primary"
+                                aria-pressed="false">
+                            <i class="fas fa-calendar-plus mr-1"></i>Agregar finde
+                        </button>
+                    </div>
                     <div class="table-responsive" style="max-height:250px;overflow-y:auto">
                         <table class="table table-sm table-striped mb-0">
                             <thead><tr><th>Fecha</th><th class="text-right">OT con hito</th><th class="text-right">Avance</th></tr></thead>
                             <tbody>
                                 @foreach($serieAvance as $punto)
-                                    <tr>
+                                    <tr class="{{ $punto->fin_de_semana ? 'fila-finde-produccion' : '' }}"{{ $punto->fin_de_semana ? ' style=display:none' : '' }}>
                                         <td>{{ $punto->fecha }}</td>
                                         <td class="text-right">{{ number_format($punto->ot_completas,0,',','.') }}</td>
                                         <td class="text-right font-weight-bold" style="min-width:170px">{{ number_format($punto->porcentaje,1,',','.') }}%<div class="progress mt-1" style="height:7px"><div class="progress-bar bg-primary" style="width:{{ $punto->porcentaje }}%"></div></div></td>
@@ -95,7 +101,7 @@
                             </tbody>
                         </table>
                     </div>
-                    <small class="text-muted">Comparación de OT de los pedidos P actuales; una OT cuenta cuando llega a TERMINACION - INGRESO TERMINACION.</small>
+                    <small class="text-muted">Sábados y domingos ocultos por defecto; podés incluirlos con el botón. Comparación de OT de los pedidos P actuales; una OT cuenta cuando llega a TERMINACION - INGRESO TERMINACION.</small>
                 </div>
                 <div class="col-lg-6 mb-3">
                     <h6 class="font-weight-bold">Situación general</h6>
@@ -258,3 +264,26 @@
 @endsection
 
 @include('seguimiento_shared.tracking_styles')
+
+@push('page_scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const boton = document.getElementById('btnFindeProduccion');
+    if (!boton) return;
+    let mostrarFinde = false;
+    boton.addEventListener('click', function () {
+        mostrarFinde = !mostrarFinde;
+        document.querySelectorAll('.fila-finde-produccion').forEach(function (fila) {
+            fila.style.display = mostrarFinde ? '' : 'none';
+        });
+        boton.setAttribute('aria-pressed', mostrarFinde ? 'true' : 'false');
+        boton.classList.toggle('btn-primary', mostrarFinde);
+        boton.classList.toggle('btn-outline-primary', !mostrarFinde);
+        boton.innerHTML = mostrarFinde
+            ? '<i class="fas fa-calendar-minus mr-1"></i>Quitar finde'
+            : '<i class="fas fa-calendar-plus mr-1"></i>Agregar finde';
+    });
+});
+</script>
+@endpush
+
