@@ -154,7 +154,7 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 <div class="col-4"><small class="text-muted">OT pendientes</small><h3>{{ number_format($indicadores->pendientes,0,',','.') }}</h3></div>
 <div class="col-4"><small class="text-muted">Prendas pendientes</small><h3>{{ number_format($indicadores->prendas_pendientes,0,',','.') }}</h3></div>
 <div class="col-4"><small class="text-muted">Espera ≥7 días</small><h3 class="text-danger">{{ number_format($indicadores->urgentes,0,',','.') }}</h3></div>
-</div><p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último movimiento, lo que sea posterior. Urgente: 7+ días; revisar: 3 a 6 días. Sin datos: no puede clasificarse por falta de fecha. Las OT con ingreso parcial mantienen su saldo pendiente.</p></div>
+</div><p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último movimiento, lo que sea posterior. Normal: 0 a 7 días; revisar: 8 a 14 días; urgente: 15 días o más. Sin datos: no puede clasificarse por falta de fecha. Las OT con ingreso parcial mantienen su saldo pendiente.</p></div>
 </div></div></div>
 
 <div class="card"><div class="card-header"><strong>Prioridades y pendientes para intervenir</strong></div>
