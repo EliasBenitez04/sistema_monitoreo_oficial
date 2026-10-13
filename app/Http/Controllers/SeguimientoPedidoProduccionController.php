@@ -235,24 +235,55 @@ class SeguimientoPedidoProduccionController extends Controller
             ->select('id_ot', 'proceso', 'resultado', 'fecha_proceso')
             ->orderBy('fecha_proceso')->get()->groupBy('id_ot');
 
+        // Corte histórico: una anulación posterior no elimina una OT del
+        // análisis de una fecha anterior. La asociación P del pedido sí
+        // debe estar solicitada hasta la fecha de corte.
         $pendientes = $vinculos->groupBy('id_ot')->map(function ($registros, $idOt) use ($movimientos, $corteMes) {
             $historial = collect($movimientos->get($idOt, collect()));
-            $hito = $historial->first(function ($tr) {
-                return strtoupper(trim($tr->proceso)) === self::PROCESO_CIERRE;
-            });
-            if ($hito) return null;
             $base = $registros->first();
+            $cantidadOrden = max(0, (int) $base->cantidad_orden);
+
+            $movimientosHito = $historial->filter(function ($tr) {
+                return strtoupper(trim((string) $tr->proceso)) === self::PROCESO_CIERRE;
+            });
+            $cantidadIngresada = max(0, (int) $movimientosHito->sum('resultado'));
+            $cantidadPendiente = max(0, $cantidadOrden - $cantidadIngresada);
+
+            // Un hito parcial NO significa OT completa.
+            if ($cantidadPendiente === 0 && $cantidadOrden > 0) {
+                return null;
+            }
+
             $ultimo = $historial->last();
             $fechaMovimiento = $ultimo ? Carbon::parse($ultimo->fecha_proceso)->startOfDay() : null;
-            $diasQuieto = $fechaMovimiento ? $fechaMovimiento->diffInDays($corteMes) : null;
-            $etapa = $ultimo ? trim($ultimo->proceso) : 'SIN MOVIMIENTO';
+
+            // La espera nunca comienza antes de solicitar la OT.
+            $fechaPedido = $registros
+                ->pluck('fecha_pedido')
+                ->filter()
+                ->map(function ($fecha) { return Carbon::parse($fecha)->startOfDay(); })
+                ->sort()
+                ->first();
+            $inicioEspera = $fechaPedido;
+            if ($fechaMovimiento && (!$inicioEspera || $fechaMovimiento->gt($inicioEspera))) {
+                $inicioEspera = $fechaMovimiento;
+            }
+            $diasQuieto = $inicioEspera ? max(0, $inicioEspera->diffInDays($corteMes, false)) : null;
+            $etapa = $cantidadIngresada > 0
+                ? 'INGRESO TERMINACION PARCIAL'
+                : ($ultimo ? trim((string) $ultimo->proceso) : 'SIN MOVIMIENTO REGISTRADO');
+
             return (object) [
                 'nro_ot' => $base->nro_ot, 'descripcion' => $base->descripcion,
-                'cantidad' => (int) $base->cantidad_orden,
+                'cantidad' => $cantidadOrden,
+                'cantidad_ingresada' => $cantidadIngresada,
+                'cantidad_pendiente' => $cantidadPendiente,
                 'pedidos' => $registros->pluck('nro_pedido')->unique()->implode(', '),
-                'etapa' => $etapa, 'ultima_fecha' => $ultimo ? $ultimo->fecha_proceso : null,
+                'etapa' => $etapa,
+                'ultima_fecha' => $ultimo ? $ultimo->fecha_proceso : null,
                 'dias_quieto' => $diasQuieto,
-                'prioridad' => $diasQuieto === null || $diasQuieto >= 7 ? 'URGENTE' : ($diasQuieto >= 3 ? 'REVISAR' : 'NORMAL'),
+                'prioridad' => $diasQuieto === null ? 'SIN DATOS'
+                    : ($diasQuieto >= 7 ? 'URGENTE' : ($diasQuieto >= 3 ? 'REVISAR' : 'NORMAL')),
             ];
         })->filter()->values();
 
@@ -273,7 +304,7 @@ class SeguimientoPedidoProduccionController extends Controller
             'prendas' => $total, 'con' => $con, 'sin' => $sin,
             'efectividad' => $total > 0 ? round($con * 100 / $total, 1) : 0,
             'pendientes' => $pendientes->count(),
-            'prendas_pendientes' => (int) $pendientes->sum('cantidad'),
+            'prendas_pendientes' => (int) $pendientes->sum('cantidad_pendiente'),
             'urgentes' => $pendientes->where('prioridad', 'URGENTE')->count(),
             'promedio' => round($promedio, 1),
             'habiles_transcurridos' => $habilesTranscurridos,
