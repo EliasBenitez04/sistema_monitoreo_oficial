@@ -569,6 +569,126 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 : 0,
         ];
 
+        /*
+         * Proyección trimestral. Corte global: último movimiento T-T importado.
+         * Histórico: 3 meses completos anteriores al mes del corte.
+         * Escenarios de meses futuros: -10%, base y +10% de ritmo diario.
+         */
+        $corteGlobalRaw = $ultimaFechaProceso;
+        $corteGlobal = $corteGlobalRaw
+            ? Carbon::parse($corteGlobalRaw)->startOfDay()
+            : null;
+        $historialGerencial = collect();
+        $futuroGerencial = collect();
+        $mesReferencia = $corteGlobal
+            ? $corteGlobal->copy()->startOfMonth()
+            : null;
+        $promedioHistoricoDiario = 0.0;
+        $ritmoActualGerencial = 0.0;
+        $ritmoBaseGerencial = 0.0;
+        $mesActualGerencial = null;
+
+        if ($mesReferencia) {
+            $inicioHistorico = $mesReferencia->copy()->subMonths(3);
+            $historialBruto = DB::table('ot_trazabilidad as tr')
+                ->whereRaw(
+                    "UPPER(TRIM(tr.proceso)) = ?",
+                    [self::PROCESO_CIERRE]
+                )
+                ->whereBetween('tr.fecha_proceso', [
+                    $inicioHistorico->format('Y-m-d H:i:s'),
+                    $corteGlobal->copy()->endOfDay()->format('Y-m-d H:i:s'),
+                ])
+                ->select(
+                    DB::raw("TO_CHAR(tr.fecha_proceso, 'YYYY-MM') as mes"),
+                    DB::raw('COALESCE(SUM(tr.resultado), 0) as prendas')
+                )
+                ->groupBy(DB::raw("TO_CHAR(tr.fecha_proceso, 'YYYY-MM')"))
+                ->pluck('prendas', 'mes');
+
+            $anteriores = collect();
+            for ($i = 3; $i >= 1; $i--) {
+                $mesHist = $mesReferencia->copy()->subMonths($i);
+                $cantidad = (int) ($historialBruto->get($mesHist->format('Y-m')) ?? 0);
+                $anteriores->push((object) [
+                    'mes' => $mesHist->format('Y-m'),
+                    'nombre' => ucfirst($mesHist->locale('es')->translatedFormat('F Y')),
+                    'prendas' => $cantidad,
+                    'dias' => $mesHist->daysInMonth,
+                ]);
+            }
+
+            $anterior = null;
+            foreach ($anteriores as $periodo) {
+                $historialGerencial->push((object) [
+                    'mes' => $periodo->mes,
+                    'nombre' => $periodo->nombre,
+                    'prendas' => $periodo->prendas,
+                    'variacion' => $anterior !== null && $anterior > 0
+                        ? round(($periodo->prendas - $anterior) * 100 / $anterior, 1)
+                        : null,
+                ]);
+                $anterior = $periodo->prendas;
+            }
+
+            $diasHistoricos = $anteriores->sum('dias');
+            $promedioHistoricoDiario = $diasHistoricos > 0
+                ? $anteriores->sum('prendas') / $diasHistoricos
+                : 0;
+
+            $realMesActual = (int) ($historialBruto->get($mesReferencia->format('Y-m')) ?? 0);
+            $diasHastaCorte = $mesReferencia->diffInDays($corteGlobal) + 1;
+            $ritmoActualGerencial = $diasHastaCorte > 0
+                ? $realMesActual / $diasHastaCorte
+                : 0;
+
+            // Se pondera el comportamiento reciente para evitar depender
+            // exclusivamente de un día o de un único mes anómalo.
+            $ritmoBaseGerencial = $promedioHistoricoDiario > 0
+                ? ($ritmoActualGerencial > 0
+                    ? $promedioHistoricoDiario * 0.6 + $ritmoActualGerencial * 0.4
+                    : $promedioHistoricoDiario)
+                : $ritmoActualGerencial;
+
+            $mesActualGerencial = (object) [
+                'mes' => $mesReferencia->format('Y-m'),
+                'nombre' => ucfirst($mesReferencia->locale('es')->translatedFormat('F Y')),
+                'real' => $realMesActual,
+                'dias_observados' => $diasHastaCorte,
+                'cierre_estimado' => (int) round($ritmoBaseGerencial * $mesReferencia->daysInMonth),
+                'variacion_vs_anterior' => $anterior !== null && $anterior > 0
+                    ? round((($ritmoBaseGerencial * $mesReferencia->daysInMonth) - $anterior) * 100 / $anterior, 1)
+                    : null,
+            ];
+
+            for ($i = 1; $i <= 3; $i++) {
+                $mesFuturo = $mesReferencia->copy()->addMonths($i);
+                $base = (int) round($ritmoBaseGerencial * $mesFuturo->daysInMonth);
+                $futuroGerencial->push((object) [
+                    'mes' => $mesFuturo->format('Y-m'),
+                    'nombre' => ucfirst($mesFuturo->locale('es')->translatedFormat('F Y')),
+                    'dias' => $mesFuturo->daysInMonth,
+                    'conservador' => (int) round($base * 0.9),
+                    'base' => $base,
+                    'optimista' => (int) round($base * 1.1),
+                    'variacion_vs_mes_actual' => $mesActualGerencial->cierre_estimado > 0
+                        ? round(($base - $mesActualGerencial->cierre_estimado) * 100 / $mesActualGerencial->cierre_estimado, 1)
+                        : null,
+                ]);
+            }
+        }
+
+        $proyeccionTrimestral = (object) [
+            'disponible' => $corteGlobal !== null,
+            'fecha_corte' => $corteGlobal,
+            'mes_actual' => $mesActualGerencial,
+            'historico' => $historialGerencial,
+            'futuro' => $futuroGerencial,
+            'ritmo_historico' => round($promedioHistoricoDiario, 1),
+            'ritmo_actual' => round($ritmoActualGerencial, 1),
+            'ritmo_base' => round($ritmoBaseGerencial, 1),
+        ];
+
         $inicioCalendario = $inicioMes
             ->copy()
             ->startOfWeek(Carbon::MONDAY);
@@ -638,6 +758,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'mesControl',
                 'resumenMensual',
                 'proyeccionMensual',
+                'proyeccionTrimestral',
                 'semanasCalendario'
             )
         );
