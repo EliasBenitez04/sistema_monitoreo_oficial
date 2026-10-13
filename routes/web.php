@@ -16,6 +16,7 @@ use App\Http\Controllers\ProcesadorImagenController;
 use App\Http\Controllers\RedistribucionSugeridaController;
 use App\Http\Controllers\RemisionesController;
 use App\Http\Controllers\SeguimientoPedidoController;
+use App\Http\Controllers\PedidoAdministracionController;
 use App\Http\Controllers\SeguimientoPedidoProduccionController;
 use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
 use App\Http\Controllers\PedidosController;
@@ -943,6 +944,11 @@ Route::resource('redistribucion-configs', App\Http\Controllers\RedistribucionCon
 */
 Route::get('/pedidos', [PedidosController::class, 'index'])->name('pedidos.index');
 Route::get('/pedidos/importar-datos', [PedidosController::class, 'importar'])->name('pedidos.importar');
+Route::get('/pedidos/administrar', [PedidoAdministracionController::class, 'index'])->name('pedidos.administrar.index');
+Route::get('/pedidos/administrar/{id}', [PedidoAdministracionController::class, 'show'])->name('pedidos.administrar.show');
+Route::post('/pedidos/administrar/{id}/renombrar', [PedidoAdministracionController::class, 'renombrar'])->name('pedidos.administrar.renombrar');
+Route::post('/pedidos/administrar/{id}/ot/{detalle}', [PedidoAdministracionController::class, 'cambiarOt'])->name('pedidos.administrar.ot');
+
 
 /*
 |--------------------------------------------------------------------------
