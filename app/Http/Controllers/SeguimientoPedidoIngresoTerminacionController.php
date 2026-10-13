@@ -333,12 +333,393 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 : 0,
         ];
 
+        /*
+         * Dashboard mensual.
+         *
+         * Se toma exactamente la misma fuente que el control diario:
+         * TERMINACION - TERMINACION. Cada combinación OT/día se cruza contra
+         * los pedidos IT que ya existían en la fecha de esa salida.
+         */
+        $mesInput = trim((string) $request->input('mes', ''));
+
+        try {
+            $mesControl = $mesInput !== ''
+                ? Carbon::createFromFormat('Y-m', $mesInput)->startOfMonth()
+                : $fechaControl->copy()->startOfMonth();
+        } catch (\Exception $e) {
+            $mesControl = $fechaControl->copy()->startOfMonth();
+        }
+
+        $inicioMes = $mesControl->copy()->startOfMonth();
+        $finMes = $mesControl->copy()->endOfMonth();
+
+        $salidasMes = DB::table('ot_trazabilidad as tr')
+            ->join('ot as o', 'o.id_ot', '=', 'tr.id_ot')
+            ->whereRaw(
+                "UPPER(TRIM(tr.proceso)) = ?",
+                [self::PROCESO_CIERRE]
+            )
+            ->whereBetween(
+                'tr.fecha_proceso',
+                [
+                    $inicioMes->copy()->startOfDay()->format('Y-m-d H:i:s'),
+                    $finMes->copy()->endOfDay()->format('Y-m-d H:i:s'),
+                ]
+            )
+            ->select(
+                DB::raw('DATE(tr.fecha_proceso) as fecha_salida'),
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden',
+                DB::raw(
+                    'SUM(COALESCE(tr.resultado, 0)) as resultado_dia'
+                )
+            )
+            ->groupBy(
+                DB::raw('DATE(tr.fecha_proceso)'),
+                'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
+                'o.cantidad_orden'
+            )
+            ->orderBy(
+                DB::raw('DATE(tr.fecha_proceso)')
+            )
+            ->orderBy('o.nro_ot')
+            ->get();
+
+        $idsSalidaMes = $salidasMes
+            ->pluck('id_ot')
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->unique()
+            ->values();
+
+        $pedidosMesPorOt = collect();
+
+        if ($idsSalidaMes->isNotEmpty()) {
+            $pedidosMesPorOt = DB::table(
+                'seguimiento_pedido_detalle as spd'
+            )
+                ->join(
+                    'seguimiento_pedido as sp',
+                    'sp.id',
+                    '=',
+                    'spd.seguimiento_pedido_id'
+                )
+                ->whereIn(
+                    'spd.id_ot',
+                    $idsSalidaMes->all()
+                )
+                ->where(
+                    'sp.nro_pedido',
+                    'ILIKE',
+                    self::PREFIJO . '%'
+                )
+                ->select(
+                    'spd.id_ot',
+                    'sp.id as pedido_id',
+                    'sp.nro_pedido',
+                    'sp.fecha_pedido'
+                )
+                ->orderBy('sp.fecha_pedido')
+                ->orderBy('sp.id')
+                ->get()
+                ->groupBy('id_ot');
+        }
+
+        $salidasMes = $salidasMes
+            ->map(function ($salida) use ($pedidosMesPorOt) {
+                $fechaSalida = date(
+                    'Y-m-d',
+                    strtotime($salida->fecha_salida)
+                );
+
+                $pedidosVigentes = collect(
+                    $pedidosMesPorOt->get(
+                        (int) $salida->id_ot,
+                        collect()
+                    )
+                )
+                    ->filter(function ($item) use ($fechaSalida) {
+                        if (!$item->fecha_pedido) {
+                            return false;
+                        }
+
+                        return date(
+                            'Y-m-d',
+                            strtotime($item->fecha_pedido)
+                        ) <= $fechaSalida;
+                    })
+                    ->map(function ($item) {
+                        return (object) [
+                            'id' => (int) $item->pedido_id,
+                            'nro' => $item->nro_pedido,
+                            'fecha' => date(
+                                'Y-m-d',
+                                strtotime($item->fecha_pedido)
+                            ),
+                        ];
+                    })
+                    ->unique(function ($item) {
+                        return $item->id;
+                    })
+                    ->values();
+
+                $salida->fecha_salida = $fechaSalida;
+                $salida->pedidos_vigentes = $pedidosVigentes;
+                $salida->tiene_pedido = $pedidosVigentes->isNotEmpty();
+
+                return $salida;
+            })
+            ->values();
+
+        $salidasMesPorFecha = $salidasMes->groupBy('fecha_salida');
+
+        $resumenMensual = (object) [
+            'dias_con_salida' => $salidasMesPorFecha->count(),
+            'registros_ot_dia' => $salidasMes->count(),
+            'ots_unicas' => $salidasMes
+                ->pluck('id_ot')
+                ->unique()
+                ->count(),
+            'salidas_con_pedido' => $salidasMes
+                ->where('tiene_pedido', true)
+                ->count(),
+            'salidas_sin_pedido' => $salidasMes
+                ->where('tiene_pedido', false)
+                ->count(),
+            'prendas_salida' => (int) $salidasMes->sum('resultado_dia'),
+            'prendas_con_pedido' => (int) $salidasMes
+                ->where('tiene_pedido', true)
+                ->sum('resultado_dia'),
+            'prendas_sin_pedido' => (int) $salidasMes
+                ->where('tiene_pedido', false)
+                ->sum('resultado_dia'),
+            'porcentaje_justificado' => $salidasMes->count() > 0
+                ? round(
+                    (
+                        $salidasMes
+                            ->where('tiene_pedido', true)
+                            ->count()
+                        / $salidasMes->count()
+                    ) * 100,
+                    1
+                )
+                : 0,
+        ];
+
+        // Efectividad del volumen: prendas con pedido IT / prendas procesadas.
+        $resumenMensual->efectividad_prendas = $resumenMensual->prendas_salida > 0
+            ? round(100 * $resumenMensual->prendas_con_pedido / $resumenMensual->prendas_salida, 1)
+            : 0;
+
+        /*
+         * Proyección de prendas T-T para el mes seleccionado.
+         * Promedio por días hábiles (lunes-viernes) transcurridos hasta
+         * la última fecha importada del mes; días sin salida cuentan como 0.
+         * Los movimientos del fin de semana sí se incluyen en el volumen
+         * registrado, pero los días futuros proyectados son solo L-V.
+         */
+        $ultimaSalidaMes = $salidasMes->max('fecha_salida');
+        $fechaCorteMes = $ultimaSalidaMes
+            ? Carbon::parse($ultimaSalidaMes)->startOfDay()
+            : null;
+        $esMesActual = $mesControl->format('Y-m') === Carbon::today()->format('Y-m');
+        $diasHabilesTranscurridos = 0;
+        $diasHabilesRestantes = 0;
+
+        if ($fechaCorteMes) {
+            $cursorHabil = $inicioMes->copy()->startOfDay();
+            while ($cursorHabil->lte($fechaCorteMes)) {
+                if ($cursorHabil->isWeekday()) {
+                    $diasHabilesTranscurridos++;
+                }
+                $cursorHabil->addDay();
+            }
+
+            $cursorHabil = $fechaCorteMes->copy()->addDay();
+            while ($cursorHabil->lte($finMes)) {
+                if ($cursorHabil->isWeekday()) {
+                    $diasHabilesRestantes++;
+                }
+                $cursorHabil->addDay();
+            }
+        }
+
+        $promedioHabil = $diasHabilesTranscurridos > 0
+            ? $resumenMensual->prendas_salida / $diasHabilesTranscurridos
+            : 0;
+
+        $proyeccionDiasHabiles = (object) [
+            'disponible' => $esMesActual && $fechaCorteMes !== null
+                && $diasHabilesTranscurridos > 0,
+            'fecha_corte' => $fechaCorteMes,
+            'cantidad_real' => $resumenMensual->prendas_salida,
+            'dias_transcurridos' => $diasHabilesTranscurridos,
+            'dias_restantes' => $diasHabilesRestantes,
+            'promedio_diario' => round($promedioHabil, 1),
+            'cantidad_restante' => (int) round($promedioHabil * $diasHabilesRestantes),
+            'total_proyectado' => (int) round(
+                $resumenMensual->prendas_salida + $promedioHabil * $diasHabilesRestantes
+            ),
+        ];
+
+        /*
+         * Oportunidad de atención de pedidos IT.
+         * Corte para mes actual = última fecha importada T-T; para meses
+         * cerrados = último día del mes. No se incluyen pedidos futuros.
+         * Una OT en varios pedidos cuenta una sola vez.
+         * Una salida previa al pedido no se trata como OT pendiente.
+         */
+        $cortePendientes = $esMesActual
+            ? $fechaCorteMes
+            : $finMes->copy()->startOfDay();
+        $otsPendientesIt = collect();
+        $analisisPendientes = (object) [
+            'disponible' => $cortePendientes !== null,
+            'fecha_corte' => $cortePendientes,
+            'solicitadas' => 0,
+            'atendidas' => 0,
+            'pendientes' => 0,
+            'sin_pedido_mes' => (int) $resumenMensual->salidas_sin_pedido,
+            'oportunidad' => 0,
+            'porcentaje_atencion' => 0,
+        ];
+
+        if ($cortePendientes) {
+            $fechaLimite = $cortePendientes->format('Y-m-d');
+            $otPedidos = DB::table('seguimiento_pedido_detalle as d')
+                ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
+                ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+                ->where('p.nro_pedido', 'ILIKE', self::PREFIJO . '%')
+                ->whereNotNull('p.fecha_pedido')
+                ->whereDate('p.fecha_pedido', '<=', $fechaLimite)
+                // Mostrar únicamente vínculos activos: una importación anterior
+                // pudo haber recreado una OT anulada o reemplazada.
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('pedido_ot_cambios as c')
+                        ->whereColumn('c.pedido_id', 'p.id')
+                        ->whereRaw('c.ot_anterior = CAST(o.nro_ot AS TEXT)')
+                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
+                })
+                ->select('o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden',
+                    'p.nro_pedido', 'p.fecha_pedido')
+                ->get()->groupBy('id_ot');
+
+            $idsPedidosActivos = $otPedidos->keys()->all();
+            $primerHito = empty($idsPedidosActivos) ? collect()
+                : DB::table('ot_trazabilidad')
+                    ->whereIn('id_ot', $idsPedidosActivos)
+                    ->whereRaw("UPPER(TRIM(proceso)) = ?", [self::PROCESO_CIERRE])
+                    ->whereDate('fecha_proceso', '<=', $fechaLimite)
+                    ->select('id_ot', DB::raw('MIN(fecha_proceso) as primera_fecha'))
+                    ->groupBy('id_ot')
+                    ->pluck('primera_fecha', 'id_ot');
+
+            $otsPendientesIt = $otPedidos->map(function ($pedidosOt, $idOt) use ($primerHito) {
+                $primeraFecha = $primerHito->get($idOt);
+                $base = $pedidosOt->first();
+                return (object) [
+                    'nro_ot' => $base->nro_ot,
+                    'descripcion' => $base->descripcion,
+                    'cantidad_orden' => (int) $base->cantidad_orden,
+                    'pedidos' => $pedidosOt->pluck('nro_pedido')->unique()->implode(', '),
+                    'atendida' => $primeraFecha !== null,
+                ];
+            })->values();
+
+            $otsPendientes = $otsPendientesIt->where('atendida', false)->values();
+            $analisisPendientes->solicitadas = $otsPendientesIt->count();
+            $analisisPendientes->atendidas = $otsPendientesIt->where('atendida', true)->count();
+            $analisisPendientes->pendientes = $otsPendientes->count();
+            $analisisPendientes->oportunidad = min(
+                $analisisPendientes->pendientes,
+                $analisisPendientes->sin_pedido_mes
+            );
+            $analisisPendientes->porcentaje_atencion = $analisisPendientes->solicitadas > 0
+                ? round($analisisPendientes->atendidas * 100 / $analisisPendientes->solicitadas, 1)
+                : 0;
+            $otsPendientesIt = $otsPendientes->sortBy('nro_ot')->values();
+        }
+
+        $inicioCalendario = $inicioMes
+            ->copy()
+            ->startOfWeek(Carbon::MONDAY);
+
+        $finCalendario = $finMes
+            ->copy()
+            ->endOfWeek(Carbon::SUNDAY);
+
+        $semanasCalendario = collect();
+        $semanaActual = collect();
+        $cursor = $inicioCalendario->copy();
+
+        while ($cursor->lte($finCalendario)) {
+            $fechaDia = $cursor->format('Y-m-d');
+            $itemsDia = collect(
+                $salidasMesPorFecha->get(
+                    $fechaDia,
+                    collect()
+                )
+            );
+
+            $conPedidoDia = $itemsDia
+                ->where('tiene_pedido', true)
+                ->count();
+
+            $sinPedidoDia = $itemsDia
+                ->where('tiene_pedido', false)
+                ->count();
+
+            $pedidosDia = $itemsDia
+                ->flatMap(function ($item) {
+                    return $item->pedidos_vigentes
+                        ->pluck('nro')
+                        ->all();
+                })
+                ->unique()
+                ->sort()
+                ->values();
+
+            $semanaActual->push((object) [
+                'fecha' => $fechaDia,
+                'numero' => (int) $cursor->format('j'),
+                'es_mes' => $cursor->month === $mesControl->month,
+                'es_hoy' => $fechaDia === Carbon::today()->format('Y-m-d'),
+                'seleccionado' => $fechaDia === $fechaControlTexto,
+                'ot_total' => $itemsDia->count(),
+                'con_pedido' => $conPedidoDia,
+                'sin_pedido' => $sinPedidoDia,
+                'prendas_salida' => (int) $itemsDia->sum('resultado_dia'),
+                'pedidos' => $pedidosDia,
+            ]);
+
+            if ($semanaActual->count() === 7) {
+                $semanasCalendario->push($semanaActual);
+                $semanaActual = collect();
+            }
+
+            $cursor->addDay();
+        }
+
         return view(
             'seguimiento_pedidos_ingreso_terminacion.seguimiento_diario',
             compact(
                 'fechaControl',
                 'salidas',
-                'resumen'
+                'resumen',
+                'mesControl',
+                'resumenMensual',
+                'proyeccionDiasHabiles',
+                'analisisPendientes',
+                'otsPendientesIt',
+                'semanasCalendario'
             )
         );
     }

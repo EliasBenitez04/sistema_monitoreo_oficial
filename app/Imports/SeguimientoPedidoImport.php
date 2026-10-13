@@ -50,6 +50,16 @@ class SeguimientoPedidoImport implements ToCollection, WithHeadingRow
                     $pedido->save();
                 }
 
+                // No reactivar vínculos anulados o reemplazados manualmente.
+                $bloqueada = DB::table('pedido_ot_cambios')
+                    ->where('pedido_id', $pedido->id)
+                    ->where('ot_anterior', (string) $ot->nro_ot)
+                    ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
+                    ->exists();
+                if ($bloqueada) {
+                    continue;
+                }
+
                 SeguimientoPedidoDetalle::firstOrCreate([
                     'seguimiento_pedido_id' => $pedido->id,
                     'id_ot' => $ot->id_ot,

@@ -8,7 +8,7 @@
             <div class="it-day-eyebrow">CONTROL DE PEDIDOS · INGRESO TERMINACIÓN</div>
             <h1 class="it-day-title mb-1">
                 <i class="fas fa-calendar-check mr-2"></i>
-                Control diario de OT
+                Control mensual y diario de OT
             </h1>
             <p class="text-muted mb-0">
                 Elegí una fecha para ver las OT que realmente salieron en
@@ -54,6 +54,348 @@
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm it-calendar-card mb-3">
+        <div class="card-header bg-white border-0 pb-0">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <div class="it-calendar-eyebrow">DASHBOARD MENSUAL</div>
+                    <h3 class="it-calendar-title mb-1">
+                        <i class="far fa-calendar-alt mr-2 text-primary"></i>
+                        {{ ucfirst($mesControl->locale('es')->translatedFormat('F Y')) }}
+                    </h3>
+                    <small class="text-muted">
+                        Cada día muestra las OT que llegaron a TERMINACION - TERMINACION
+                        y si estaban justificadas por un pedido IT vigente.
+                    </small>
+                </div>
+
+                <div class="it-calendar-nav mt-2 mt-md-0">
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                           'fecha' => $fechaControl->format('Y-m-d'),
+                           'mes' => $mesControl->copy()->subMonth()->format('Y-m')
+                       ]) }}">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+
+                    <a class="btn btn-outline-primary btn-sm"
+                       href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                           'fecha' => $fechaControl->format('Y-m-d'),
+                           'mes' => $fechaControl->format('Y-m')
+                       ]) }}">
+                        Mes de la fecha
+                    </a>
+
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                           'fecha' => $fechaControl->format('Y-m-d'),
+                           'mes' => $mesControl->copy()->addMonth()->format('Y-m')
+                       ]) }}">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-body pt-3">
+            <div class="row mb-3">
+                <div class="col-xl-3 col-md-6 mb-2 mb-xl-0">
+                    <div class="it-month-kpi">
+                        <small>DÍAS CON SALIDA</small>
+                        <strong>{{ number_format($resumenMensual->dias_con_salida,0,',','.') }}</strong>
+                        <span>días con movimiento T-T</span>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-2 mb-xl-0">
+                    <div class="it-month-kpi">
+                        <small>OT DEL MES</small>
+                        <strong>{{ number_format($resumenMensual->ots_unicas,0,',','.') }}</strong>
+                        <span>{{ number_format($resumenMensual->registros_ot_dia,0,',','.') }} registros OT/día</span>
+                        <span>{{ number_format($resumenMensual->prendas_salida,0,',','.') }} prendas procesadas</span>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6 mb-2 mb-md-0">
+                    <div class="it-month-kpi is-success">
+                        <small>CON PEDIDO</small>
+                        <strong>{{ number_format($resumenMensual->salidas_con_pedido,0,',','.') }}</strong>
+                        <span>{{ number_format($resumenMensual->porcentaje_justificado,1,',','.') }}% justificado</span>
+                        <span>{{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }} prendas con pedido</span>
+                    </div>
+                </div>
+
+                <div class="col-xl-3 col-md-6">
+                    <div class="it-month-kpi {{ $resumenMensual->salidas_sin_pedido > 0 ? 'is-danger' : 'is-success' }}">
+                        <small>SIN PEDIDO</small>
+                        <strong>{{ number_format($resumenMensual->salidas_sin_pedido,0,',','.') }}</strong>
+                        <span>{{ $resumenMensual->salidas_sin_pedido > 0 ? 'registros para revisar' : 'sin desvíos' }}</span>
+                        <span>{{ number_format($resumenMensual->prendas_sin_pedido,0,',','.') }} prendas sin pedido</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-success mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap">
+                        <div>
+                            <div class="text-success font-weight-bold small">EFECTIVIDAD DE SALIDA DEL MES</div>
+                            <h3 class="mb-1 font-weight-bold">{{ number_format($resumenMensual->efectividad_prendas,1,',','.') }}%</h3>
+                            <span class="text-muted small">
+                                {{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }} prendas con pedido IT
+                                de {{ number_format($resumenMensual->prendas_salida,0,',','.') }} procesadas.
+                            </span>
+                        </div>
+                        <div class="text-muted small mt-2 mt-md-0">
+                            Efectividad = prendas con pedido / prendas procesadas × 100
+                        </div>
+                    </div>
+                    <div class="progress mt-3" style="height:14px">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width:{{ $resumenMensual->efectividad_prendas }}%"
+                             aria-valuenow="{{ $resumenMensual->efectividad_prendas }}"
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <small class="d-block mt-2 text-muted">
+                        Mide qué porcentaje de prendas T-T corresponde a pedidos IT vigentes.
+                        No representa el porcentaje de cumplimiento de todos los pedidos pendientes.
+                    </small>
+                </div>
+            </div>
+
+            <div class="card border-primary mb-3">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-calculator text-primary mr-1"></i>
+                        Análisis de prendas · proyección por días hábiles
+                    </strong>
+                </div>
+                <div class="card-body">
+                    @if($proyeccionDiasHabiles->disponible)
+                        <p class="small text-muted mb-3">
+                            Mes: {{ ucfirst($mesControl->locale('es')->translatedFormat('F Y')) }}
+                            · Corte de datos T-T: <strong>{{ $proyeccionDiasHabiles->fecha_corte->format('d/m/Y') }}</strong>
+                            · Solo se proyectan días de lunes a viernes.
+                        </p>
+                        <div class="row">
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>PRENDAS INGRESADAS EN EL MES</small>
+                                    <strong>{{ number_format($proyeccionDiasHabiles->cantidad_real,0,',','.') }}</strong>
+                                    <span>cantidad real hasta la fecha de corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>PROMEDIO POR DÍA HÁBIL</small>
+                                    <strong>{{ number_format($proyeccionDiasHabiles->promedio_diario,1,',','.') }}</strong>
+                                    <span>{{ $proyeccionDiasHabiles->dias_transcurridos }} días hábiles transcurridos</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>PRENDAS ADICIONALES PROYECTADAS</small>
+                                    <strong>{{ number_format($proyeccionDiasHabiles->cantidad_restante,0,',','.') }}</strong>
+                                    <span>{{ $proyeccionDiasHabiles->dias_restantes }} días hábiles restantes</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-success">
+                                    <small>TOTAL PROYECTADO AL CIERRE</small>
+                                    <strong>{{ number_format($proyeccionDiasHabiles->total_proyectado,0,',','.') }}</strong>
+                                    <span>real + prendas adicionales estimadas</span>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            Fórmula: prendas T-T del mes ÷ días hábiles desde el 1 hasta el último
+                            movimiento cargado × días hábiles que faltan.
+                            Los días hábiles sin movimientos cuentan para el promedio.
+                            Los movimientos ocurridos en fin de semana se incluyen en la cantidad real,
+                            pero sábados y domingos no se cuentan como días futuros de producción.
+                            No se excluyen feriados; es una estimación según el ritmo actual.
+                        </small>
+                    @else
+                        <p class="text-muted mb-0">
+                            La proyección se muestra para el mes actual cuando hay movimientos T-T
+                            y al menos un día hábil transcurrido. Para otros meses se conservan
+                            las cifras reales del calendario sin proyectar.
+                        </p>
+                    @endif
+                </div>
+            </div>
+
+            <div class="card border-warning mb-3">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-exclamation-circle text-warning mr-1"></i>
+                        Análisis de atención de pedidos IT · OT pendientes vs. salidas sin pedido
+                    </strong>
+                </div>
+                <div class="card-body">
+                    @if($analisisPendientes->disponible)
+                        <p class="small text-muted">
+                            Corte: <strong>{{ $analisisPendientes->fecha_corte->format('d/m/Y') }}</strong>.
+                            Pedidos IT solicitados hasta ese día; se cuentan OT únicas.
+                        </p>
+                        <div class="row">
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>OT IT SOLICITADAS</small>
+                                    <strong>{{ number_format($analisisPendientes->solicitadas,0,',','.') }}</strong>
+                                    <span>{{ number_format($analisisPendientes->porcentaje_atencion,1,',','.') }}% con hito registrado al corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-success">
+                                    <small>OT IT ATENDIDAS</small>
+                                    <strong>{{ number_format($analisisPendientes->atendidas,0,',','.') }}</strong>
+                                    <span>Ya alcanzaron T-T hasta el corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-danger">
+                                    <small>OT IT PENDIENTES</small>
+                                    <strong>{{ number_format($analisisPendientes->pendientes,0,',','.') }}</strong>
+                                    <span>Solicitadas sin T-T hasta el corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>SALIDAS SIN PEDIDO DEL MES</small>
+                                    <strong>{{ number_format($analisisPendientes->sin_pedido_mes,0,',','.') }}</strong>
+                                    <span>Registros OT/día que requieren revisión</span>
+                                </div>
+                            </div>
+                        </div>
+                        @if($analisisPendientes->pendientes > 0 && $analisisPendientes->sin_pedido_mes > 0)
+                            <div class="alert alert-warning">
+                                <strong>Oportunidad de priorización:</strong>
+                                quedaron {{ number_format($analisisPendientes->pendientes,0,',','.') }} OT solicitadas pendientes
+                                mientras hubo {{ number_format($analisisPendientes->sin_pedido_mes,0,',','.') }} salidas OT/día sin pedido IT vigente.
+                                Como referencia, hasta
+                                <strong>{{ number_format($analisisPendientes->oportunidad,0,',','.') }} OT</strong>
+                                podrían haberse priorizado en lugar de esas salidas, si estaban disponibles
+                                y requerían una carga de trabajo comparable.
+                                No implica que esas OT pudieran completarse automáticamente.
+                            </div>
+                        @endif
+                        <details>
+                            <summary class="font-weight-bold" style="cursor:pointer">
+                                Ver las {{ number_format($analisisPendientes->pendientes,0,',','.') }} OT solicitadas pendientes
+                            </summary>
+                            <div class="table-responsive mt-2" style="max-height:360px;overflow:auto">
+                                <table class="table table-sm table-striped">
+                                    <thead><tr><th>Nº OT</th><th>Descripción</th><th class="text-right">Prendas ordenadas</th><th>Pedido IT</th></tr></thead>
+                                    <tbody>
+                                        @forelse($otsPendientesIt as $item)
+                                            <tr>
+                                                <td><strong>{{ $item->nro_ot }}</strong></td>
+                                                <td>{{ $item->descripcion }}</td>
+                                                <td class="text-right">{{ number_format($item->cantidad_orden,0,',','.') }}</td>
+                                                <td>{{ $item->pedidos }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="4" class="text-center text-muted">No quedan OT solicitadas pendientes al corte.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                        <small class="d-block text-muted mt-2">
+                            Criterio: una OT está atendida si existe al menos un registro
+                            TERMINACION - TERMINACION hasta la fecha de corte.
+                            Las pendientes pueden corresponder a pedidos anteriores al mes.
+                            Este indicador mide OT, no prendas completas.
+                            Las salidas sin pedido del mes son registros OT/día, por lo que
+                            pueden repetir una misma OT en días distintos.
+                        </small>
+                    @else
+                        <p class="text-muted mb-0">No hay corte de movimientos cargados para analizar las OT pendientes del mes actual.</p>
+                    @endif
+                </div>
+            </div>
+
+            <div class="it-calendar-weekdays">
+                <div>LUN</div>
+                <div>MAR</div>
+                <div>MIÉ</div>
+                <div>JUE</div>
+                <div>VIE</div>
+                <div>SÁB</div>
+                <div>DOM</div>
+            </div>
+
+            <div class="it-calendar-grid">
+                @foreach($semanasCalendario as $semana)
+                    @foreach($semana as $dia)
+                        <a href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                                'fecha' => $dia->fecha,
+                                'mes' => $mesControl->format('Y-m')
+                            ]) }}"
+                           class="it-calendar-day
+                                  {{ !$dia->es_mes ? 'is-outside' : '' }}
+                                  {{ $dia->es_hoy ? 'is-today' : '' }}
+                                  {{ $dia->seleccionado ? 'is-selected' : '' }}
+                                  {{ $dia->sin_pedido > 0 ? 'has-danger' : ($dia->ot_total > 0 ? 'has-success' : '') }}">
+
+                            <div class="it-calendar-day-top">
+                                <span class="it-calendar-day-number">{{ $dia->numero }}</span>
+
+                                @if($dia->ot_total > 0)
+                                    <span class="it-calendar-day-total">
+                                        {{ $dia->ot_total }} OT
+                                    </span>
+                                @endif
+                            </div>
+
+                            @if($dia->ot_total > 0)
+                                <div class="it-calendar-statuses">
+                                    @if($dia->con_pedido > 0)
+                                        <span class="it-calendar-chip is-success">
+                                            <i class="fas fa-check mr-1"></i>
+                                            {{ $dia->con_pedido }} con pedido
+                                        </span>
+                                    @endif
+
+                                    @if($dia->sin_pedido > 0)
+                                        <span class="it-calendar-chip is-danger">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                                            {{ $dia->sin_pedido }} sin pedido
+                                        </span>
+                                    @endif
+                                </div>
+
+                                @if($dia->pedidos->isNotEmpty())
+                                    <div class="it-calendar-orders">
+                                        @foreach($dia->pedidos->take(3) as $pedidoDia)
+                                            <span>{{ $pedidoDia }}</span>
+                                        @endforeach
+
+                                        @if($dia->pedidos->count() > 3)
+                                            <span>+{{ $dia->pedidos->count() - 3 }}</span>
+                                        @endif
+                                    </div>
+                                @endif
+
+                                <div class="it-calendar-units">
+                                    {{ number_format($dia->prendas_salida,0,',','.') }} prendas T-T
+                                </div>
+                            @else
+                                <div class="it-calendar-empty">Sin salida</div>
+                            @endif
+                        </a>
+                    @endforeach
+                @endforeach
+            </div>
+
+            <div class="it-calendar-legend mt-3">
+                <span><i class="it-legend-dot is-success"></i> Todo con pedido</span>
+                <span><i class="it-legend-dot is-danger"></i> Tiene OT sin pedido</span>
+                <span><i class="it-legend-dot is-selected"></i> Día seleccionado</span>
+                <span class="text-muted">Hacé clic en un día para ver el detalle de OT debajo.</span>
+            </div>
         </div>
     </div>
 
@@ -240,9 +582,208 @@
 </section>
 @endsection
 
-@push('page_styles')
+@push('page_css')
 <style>
 .it-day-shell{max-width:1650px}
+.it-calendar-card{
+    border:1px solid #e2e8f0;
+    border-radius:14px;
+    overflow:hidden;
+}
+.it-calendar-eyebrow{
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.12em;
+    color:#94a3b8;
+}
+.it-calendar-title{
+    font-size:22px;
+    font-weight:900;
+    color:#0f172a;
+}
+.it-calendar-nav{
+    display:flex;
+    gap:6px;
+}
+.it-month-kpi{
+    height:100%;
+    min-height:92px;
+    border:1px solid #e2e8f0;
+    border-left:4px solid #334155;
+    border-radius:10px;
+    padding:12px 13px;
+    background:#fff;
+}
+.it-month-kpi.is-success{border-left-color:#22c55e}
+.it-month-kpi.is-danger{border-left-color:#ef4444}
+.it-month-kpi small{
+    display:block;
+    color:#94a3b8;
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.04em;
+}
+.it-month-kpi strong{
+    display:block;
+    margin:4px 0 2px;
+    font-size:25px;
+    line-height:1;
+    color:#0f172a;
+}
+.it-month-kpi span{
+    color:#64748b;
+    font-size:10px;
+}
+.it-calendar-weekdays,
+.it-calendar-grid{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(0,1fr));
+}
+.it-calendar-weekdays{
+    border:1px solid #e2e8f0;
+    border-bottom:0;
+    border-radius:10px 10px 0 0;
+    overflow:hidden;
+    background:#f8fafc;
+}
+.it-calendar-weekdays div{
+    padding:8px 6px;
+    color:#64748b;
+    font-size:9px;
+    font-weight:900;
+    text-align:center;
+    letter-spacing:.06em;
+}
+.it-calendar-grid{
+    border-top:1px solid #e2e8f0;
+    border-left:1px solid #e2e8f0;
+}
+.it-calendar-day{
+    position:relative;
+    min-height:128px;
+    padding:9px;
+    border-right:1px solid #e2e8f0;
+    border-bottom:1px solid #e2e8f0;
+    background:#fff;
+    color:#334155;
+    text-decoration:none!important;
+    transition:background .15s ease, box-shadow .15s ease;
+}
+.it-calendar-day:hover{
+    z-index:2;
+    background:#f8fafc;
+    color:#0f172a;
+    box-shadow:inset 0 0 0 2px #bfdbfe;
+}
+.it-calendar-day.is-outside{
+    background:#f8fafc;
+    opacity:.5;
+}
+.it-calendar-day.has-success{
+    background:#f7fff9;
+}
+.it-calendar-day.has-danger{
+    background:#fff7f7;
+}
+.it-calendar-day.is-selected{
+    z-index:3;
+    box-shadow:inset 0 0 0 3px #2563eb;
+}
+.it-calendar-day.is-today .it-calendar-day-number{
+    background:#2563eb;
+    color:#fff;
+}
+.it-calendar-day-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8px;
+}
+.it-calendar-day-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:50%;
+    font-size:12px;
+    font-weight:900;
+    color:#0f172a;
+}
+.it-calendar-day-total{
+    font-size:10px;
+    font-weight:900;
+    color:#475569;
+}
+.it-calendar-statuses{
+    display:flex;
+    flex-wrap:wrap;
+    gap:4px;
+    margin-top:8px;
+}
+.it-calendar-chip{
+    display:inline-block;
+    border-radius:999px;
+    padding:4px 6px;
+    font-size:8px;
+    font-weight:900;
+    line-height:1.2;
+}
+.it-calendar-chip.is-success{
+    background:#dcfce7;
+    color:#166534;
+}
+.it-calendar-chip.is-danger{
+    background:#fee2e2;
+    color:#991b1b;
+}
+.it-calendar-orders{
+    display:flex;
+    flex-wrap:wrap;
+    gap:3px;
+    margin-top:7px;
+}
+.it-calendar-orders span{
+    display:inline-block;
+    border:1px solid #dbeafe;
+    border-radius:5px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    padding:2px 4px;
+    font-size:8px;
+    font-weight:900;
+}
+.it-calendar-units{
+    margin-top:7px;
+    color:#64748b;
+    font-size:8px;
+    font-weight:700;
+}
+.it-calendar-empty{
+    margin-top:12px;
+    color:#cbd5e1;
+    font-size:9px;
+}
+.it-calendar-legend{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:12px;
+    font-size:9px;
+}
+.it-legend-dot{
+    display:inline-block;
+    width:9px;
+    height:9px;
+    margin-right:4px;
+    border-radius:50%;
+}
+.it-legend-dot.is-success{background:#22c55e}
+.it-legend-dot.is-danger{background:#ef4444}
+.it-legend-dot.is-selected{
+    background:#2563eb;
+    box-shadow:0 0 0 2px #bfdbfe;
+}
 .it-day-eyebrow{
     font-size:10px;
     font-weight:900;
@@ -360,9 +901,18 @@
     color:#991b1b;
     border:1px solid #fecaca;
 }
+@media(max-width:991.98px){
+    .it-calendar-day{min-height:112px;padding:7px}
+    .it-calendar-orders span{font-size:7px}
+}
 @media(max-width:767.98px){
     .it-day-title{font-size:22px}
     .it-day-date{font-size:25px}
+    .it-calendar-card .card-body{overflow-x:auto}
+    .it-calendar-weekdays,
+    .it-calendar-grid{
+        min-width:760px;
+    }
 }
 </style>
 @endpush
