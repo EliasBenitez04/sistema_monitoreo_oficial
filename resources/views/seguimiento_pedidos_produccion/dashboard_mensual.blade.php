@@ -14,13 +14,13 @@
         <a class="btn btn-outline-primary" href="{{ route('seguimiento-produccion.dashboard-mensual',['mes'=>$mes->copy()->addMonth()->format('Y-m')]) }}"><i class="fas fa-chevron-right"></i></a>
     </div>
 </div><div class="card-body">
-<p class="text-muted small">Fecha de corte: <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin movimientos del período' }}</strong>. Las salidas muestran OT/día; una misma OT puede aparecer más de una vez en diferentes fechas.</p>
+<p class="text-muted small">Fecha de corte: <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin movimientos del período' }}</strong>. Las salidas muestran OT/día; una misma OT puede aparecer más de una vez en diferentes fechas. Una OT asociada a un pedido P se reconoce aunque el pedido tenga fecha posterior a la salida.</p>
 <div class="row">
 @foreach([
 ['OT/día procesadas',number_format($indicadores->ot_dia,0,',','.'),'Eventos agrupados por día'],
 ['Prendas ingresadas',number_format($indicadores->prendas,0,',','.'),'Cantidad real T-T de Producción'],
-['Efectividad de salida',number_format($indicadores->efectividad,1,',','.').'%','Prendas de OT con pedido P / todas las prendas'],
-['Prendas sin pedido P',number_format($indicadores->sin,0,',','.'),'Revisar priorización']
+['Asociación a pedidos P',number_format($indicadores->efectividad,1,',','.').'%','Prendas asociadas a pedidos P / todas las prendas'],
+['Prendas sin asociación P',number_format($indicadores->sin,0,',','.'),'Revisar priorización']
 ] as $kpi)
 <div class="col-xl-3 col-md-6 mb-3"><div class="border rounded p-3 h-100 bg-light">
     <small class="text-muted d-block">{{ $kpi[0] }}</small><h2 class="font-weight-bold my-1">{{ $kpi[1] }}</h2><small>{{ $kpi[2] }}</small>
@@ -100,12 +100,12 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 <td><span class="badge badge-{{ $fila->prioridad==='URGENTE'?'danger':($fila->prioridad==='REVISAR'?'warning':'success') }}">{{ $fila->prioridad }}</span></td></tr>
 @empty<tr><td colspan="8" class="text-center text-muted">Sin pendientes para este corte</td></tr>@endforelse
 </tbody></table></div></div>
-<div class="card"><div class="card-header"><strong>Movimientos del hito durante el mes · Con pedido y sin pedido</strong></div>
+<div class="card"><div class="card-header"><strong>Movimientos del hito durante el mes · Asociación con pedidos P</strong></div>
 <div class="table-responsive" style="max-height:450px;overflow:auto"><table class="table table-sm mb-0">
 <thead><tr><th>Fecha</th><th>OT</th><th>Descripción</th><th>Prendas</th><th>Pedido P</th><th>Situación</th></tr></thead><tbody>
 @forelse($salidas as $fila)<tr><td>{{ date('d/m/Y',strtotime($fila->fecha)) }}</td><td>{{ $fila->nro_ot }}</td>
 <td>{{ $fila->descripcion }}</td><td>{{ number_format($fila->prendas,0,',','.') }}</td><td>{{ $fila->pedidos ?: '-' }}</td>
-<td><span class="badge badge-{{ $fila->justificada?'success':'danger' }}">{{ $fila->justificada?'CON PEDIDO':'SIN PEDIDO' }}</span></td></tr>
+<td><span class="badge badge-{{ $fila->justificada?'success':'danger' }}">{{ !$fila->justificada ? 'SIN PEDIDO' : ($fila->pedido_posterior ? 'PEDIDO POSTERIOR' : 'CON PEDIDO') }}</span></td></tr>
 @empty<tr><td colspan="6" class="text-center text-muted">Sin movimientos registrados en el mes</td></tr>@endforelse
 </tbody></table></div></div>
 </div></section>
