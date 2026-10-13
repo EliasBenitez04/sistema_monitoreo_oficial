@@ -269,6 +269,26 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="card border-success mb-3">
+                            <div class="card-body">
+                                <small class="text-success font-weight-bold">EFECTIVIDAD HISTÓRICA DE ATENCIÓN IT</small>
+                                <h3 class="font-weight-bold mb-1">{{ number_format($analisisPendientes->porcentaje_atencion,1,',','.') }}%</h3>
+                                <div class="progress mt-2" style="height:14px">
+                                    <div class="progress-bar bg-success" role="progressbar"
+                                         style="width:{{ $analisisPendientes->porcentaje_atencion }}%"
+                                         aria-valuenow="{{ $analisisPendientes->porcentaje_atencion }}"
+                                         aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <small class="text-muted d-block mt-2">
+                                    {{ number_format($analisisPendientes->atendidas,0,',','.') }} OT atendidas de
+                                    {{ number_format($analisisPendientes->solicitadas,0,',','.') }} OT IT solicitadas
+                                    hasta el {{ $analisisPendientes->fecha_corte->format('d/m/Y') }}.
+                                    Fórmula: OT atendidas / OT solicitadas × 100.
+                                    Mide cumplimiento histórico por OT que alcanzó T-T al menos una vez,
+                                    no cumplimiento total de prendas ni efectividad de salida del mes.
+                                </small>
+                            </div>
+                        </div>
                         @if($analisisPendientes->pendientes > 0 && $analisisPendientes->sin_pedido_mes > 0)
                             <div class="alert alert-warning">
                                 <strong>Oportunidad de priorización:</strong>
