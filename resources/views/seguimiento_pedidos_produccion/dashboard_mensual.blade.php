@@ -93,7 +93,7 @@ En un mes cerrado, el resultado ya es real y no suma días futuros. La proyecci�
 <div class="card"><div class="card-header"><strong>Prioridades y pendientes para intervenir</strong></div>
 <div class="table-responsive" style="max-height:540px;overflow:auto"><table class="table table-sm table-hover mb-0">
 <thead class="thead-light"><tr><th>OT</th><th>Pedido P</th><th>Descripción</th><th>Etapa actual</th><th>Última actividad</th><th>Sin movimiento</th><th>Prendas OT</th><th>Ingresadas</th><th>Saldo</th><th>Prioridad</th></tr></thead><tbody>
-@forelse($pendientes->sortBy(function($item){return ($item->prioridad==='URGENTE'?'0':($item->prioridad==='REVISAR'?'1':($item->prioridad==='SIN DATOS'?'3':'2'))).$item->nro_ot;}) as $fila)
+@forelse($pendientes->sort(function($a, $b) { if ($a->dias_quieto === null) return $b->dias_quieto === null ? strcmp((string)$a->nro_ot, (string)$b->nro_ot) : 1; if ($b->dias_quieto === null) return -1; return ($b->dias_quieto <=> $a->dias_quieto) ?: strcmp((string)$a->nro_ot, (string)$b->nro_ot); }) as $fila)
 <tr><td><strong>{{ $fila->nro_ot }}</strong></td><td>{{ $fila->pedidos }}</td><td>{{ $fila->descripcion }}</td>
 <td>{{ $fila->etapa }}</td><td>{{ $fila->ultima_fecha ? date('d/m/Y',strtotime($fila->ultima_fecha)) : '-' }}</td>
 <td>{{ $fila->dias_quieto !== null ? $fila->dias_quieto.' días' : 'Sin datos' }}</td><td>{{ number_format($fila->cantidad,0,',','.') }}</td><td>{{ number_format($fila->cantidad_ingresada,0,',','.') }}</td><td><strong>{{ number_format($fila->cantidad_pendiente,0,',','.') }}</strong></td>
