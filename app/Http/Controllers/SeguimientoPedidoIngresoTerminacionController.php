@@ -513,6 +513,57 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 : 0,
         ];
 
+        /*
+         * Proyección de prendas T-T para el mes seleccionado.
+         * Promedio por días hábiles (lunes-viernes) transcurridos hasta
+         * la última fecha importada del mes; días sin salida cuentan como 0.
+         * Los movimientos del fin de semana sí se incluyen en el volumen
+         * registrado, pero los días futuros proyectados son solo L-V.
+         */
+        $ultimaSalidaMes = $salidasMes->max('fecha_salida');
+        $fechaCorteMes = $ultimaSalidaMes
+            ? Carbon::parse($ultimaSalidaMes)->startOfDay()
+            : null;
+        $esMesActual = $mesControl->format('Y-m') === Carbon::today()->format('Y-m');
+        $diasHabilesTranscurridos = 0;
+        $diasHabilesRestantes = 0;
+
+        if ($fechaCorteMes) {
+            $cursorHabil = $inicioMes->copy()->startOfDay();
+            while ($cursorHabil->lte($fechaCorteMes)) {
+                if ($cursorHabil->isWeekday()) {
+                    $diasHabilesTranscurridos++;
+                }
+                $cursorHabil->addDay();
+            }
+
+            $cursorHabil = $fechaCorteMes->copy()->addDay();
+            while ($cursorHabil->lte($finMes)) {
+                if ($cursorHabil->isWeekday()) {
+                    $diasHabilesRestantes++;
+                }
+                $cursorHabil->addDay();
+            }
+        }
+
+        $promedioHabil = $diasHabilesTranscurridos > 0
+            ? $resumenMensual->prendas_salida / $diasHabilesTranscurridos
+            : 0;
+
+        $proyeccionDiasHabiles = (object) [
+            'disponible' => $esMesActual && $fechaCorteMes !== null
+                && $diasHabilesTranscurridos > 0,
+            'fecha_corte' => $fechaCorteMes,
+            'cantidad_real' => $resumenMensual->prendas_salida,
+            'dias_transcurridos' => $diasHabilesTranscurridos,
+            'dias_restantes' => $diasHabilesRestantes,
+            'promedio_diario' => round($promedioHabil, 1),
+            'cantidad_restante' => (int) round($promedioHabil * $diasHabilesRestantes),
+            'total_proyectado' => (int) round(
+                $resumenMensual->prendas_salida + $promedioHabil * $diasHabilesRestantes
+            ),
+        ];
+
         $inicioCalendario = $inicioMes
             ->copy()
             ->startOfWeek(Carbon::MONDAY);
@@ -581,6 +632,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'resumen',
                 'mesControl',
                 'resumenMensual',
+                'proyeccionDiasHabiles',
                 'semanasCalendario'
             )
         );
