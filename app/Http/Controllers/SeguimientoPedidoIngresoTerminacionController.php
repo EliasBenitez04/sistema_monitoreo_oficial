@@ -594,6 +594,15 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 ->where('p.nro_pedido', 'ILIKE', self::PREFIJO . '%')
                 ->whereNotNull('p.fecha_pedido')
                 ->whereDate('p.fecha_pedido', '<=', $fechaLimite)
+                // Mostrar únicamente vínculos activos: una importación anterior
+                // pudo haber recreado una OT anulada o reemplazada.
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('pedido_ot_cambios as c')
+                        ->whereColumn('c.pedido_id', 'p.id')
+                        ->whereColumn('c.ot_anterior', 'o.nro_ot')
+                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
+                })
                 ->select('o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden',
                     'p.nro_pedido', 'p.fecha_pedido')
                 ->get()->groupBy('id_ot');
