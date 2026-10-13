@@ -199,6 +199,96 @@
                 </div>
             </div>
 
+            <div class="card border-warning mb-3">
+                <div class="card-header bg-light">
+                    <strong><i class="fas fa-exclamation-circle text-warning mr-1"></i>
+                        Análisis de atención de pedidos IT · OT pendientes vs. salidas sin pedido
+                    </strong>
+                </div>
+                <div class="card-body">
+                    @if($analisisPendientes->disponible)
+                        <p class="small text-muted">
+                            Corte: <strong>{{ $analisisPendientes->fecha_corte->format('d/m/Y') }}</strong>.
+                            Pedidos IT solicitados hasta ese día; se cuentan OT únicas.
+                        </p>
+                        <div class="row">
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>OT IT SOLICITADAS</small>
+                                    <strong>{{ number_format($analisisPendientes->solicitadas,0,',','.') }}</strong>
+                                    <span>{{ number_format($analisisPendientes->porcentaje_atencion,1,',','.') }}% con hito registrado al corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-success">
+                                    <small>OT IT ATENDIDAS</small>
+                                    <strong>{{ number_format($analisisPendientes->atendidas,0,',','.') }}</strong>
+                                    <span>Ya alcanzaron T-T hasta el corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi is-danger">
+                                    <small>OT IT PENDIENTES</small>
+                                    <strong>{{ number_format($analisisPendientes->pendientes,0,',','.') }}</strong>
+                                    <span>Solicitadas sin T-T hasta el corte</span>
+                                </div>
+                            </div>
+                            <div class="col-xl-3 col-md-6 mb-3">
+                                <div class="it-month-kpi">
+                                    <small>SALIDAS SIN PEDIDO DEL MES</small>
+                                    <strong>{{ number_format($analisisPendientes->sin_pedido_mes,0,',','.') }}</strong>
+                                    <span>Registros OT/día que requieren revisión</span>
+                                </div>
+                            </div>
+                        </div>
+                        @if($analisisPendientes->pendientes > 0 && $analisisPendientes->sin_pedido_mes > 0)
+                            <div class="alert alert-warning">
+                                <strong>Oportunidad de priorización:</strong>
+                                quedaron {{ number_format($analisisPendientes->pendientes,0,',','.') }} OT solicitadas pendientes
+                                mientras hubo {{ number_format($analisisPendientes->sin_pedido_mes,0,',','.') }} salidas OT/día sin pedido IT vigente.
+                                Como referencia, hasta
+                                <strong>{{ number_format($analisisPendientes->oportunidad,0,',','.') }} OT</strong>
+                                podrían haberse priorizado en lugar de esas salidas, si estaban disponibles
+                                y requerían una carga de trabajo comparable.
+                                No implica que esas OT pudieran completarse automáticamente.
+                            </div>
+                        @endif
+                        <details>
+                            <summary class="font-weight-bold" style="cursor:pointer">
+                                Ver las {{ number_format($analisisPendientes->pendientes,0,',','.') }} OT solicitadas pendientes
+                            </summary>
+                            <div class="table-responsive mt-2" style="max-height:360px;overflow:auto">
+                                <table class="table table-sm table-striped">
+                                    <thead><tr><th>Nº OT</th><th>Descripción</th><th class="text-right">Prendas ordenadas</th><th>Pedido IT</th></tr></thead>
+                                    <tbody>
+                                        @forelse($otsPendientesIt as $item)
+                                            <tr>
+                                                <td><strong>{{ $item->nro_ot }}</strong></td>
+                                                <td>{{ $item->descripcion }}</td>
+                                                <td class="text-right">{{ number_format($item->cantidad_orden,0,',','.') }}</td>
+                                                <td>{{ $item->pedidos }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr><td colspan="4" class="text-center text-muted">No quedan OT solicitadas pendientes al corte.</td></tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                        <small class="d-block text-muted mt-2">
+                            Criterio: una OT está atendida si existe al menos un registro
+                            TERMINACION - TERMINACION hasta la fecha de corte.
+                            Las pendientes pueden corresponder a pedidos anteriores al mes.
+                            Este indicador mide OT, no prendas completas.
+                            Las salidas sin pedido del mes son registros OT/día, por lo que
+                            pueden repetir una misma OT en días distintos.
+                        </small>
+                    @else
+                        <p class="text-muted mb-0">No hay corte de movimientos cargados para analizar las OT pendientes del mes actual.</p>
+                    @endif
+                </div>
+            </div>
+
             <div class="it-calendar-weekdays">
                 <div>LUN</div>
                 <div>MAR</div>
