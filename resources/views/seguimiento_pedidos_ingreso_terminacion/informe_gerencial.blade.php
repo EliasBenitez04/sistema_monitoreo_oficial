@@ -12,6 +12,10 @@
             <div class="mgr-eyebrow">INGRESO TERMINACIÓN · CONTROL GERENCIAL</div>
             <h1 class="mgr-title mb-1">Informe Gerencial de Ingreso Terminación</h1>
             <p class="text-muted mb-0">Pedidos IT pendientes de alcanzar <strong>TERMINACION - TERMINACION</strong>, agrupados por proceso actual.</p>
+            <p class="small text-muted mb-0 mt-1">
+                Corte: <strong>{{ $resumen->fecha_corte->format('d/m/Y') }}</strong>.
+                Se cuentan OT únicas de pedidos IT vigentes y se excluyen vínculos anulados o reemplazados.
+            </p>
         </div>
         <div class="mt-2 mt-md-0">
             <a href="{{ route('pedidos.index') }}" class="btn btn-dark mr-1">
@@ -157,6 +161,7 @@
                     Hay <strong>{{ number_format($resumen->ots_pendientes,0,',','.') }} OT</strong> pendientes de completar TERMINACION - TERMINACION,
                     pertenecientes a <strong>{{ number_format($resumen->pedidos_con_pendiente,0,',','.') }} pedidos</strong>.
                     Los KPI superiores muestran la concentración por proceso y el detalle inferior permite revisar las OT que componen cada grupo.
+                    Si una OT pertenece a varios pedidos IT, aparece una sola vez con sus números de pedido.
                 </div>
             </div>
         </div>
