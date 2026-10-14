@@ -21,104 +21,163 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
     public function index(Request $request)
     {
         $buscar = trim((string) $request->input('buscar', ''));
+        // Misma fecha de corte del informe gerencial y del análisis IT diario.
+        $fechaCorte = Carbon::today()->startOfDay();
+        $fechaCorteTexto = $fechaCorte->format('Y-m-d');
 
         $query = SeguimientoPedido::query()
-            ->where('seguimiento_pedido.nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->select('seguimiento_pedido.*')
-            ->selectSub(function ($q) {
-                $q->from('seguimiento_pedido_detalle as spd')
-                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->selectRaw('COUNT(DISTINCT spd.id_ot)');
-            }, 'ots_total')
-            ->selectSub(function ($q) {
-                $q->from('seguimiento_pedido_detalle as spd')
-                    ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
-                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->selectRaw('COALESCE(SUM(o.cantidad_orden), 0)');
-            }, 'cantidad_total')
-            ->selectSub(function ($q) {
-                $q->from('seguimiento_pedido_detalle as spd')
-                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereExists(function ($t) {
-                        $t->select(DB::raw(1))
-                            ->from('ot_trazabilidad as tr')
-                            ->whereColumn('tr.id_ot', 'spd.id_ot')
-                            ->whereRaw("UPPER(TRIM(tr.proceso)) = ?", [self::PROCESO_CIERRE]);
-                    })
-                    ->selectRaw('COUNT(DISTINCT spd.id_ot)');
-            }, 'ots_completas')
-            ->selectSub(function ($q) {
-                $q->from('seguimiento_pedido_detalle as spd')
-                    ->join('ot_trazabilidad as tr', 'tr.id_ot', '=', 'spd.id_ot')
-                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereRaw("UPPER(TRIM(tr.proceso)) = ?", [self::PROCESO_CIERRE])
-                    ->selectRaw('COALESCE(SUM(tr.resultado), 0)');
-            }, 'cantidad_ingreso')
-            ->selectSub(function ($q) {
-                $q->from('seguimiento_pedido_detalle as spd')
-                    ->join('ot_trazabilidad as tr', 'tr.id_ot', '=', 'spd.id_ot')
-                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereRaw("UPPER(TRIM(tr.proceso)) = ?", [self::PROCESO_CIERRE])
-                    ->selectRaw('MIN(tr.fecha_proceso)');
-            }, 'primer_ingreso')
-            ->selectSub(function ($q) {
-                $q->from('seguimiento_pedido_detalle as spd')
-                    ->join('ot_trazabilidad as tr', 'tr.id_ot', '=', 'spd.id_ot')
-                    ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereRaw("UPPER(TRIM(tr.proceso)) = ?", [self::PROCESO_CIERRE])
-                    ->selectRaw('MAX(tr.fecha_proceso)');
-            }, 'ultimo_ingreso')
-            ->orderByDesc('seguimiento_pedido.id');
+            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
+            ->whereNotNull('fecha_pedido')
+            ->whereDate('fecha_pedido', '<=', $fechaCorteTexto)
+            ->orderByDesc('id');
 
         if ($buscar !== '') {
-            $query->where('seguimiento_pedido.nro_pedido', 'ILIKE', '%' . $buscar . '%');
+            $query->where('nro_pedido', 'ILIKE', '%' . $buscar . '%');
         }
 
-        $pedidos = $query->paginate(30)->appends($request->query());
+        // La tabla continúa paginada, pero los KPI se calculan con TODOS
+        // los pedidos filtrados, no sólo los de la página visible.
+        $pedidos = (clone $query)->paginate(30)->appends($request->query());
+        $todosLosPedidos = (clone $query)->get(['id', 'nro_pedido', 'fecha_pedido']);
 
-        $pedidos->getCollection()->transform(function ($pedido) {
-            $pedido->ots_total = (int) $pedido->ots_total;
-            $pedido->ots_completas = (int) $pedido->ots_completas;
-            $pedido->cantidad_total = (int) $pedido->cantidad_total;
-            $pedido->cantidad_ingreso = min(
-                $pedido->cantidad_total,
-                (int) $pedido->cantidad_ingreso
+        $vinculos = collect();
+        if ($todosLosPedidos->isNotEmpty()) {
+            $vinculos = DB::table('seguimiento_pedido_detalle as spd')
+                ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
+                ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
+                ->whereIn('spd.seguimiento_pedido_id', $todosLosPedidos->pluck('id')->all())
+                // Igual al informe gerencial y al calendario: sólo vínculos vigentes.
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('pedido_ot_cambios as c')
+                        ->whereColumn('c.pedido_id', 'sp.id')
+                        ->whereRaw('c.ot_anterior = CAST(o.nro_ot AS TEXT)')
+                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
+                })
+                ->select(
+                    'spd.seguimiento_pedido_id',
+                    'o.id_ot',
+                    'o.cantidad_orden'
+                )
+                ->get();
+        }
+
+        // El mismo número de OT sólo se contabiliza una vez en el KPI
+        // global, aunque esté vinculado a varios pedidos.
+        $otsUnicas = $vinculos->unique('id_ot')->values();
+        $idsOt = $otsUnicas->pluck('id_ot')->all();
+
+        $hitosPorOt = collect();
+        if (!empty($idsOt)) {
+            $hitosPorOt = DB::table('ot_trazabilidad as tr')
+                ->whereIn('tr.id_ot', $idsOt)
+                ->whereRaw('UPPER(TRIM(tr.proceso)) = ?', [self::PROCESO_CIERRE])
+                ->whereDate('tr.fecha_proceso', '<=', $fechaCorteTexto)
+                ->select(
+                    'tr.id_ot',
+                    DB::raw('SUM(COALESCE(tr.resultado, 0)) as cantidad_ingresada'),
+                    DB::raw('MIN(tr.fecha_proceso) as primera_fecha'),
+                    DB::raw('MAX(tr.fecha_proceso) as ultima_fecha')
+                )
+                ->groupBy('tr.id_ot')
+                ->get()
+                ->keyBy('id_ot');
+        }
+
+        $vinculosPorPedido = $vinculos->groupBy('seguimiento_pedido_id');
+
+        $pedidos->getCollection()->transform(function ($pedido) use (
+            $vinculosPorPedido,
+            $hitosPorOt,
+            $fechaCorte
+        ) {
+            $otsPedido = collect($vinculosPorPedido->get($pedido->id, collect()))
+                ->unique('id_ot')->values();
+
+            $pedido->ots_total = $otsPedido->count();
+            $pedido->ots_completas = $otsPedido
+                ->filter(function ($ot) use ($hitosPorOt) {
+                    return $hitosPorOt->has($ot->id_ot);
+                })->count();
+            $pedido->cantidad_total = (int) $otsPedido->sum('cantidad_orden');
+            $pedido->cantidad_ingreso = (int) $otsPedido->sum(
+                function ($ot) use ($hitosPorOt) {
+                    $hito = $hitosPorOt->get($ot->id_ot);
+                    return $hito ? min(
+                        max(0, (int) $ot->cantidad_orden),
+                        max(0, (int) $hito->cantidad_ingresada)
+                    ) : 0;
+                }
             );
 
             $pedido->porcentaje = $pedido->ots_total > 0
-                ? min(100, (int) round(($pedido->ots_completas / $pedido->ots_total) * 100))
+                ? min(100, (int) round(
+                    $pedido->ots_completas * 100 / $pedido->ots_total
+                ))
                 : 0;
-
             $pedido->completo = $pedido->ots_total > 0
                 && $pedido->ots_completas >= $pedido->ots_total;
 
+            $primerIngreso = $otsPedido->map(function ($ot) use ($hitosPorOt) {
+                return $hitosPorOt->get($ot->id_ot)->primera_fecha ?? null;
+            })->filter()->min();
+            $ultimoIngreso = $otsPedido->map(function ($ot) use ($hitosPorOt) {
+                return $hitosPorOt->get($ot->id_ot)->ultima_fecha ?? null;
+            })->filter()->max();
+
+            $pedido->primer_ingreso = $primerIngreso;
+            $pedido->ultimo_ingreso = $ultimoIngreso;
             $pedido->dias = null;
             $pedido->dias_en_curso = null;
 
             if ($pedido->fecha_pedido) {
                 $inicio = Carbon::parse($pedido->fecha_pedido)->startOfDay();
-
-                if ($pedido->completo && $pedido->ultimo_ingreso) {
-                    $fin = Carbon::parse($pedido->ultimo_ingreso)->startOfDay();
-
+                if ($pedido->completo && $ultimoIngreso) {
+                    $fin = Carbon::parse($ultimoIngreso)->startOfDay();
                     if ($fin->gte($inicio)) {
                         $pedido->dias = $inicio->diffInDays($fin, false);
                     }
                 } elseif (!$pedido->completo) {
-                    $pedido->dias_en_curso = max(0, $inicio->diffInDays(Carbon::today(), false));
+                    $pedido->dias_en_curso = max(
+                        0, $inicio->diffInDays($fechaCorte, false)
+                    );
                 }
             }
 
             return $pedido;
         });
 
+        $otAtendidas = $otsUnicas->filter(function ($ot) use ($hitosPorOt) {
+            return $hitosPorOt->has($ot->id_ot);
+        })->count();
+        $prendasIngresadas = (int) $otsUnicas->sum(function ($ot) use ($hitosPorOt) {
+            $hito = $hitosPorOt->get($ot->id_ot);
+            return $hito ? min(
+                max(0, (int) $ot->cantidad_orden),
+                max(0, (int) $hito->cantidad_ingresada)
+            ) : 0;
+        });
+
+        // Compleción global por pedido independiente de la paginación.
+        $pedidosCompletos = $todosLosPedidos->filter(
+            function ($pedido) use ($vinculosPorPedido, $hitosPorOt) {
+                $otsPedido = collect($vinculosPorPedido->get($pedido->id, collect()))
+                    ->unique('id_ot');
+                return $otsPedido->isNotEmpty()
+                    && $otsPedido->every(function ($ot) use ($hitosPorOt) {
+                        return $hitosPorOt->has($ot->id_ot);
+                    });
+            }
+        )->count();
+
         $resumen = (object) [
-            'pedidos' => $pedidos->getCollection()->count(),
-            'ots' => (int) $pedidos->getCollection()->sum('ots_total'),
-            'ots_completas' => (int) $pedidos->getCollection()->sum('ots_completas'),
-            'completos' => $pedidos->getCollection()->where('completo', true)->count(),
-            'prendas' => (int) $pedidos->getCollection()->sum('cantidad_total'),
-            'prendas_ingresadas' => (int) $pedidos->getCollection()->sum('cantidad_ingreso'),
+            'fecha_corte' => $fechaCorte,
+            'pedidos' => $todosLosPedidos->count(),
+            'ots' => $otsUnicas->count(),
+            'ots_completas' => $otAtendidas,
+            'completos' => $pedidosCompletos,
+            'prendas' => (int) $otsUnicas->sum('cantidad_orden'),
+            'prendas_ingresadas' => $prendasIngresadas,
         ];
 
         return view('seguimiento_pedidos_ingreso_terminacion.index', compact(
