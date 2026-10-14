@@ -453,10 +453,11 @@
                     </div>
                     <div class="modal-body">
                         <div class="row mb-3">
-                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat"><small>OT DEL DÍA</small><strong>{{ number_format($otsDiaDetalle->count(),0,',','.') }}</strong></div></div>
-                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat"><small>CANTIDAD OT</small><strong>{{ number_format($cantidadOtDia,0,',','.') }}</strong></div></div>
-                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat is-success"><small>CON PEDIDO</small><strong>{{ number_format($cantidadConPedidoDia,0,',','.') }}</strong></div></div>
-                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat {{ $cantidadSinPedidoDia > 0 ? 'is-danger' : 'is-success' }}"><small>SIN PEDIDO</small><strong>{{ number_format($cantidadSinPedidoDia,0,',','.') }}</strong></div></div>
+                            <div class="col-lg-4 col-6 mb-2"><div class="it-modal-stat"><small>OT DEL DÍA</small><strong>{{ number_format($otsDiaDetalle->count(),0,',','.') }}</strong></div></div>
+                            <div class="col-lg-4 col-6 mb-2"><div class="it-modal-stat"><small>CANTIDAD OT</small><strong>{{ number_format($cantidadOtDia,0,',','.') }}</strong></div></div>
+                            <div class="col-lg-4 col-12 mb-2"><div class="it-modal-stat"><small>SALIDA REAL T-T</small><strong>{{ number_format($cantidadRealDia,0,',','.') }}</strong></div></div>
+                            <div class="col-lg-6 col-6 mb-2"><div class="it-modal-stat is-success"><small>CON PEDIDO</small><strong>{{ number_format($cantidadConPedidoDia,0,',','.') }}</strong></div></div>
+                            <div class="col-lg-6 col-6 mb-2"><div class="it-modal-stat {{ $cantidadSinPedidoDia > 0 ? 'is-danger' : 'is-success' }}"><small>SIN PEDIDO</small><strong>{{ number_format($cantidadSinPedidoDia,0,',','.') }}</strong></div></div>
                         </div>
                         @if($cantidadSinPedidoDia > 0)
                             <div class="alert alert-danger py-2 small"><i class="fas fa-exclamation-triangle mr-1"></i>
