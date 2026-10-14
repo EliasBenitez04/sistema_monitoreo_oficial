@@ -722,7 +722,8 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'proyeccionDiasHabiles',
                 'analisisPendientes',
                 'otsPendientesIt',
-                'semanasCalendario'
+                'semanasCalendario',
+                'salidasMesPorFecha'
             )
         );
     }
