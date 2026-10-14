@@ -350,16 +350,15 @@
             <div class="it-calendar-grid">
                 @foreach($semanasCalendario as $semana)
                     @foreach($semana as $dia)
-                        <a href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
-                                'fecha' => $dia->fecha,
-                                'mes' => $mesControl->format('Y-m')
-                            ]) }}"
-                           class="it-calendar-day
+                        <div class="it-calendar-day
                                   {{ !$dia->es_mes ? 'is-outside' : '' }}
                                   {{ $dia->es_hoy ? 'is-today' : '' }}
                                   {{ $dia->seleccionado ? 'is-selected' : '' }}
                                   {{ $dia->sin_pedido > 0 ? 'has-danger' : ($dia->ot_total > 0 ? 'has-success' : '') }}">
-
+                            <a class="it-calendar-day-link" href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                                    'fecha' => $dia->fecha,
+                                    'mes' => $mesControl->format('Y-m')
+                                ]) }}" title="Ver la fecha seleccionada y sus OT">
                             <div class="it-calendar-day-top">
                                 <span class="it-calendar-day-number">{{ $dia->numero }}</span>
 
@@ -405,7 +404,17 @@
                             @else
                                 <div class="it-calendar-empty">Sin salida</div>
                             @endif
-                        </a>
+                            </a>
+                            @if($dia->ot_total > 0)
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm it-calendar-view-ot"
+                                        data-toggle="modal"
+                                        data-target="#itDetalle{{ str_replace('-', '', $dia->fecha) }}"
+                                        aria-label="Ver las {{ $dia->ot_total }} OT del {{ date('d/m/Y', strtotime($dia->fecha)) }}">
+                                    <i class="fas fa-list mr-1"></i> Ver OT
+                                </button>
+                            @endif
+                        </div>
                     @endforeach
                 @endforeach
             </div>
@@ -414,10 +423,102 @@
                 <span><i class="it-legend-dot is-success"></i> Todo con pedido</span>
                 <span><i class="it-legend-dot is-danger"></i> Tiene OT sin pedido</span>
                 <span><i class="it-legend-dot is-selected"></i> Día seleccionado</span>
-                <span class="text-muted">Hacé clic en un día para ver el detalle de OT debajo.</span>
+                <span class="text-muted">Usá «Ver OT» para abrir el listado del día o hacé clic en la fecha para verlo debajo.</span>
             </div>
         </div>
     </div>
+
+
+    {{-- Detalle mensual: MISMAS OT/día, cantidades y pedidos IT que alimentan el calendario. --}}
+    @foreach($salidasMesPorFecha as $fechaDetalle => $otsDiaDetalle)
+        @php
+            $cantidadOtDia = (int) $otsDiaDetalle->sum('cantidad_orden');
+            $cantidadRealDia = (int) $otsDiaDetalle->sum('resultado_dia');
+            $cantidadConPedidoDia = $otsDiaDetalle->where('tiene_pedido', true)->count();
+            $cantidadSinPedidoDia = $otsDiaDetalle->where('tiene_pedido', false)->count();
+        @endphp
+        <div class="modal fade" id="itDetalle{{ str_replace('-', '', $fechaDetalle) }}" tabindex="-1"
+             role="dialog" aria-labelledby="itTituloDetalle{{ str_replace('-', '', $fechaDetalle) }}" aria-hidden="true">
+            <div class="modal-dialog modal-xl" role="document" style="max-width:1160px">
+                <div class="modal-content it-calendar-modal">
+                    <div class="modal-header bg-light align-items-start">
+                        <div>
+                            <small class="it-day-eyebrow">DETALLE DIARIO · TERMINACION - TERMINACION</small>
+                            <h5 class="modal-title font-weight-bold" id="itTituloDetalle{{ str_replace('-', '', $fechaDetalle) }}">
+                                <i class="fas fa-calendar-day text-primary mr-2"></i>OT del {{ date('d/m/Y', strtotime($fechaDetalle)) }}
+                            </h5>
+                            <small class="text-muted">Pedidos IT vigentes en la fecha de cada salida.</small>
+                        </div>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row mb-3">
+                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat"><small>OT DEL DÍA</small><strong>{{ number_format($otsDiaDetalle->count(),0,',','.') }}</strong></div></div>
+                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat"><small>CANTIDAD OT</small><strong>{{ number_format($cantidadOtDia,0,',','.') }}</strong></div></div>
+                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat is-success"><small>CON PEDIDO</small><strong>{{ number_format($cantidadConPedidoDia,0,',','.') }}</strong></div></div>
+                            <div class="col-lg-3 col-6 mb-2"><div class="it-modal-stat {{ $cantidadSinPedidoDia > 0 ? 'is-danger' : 'is-success' }}"><small>SIN PEDIDO</small><strong>{{ number_format($cantidadSinPedidoDia,0,',','.') }}</strong></div></div>
+                        </div>
+                        @if($cantidadSinPedidoDia > 0)
+                            <div class="alert alert-danger py-2 small"><i class="fas fa-exclamation-triangle mr-1"></i>
+                                {{ $cantidadSinPedidoDia }} OT sin pedido IT vigente en la fecha seleccionada.
+                            </div>
+                        @else
+                            <div class="alert alert-success py-2 small"><i class="fas fa-check-circle mr-1"></i>
+                                Todas las OT del {{ date('d/m/Y', strtotime($fechaDetalle)) }} estaban vinculadas a un pedido IT.
+                            </div>
+                        @endif
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover it-day-table">
+                                <thead class="thead-light">
+                                <tr><th>OT</th><th>Código / descripción</th><th class="text-right">Cantidad OT</th><th class="text-right">Salida T-T</th><th>Pedido</th><th class="text-center">Estado</th></tr>
+                                </thead>
+                                <tbody>
+                                @foreach($otsDiaDetalle as $salidaDetalle)
+                                    <tr class="{{ !$salidaDetalle->tiene_pedido ? 'it-day-row-danger' : '' }}">
+                                        <td><strong class="it-day-ot">{{ $salidaDetalle->nro_ot }}</strong></td>
+                                        <td><strong>{{ $salidaDetalle->codigo ?: '-' }}</strong>
+                                            <small class="d-block text-muted">{{ $salidaDetalle->descripcion }}</small>
+                                        </td>
+                                        <td class="text-right font-weight-bold">{{ number_format($salidaDetalle->cantidad_orden,0,',','.') }}</td>
+                                        <td class="text-right font-weight-bold">{{ number_format($salidaDetalle->resultado_dia,0,',','.') }}</td>
+                                        <td>
+                                            @forelse($salidaDetalle->pedidos_vigentes as $pedidoDetalle)
+                                                <span class="it-day-order-badge"><i class="fas fa-check mr-1"></i>PEDIDO {{ $pedidoDetalle->nro }}</span>
+                                            @empty
+                                                <span class="it-day-missing-badge"><i class="fas fa-times mr-1"></i>SIN PEDIDO</span>
+                                            @endforelse
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge badge-{{ $salidaDetalle->tiene_pedido ? 'success' : 'danger' }} px-3 py-2">
+                                                {{ $salidaDetalle->tiene_pedido ? 'PEDIDO' : 'REVISAR' }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                                </tbody>
+                                <tfoot class="bg-light font-weight-bold">
+                                <tr><td colspan="2">TOTAL DEL DÍA · {{ $otsDiaDetalle->count() }} OT</td>
+                                    <td class="text-right">{{ number_format($cantidadOtDia,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($cantidadRealDia,0,',','.') }}</td>
+                                    <td colspan="2"></td></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        <p class="small text-muted mb-0"><i class="fas fa-info-circle mr-1"></i>
+                            Salida real: <strong>{{ number_format($cantidadRealDia,0,',','.') }} prendas T-T</strong>.
+                            Cada OT se cuenta una sola vez por día; si aparece otro día, se muestra en la fecha correspondiente.
+                        </p>
+                    </div>
+                    <div class="modal-footer">
+                        <a class="btn btn-outline-primary btn-sm" href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', ['fecha' => $fechaDetalle, 'mes' => $mesControl->format('Y-m')]) }}">
+                            <i class="fas fa-external-link-alt mr-1"></i>Ver página del día
+                        </a>
+                        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endforeach
 
     <div class="it-day-hero mb-3">
         <div class="row align-items-center">
@@ -695,6 +796,15 @@
     color:#0f172a;
     box-shadow:inset 0 0 0 2px #bfdbfe;
 }
+.it-calendar-day-link{display:block;color:inherit;text-decoration:none!important}
+.it-calendar-day-link:hover{color:#0f172a}
+.it-calendar-view-ot{display:block;margin-top:8px;width:100%;font-size:10px;font-weight:700;padding:5px}
+.it-calendar-modal{border:0;border-radius:12px;overflow:hidden}
+.it-modal-stat{border:1px solid #e2e8f0;border-left:3px solid #334155;border-radius:9px;padding:11px;background:#f8fafc}
+.it-modal-stat.is-success{border-left-color:#22c55e}
+.it-modal-stat.is-danger{border-left-color:#ef4444}
+.it-modal-stat small{display:block;color:#64748b;font-size:10px;font-weight:800}
+.it-modal-stat strong{display:block;color:#0f172a;font-size:23px;font-weight:900;line-height:1.25;margin-top:5px}
 .it-calendar-day.is-outside{
     background:#f8fafc;
     opacity:.5;
