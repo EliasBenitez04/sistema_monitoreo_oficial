@@ -170,7 +170,7 @@
                                             URGENTE
                                         </span>
                                     @else
-                                        <span class="badge badge-secondary">
+                                        <span class="badge badge-secondary px-2 py-2">
                                             NORMAL
                                         </span>
                                     @endif

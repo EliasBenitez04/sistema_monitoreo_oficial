@@ -64,7 +64,7 @@
     }
     .td-valor-total{border-left:4px solid #17a2b8}
     .td-valor-remitido{border-left:4px solid #28a745}
-    .td-valor-retenido{border-left:4px solid #ffc107;background:#fffdf5}
+    .td-valor-retenido{border-left:4px solid rgb(255, 142, 36);background:#fffdf5}
 </style>
 <div class="p-2">
     <div class="td-header-card mb-3">
@@ -86,7 +86,7 @@
             <strong>{{ number_format($totalPlan, 0, ',', '.') }}</strong>
             <div class="mt-1">
                 @if($totalSinAsignar > 0)
-                    <small class="text-warning">
+                    <small class="text-orange">
                         Asignado {{ number_format($totalPlanDetallado, 0, ',', '.') }}
                         · {{ number_format($totalSinAsignar, 0, ',', '.') }} sin asignar
                     </small>
@@ -134,9 +134,9 @@
         </div></div>
         <div class="col-lg col-6 mb-2"><div class="td-kpi">
             <small class="d-block">Pendiente físico</small>
-            <strong class="{{ $totalPendiente > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($totalPendiente, 0, ',', '.') }}</strong>
+            <strong class="{{ $totalPendiente > 0 ? 'text-orange' : 'text-success' }}">{{ number_format($totalPendiente, 0, ',', '.') }}</strong>
             <div class="mt-1">
-                <small class="{{ $totalPendientePlanDestino > 0 ? 'text-warning' : 'text-muted' }}">
+                <small class="{{ $totalPendientePlanDestino > 0 ? 'text-orange' : 'text-muted' }}">
                     Pendiente por destino histórico:
                     {{ number_format($totalPendientePlanDestino, 0, ',', '.') }}
                 </small>
@@ -250,11 +250,11 @@
 
             <div class="col-lg-4 col-md-12 mb-2">
                 <div class="td-kpi td-valor-retenido">
-                    <small class="d-block text-warning">
+                    <small class="d-block text-orange">
                         Retenido / pendiente de salida
                     </small>
 
-                    <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : 'text-success' }}">
+                    <strong class="{{ $cantidadRetenida > 0 ? 'text-orange' : 'text-success' }}">
                         {{ number_format($cantidadRetenida, 0, ',', '.') }}
                         prendas
                     </strong>
@@ -262,7 +262,7 @@
                     <div class="mt-2 small">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted">Costo retenido</span>
-                            <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : '' }}">
+                            <strong class="{{ $cantidadRetenida > 0 ? 'text-orange' : '' }}">
                                 Gs {{ number_format($totalCostoRetenido, 0, ',', '.') }}
                             </strong>
                         </div>
@@ -271,7 +271,7 @@
                             <span class="text-muted">
                                 Valor comercial retenido
                             </span>
-                            <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : 'text-success' }}">
+                            <strong class="{{ $cantidadRetenida > 0 ? 'text-orange' : 'text-success' }}">
                                 Gs {{ number_format($totalVentaRetenida, 0, ',', '.') }}
                             </strong>
                         </div>
@@ -301,7 +301,7 @@
             </strong>
             remitido
             +
-            <strong class="{{ $cantidadRetenida > 0 ? 'text-warning' : 'text-success' }}">
+            <strong class="{{ $cantidadRetenida > 0 ? 'text-orange' : 'text-success' }}">
                 Gs {{ number_format($totalVentaRetenida, 0, ',', '.') }}
             </strong>
             retenido.

@@ -527,7 +527,7 @@ class SeguimientoPedidoController extends Controller
                 && $saldoPendiente > 0
                 && $etapa !== 'CONFIRMADO'
                 && $dias !== null
-                && $dias >= 2;
+                && $dias >= 5;
 
             $ot->tiene_confirmacion_local =
                 $tieneConfirmacionLocal;
