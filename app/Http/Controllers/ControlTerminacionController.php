@@ -1289,6 +1289,13 @@ class ControlTerminacionController extends Controller
             (int) $resumen->producto_terminado
             - (int) $resumen->cuadre_fisico;
 
+        $detalleSinDestino = $reporteCompleto
+            ->filter(function ($ot) { return (int) $ot->sin_destino > 0; })
+            ->sortByDesc('sin_destino')->values();
+        $detallePendienteRemitir = $reporteCompleto
+            ->filter(function ($ot) { return (int) $ot->pendiente_remitir_plan > 0; })
+            ->sortByDesc('pendiente_remitir_plan')->values();
+
         return compact(
             'fechaDesde',
             'fechaHasta',
@@ -1299,6 +1306,8 @@ class ControlTerminacionController extends Controller
             'reportePendiente',
             'diagnosticoProduccion',
             'diagnosticoPlan',
+            'detalleSinDestino',
+            'detallePendienteRemitir',
             'resumen'
         );
     }
