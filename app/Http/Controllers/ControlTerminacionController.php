@@ -2312,6 +2312,18 @@ class ControlTerminacionController extends Controller
                 $remision->factura_local = null;
                 $remision->factura_cantidad = null;
                 $remision->factura_origen_asociacion = null;
+                $remision->factura_candidatas = 0;
+
+                // Modelo Muestra es un plan interno que sólo admite
+                // remisiones FÍSICAS hacia COMERCIAL MATRIZ. Nunca usar
+                // una remisión de otro destino para asociarle una factura.
+                if ($plan === 'MODELO' &&
+                    ($serie === '' || $numeroRemision === '' ||
+                     $this->normalizarDestinoMovimiento(
+                         $remision->destino_real ?? null
+                     ) !== 'MATRIZ')) {
+                    continue;
+                }
 
                 if ($codigo === '' || $cantidad <= 0 || !$fechaBase) {
                     continue;
@@ -2426,6 +2438,30 @@ class ControlTerminacionController extends Controller
                         return false;
                     }
 
+                    if ($objetivo->plan === 'MODELO') {
+                        // El campo ventas.local identifica dónde se emitió
+                        // la factura. Para Modelo no sirven facturas de
+                        // PINEDO, BONANZA, LA RURAL ni otros locales.
+                        $localFactura = preg_replace(
+                            '/\\s+/u',
+                            ' ',
+                            strtoupper(trim((string) $factura->local))
+                        );
+                        if ($localFactura !== 'COMERCIAL MATRIZ') {
+                            return false;
+                        }
+
+                        // No inferir ventas anteriores al envío ni fuera
+                        // de la ventana operacional del documento.
+                        $diasDesdeRemision = (int) floor((
+                            strtotime((string) $factura->fecha)
+                            - strtotime((string) $objetivo->fecha)
+                        ) / 86400);
+                        if ($diasDesdeRemision < 0 || $diasDesdeRemision > 30) {
+                            return false;
+                        }
+                    }
+
                     $clave = implode('|', [
                         (string) $factura->comprobante,
                         (string) $factura->cliente,
@@ -2498,11 +2534,19 @@ class ControlTerminacionController extends Controller
                 continue;
             }
 
+            // El Excel de ventas NO trae número de remisión.
+            // La coincidencia de Matriz por código/cantidad/fecha es
+            // informativa: jamás se presenta como asociación confirmada.
             $this->aplicarFacturaARemisionVisual(
                 $objetivo->remision,
                 $mejor,
-                'DIRECTA'
+                $objetivo->plan === 'MODELO'
+                    ? 'COINCIDENCIA_MATRIZ_SIN_REMISION'
+                    : 'DIRECTA'
             );
+            if ($objetivo->plan === 'MODELO') {
+                $objetivo->remision->factura_estado = 'POR VALIDAR';
+            }
 
             $clave = implode('|', [
                 (string) $mejor->comprobante,
@@ -2537,6 +2581,8 @@ class ControlTerminacionController extends Controller
         foreach (
             $objetivos->groupBy(function ($objetivo) {
                 return $objetivo->clave_remision
+                    . '|'
+                    . $objetivo->plan
                     . '|'
                     . $objetivo->codigo_base;
             })
@@ -2590,6 +2636,13 @@ class ControlTerminacionController extends Controller
             $facturaAncla = $anclas->first();
 
             foreach ($grupoFamilia as $objetivo) {
+                // Nunca inferir que AM02 o AM03 tienen la factura de AM01.
+                // El mismo número de remisión logística NO demuestra
+                // que las variantes figuren en el comprobante comercial.
+                if ($objetivo->plan === 'MODELO') {
+                    continue;
+                }
+
                 if (
                     ($objetivo->remision->factura_estado ?? null)
                     === 'ASOCIADA'

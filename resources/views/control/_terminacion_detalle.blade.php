@@ -495,6 +495,20 @@
                                         <span class="badge badge-success td-factura-estado">
                                             ASOCIADA
                                         </span>
+                                    @elseif(($remision->factura_estado ?? null) === 'POR VALIDAR')
+                                        <span class="td-factura">{{ $remision->factura_numero }}</span>
+                                        <span class="td-factura-meta">
+                                            {{ $remision->factura_fecha
+                                                ? \Carbon\Carbon::parse($remision->factura_fecha)->format('d/m/Y')
+                                                : '—' }}
+                                            · {{ number_format($remision->factura_cantidad ?? 0,0,',','.') }} u.
+                                        </span>
+                                        <span class="badge badge-warning td-factura-estado">POR VALIDAR</span>
+                                        <small class="d-block text-muted mt-1" title="El Excel de ventas no contiene el número de remisión para confirmar el vínculo.">
+                                            Coincide con COMERCIAL MATRIZ, código, cantidad y fecha;
+                                            remisión {{ $remision->serie }}-{{ $remision->numero_remision }}
+                                            sin referencia en ventas.
+                                        </small>
                                     @elseif(($remision->factura_estado ?? null) === 'AMBIGUA')
                                         <span class="badge badge-warning">
                                             AMBIGUA
@@ -514,7 +528,7 @@
                                 </td>
 
                                 <td>
-                                    @if(($remision->factura_estado ?? null) === 'ASOCIADA')
+                                    @if(in_array(($remision->factura_estado ?? null), ['ASOCIADA','POR VALIDAR'], true))
                                         <span class="td-cliente-factura">
                                             {{ $remision->factura_cliente ?: 'SIN NOMBRE' }}
                                         </span>
