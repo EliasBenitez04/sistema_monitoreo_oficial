@@ -2877,6 +2877,15 @@ class OtController extends Controller
         $totalesConciliacion = $this->conciliacionService
             ->totales($conciliacionPorOt);
 
+        // Mismo conjunto y mismo campo del KPI: la suma del detalle
+        // siempre coincide con el pendiente remitir del resumen ejecutivo.
+        $detallePendienteRemitir = $conciliacionPorOt
+            ->filter(function ($ot) {
+                return (int) $ot->pendiente_remitir > 0;
+            })
+            ->sortByDesc('pendiente_remitir')
+            ->values();
+
         /*
          * Producto Terminado acumulado por OT. Se muestra como referencia del
          * volumen disponible para Logística, no como filtro del período.
@@ -3399,6 +3408,7 @@ class OtController extends Controller
             'coberturaRemision',
             'coberturaRecepcion',
             'resumenEjecutivo',
+            'detallePendienteRemitir',
             'promedioCantidadOT',
             'porSucursal',
             'porFecha',
