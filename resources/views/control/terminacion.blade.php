@@ -162,11 +162,13 @@
         </div>
 
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card ct-card ct-kpi h-100 {{ $totalPendienteRemitirPlan>0?'border-info':'' }}"><div class="card-body">
-                <div class="label"><i class="fas fa-truck-loading text-info mr-1"></i>Pendiente remitir</div>
-                <div class="value">{{ number_format($totalPendienteRemitirPlan,0,',','.') }}</div>
-                <div class="meta">{{ number_format($otsPendienteRemitirPlan,0,',','.') }} OTs con plan asignado todavía no remitido</div>
-            </div></div>
+            <button type="button" class="card ct-card ct-kpi h-100 w-100 text-left {{ $totalPendienteRemitirPlan>0?'border-info':'' }}" style="background:#fff;padding:0;cursor:pointer" data-toggle="modal" data-target="#modalPendienteRemitirTerminacion" aria-label="Ver OTs pendientes de remitir">
+                <div class="card-body w-100">
+                    <div class="label"><i class="fas fa-truck-loading text-info mr-1"></i>Pendiente remitir <i class="fas fa-search-plus float-right text-primary"></i></div>
+                    <div class="value">{{ number_format($totalPendienteRemitirPlan,0,',','.') }}</div>
+                    <div class="meta">{{ number_format($otsPendienteRemitirPlan,0,',','.') }} OTs con plan asignado todavía no remitido · <span class="text-primary font-weight-bold">Ver detalle</span></div>
+                </div>
+            </button>
         </div>
 
         <div class="col-xl-3 col-md-6 mb-3">
@@ -492,5 +494,51 @@ document.addEventListener('click', function (event) {
                 '</div>';
         });
 });
+
+{{-- Detalle completo del KPI, sin paginación: el total coincide con el resumen. --}}
+<div class="modal fade" id="modalPendienteRemitirTerminacion" tabindex="-1" role="dialog" aria-labelledby="tituloPendienteRemitirTerminacion" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document" style="max-width:1150px">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <div>
+                    <h5 class="modal-title font-weight-bold" id="tituloPendienteRemitirTerminacion"><i class="fas fa-truck-loading text-primary mr-2"></i>Detalle de prendas pendientes de remitir</h5>
+                    <small class="text-muted">OT seleccionadas por los filtros del Control Terminación · {{ $fechaDesde }} al {{ $fechaHasta }}</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                @php $totalDetalleRemitirPlan = (int) $detallePendienteRemitirPlan->sum('pendiente_remitir_plan'); @endphp
+                <div class="row mb-3">
+                    <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">OT PENDIENTES</small><h4 class="font-weight-bold mb-0">{{ number_format($detallePendienteRemitirPlan->count(),0,',','.') }}</h4></div></div>
+                    <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">PRENDAS PENDIENTES</small><h4 class="font-weight-bold text-danger mb-0">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</h4></div></div>
+                    <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">CONTROL CONTRA KPI</small><h4 class="font-weight-bold mb-0 {{ $totalDetalleRemitirPlan === (int)$totalPendienteRemitirPlan ? 'text-success' : 'text-danger' }}">{{ $totalDetalleRemitirPlan === (int)$totalPendienteRemitirPlan ? 'COINCIDE' : 'NO COINCIDE' }}</h4></div></div>
+                </div>
+                <div class="table-responsive" style="max-height:65vh;overflow:auto">
+                    <table class="table table-sm table-striped table-hover ct-table mb-0">
+                        <thead class="thead-light"><tr><th>OT</th><th>Código</th><th>Descripción</th><th class="text-right">Cantidad OT</th><th class="text-right">Plan asignado</th><th class="text-right">Enviado / remitido</th><th class="text-right">Pendiente</th></tr></thead>
+                        <tbody>
+                        @forelse($detallePendienteRemitirPlan as $otPendiente)
+                            <tr>
+                                <td><strong>{{ $otPendiente->nro_ot }}</strong></td>
+                                <td><code>{{ $otPendiente->codigo }}</code></td>
+                                <td>{{ $otPendiente->descripcion }}</td>
+                                <td class="text-right">{{ number_format($otPendiente->cantidad_orden,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($otPendiente->cantidad_logistica,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($otPendiente->remitido_efectivo,0,',','.') }}</td>
+                                <td class="text-right font-weight-bold text-danger">{{ number_format($otPendiente->pendiente_remitir_plan,0,',','.') }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="7" class="text-center text-muted py-4">No existen OT pendientes de remitir con estos filtros.</td></tr>
+                        @endforelse
+                        </tbody>
+                        <tfoot class="bg-light font-weight-bold"><tr><td colspan="6">TOTAL · {{ number_format($detallePendienteRemitirPlan->count(),0,',','.') }} OT</td><td class="text-right text-danger">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</td></tr></tfoot>
+                    </table>
+                </div>
+                <p class="small text-muted mt-3 mb-0">Se utiliza el mismo pendiente remitido por OT de la conciliación que genera el KPI, incluyendo las OT fuera de la página actual. No se altera la base de datos.</p>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
 </script>
 @endsection
