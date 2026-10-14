@@ -462,39 +462,6 @@
     </div>
 </div>
 
-<script>
-document.addEventListener('click', function (event) {
-    var boton = event.target.closest('.btn-detalle-ot');
-    if (!boton) return;
-
-    var contenido = document.getElementById('contenidoDetalleTerminacion');
-    var url = boton.getAttribute('data-url');
-
-    contenido.innerHTML =
-        '<div class="text-center py-5">' +
-        '<i class="fas fa-spinner fa-spin fa-2x text-primary"></i>' +
-        '<div class="text-muted mt-2">Cargando trazabilidad…</div>' +
-        '</div>';
-
-    $('#modalDetalleTerminacion').modal('show');
-
-    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(function (respuesta) {
-            if (!respuesta.ok) throw new Error('No se pudo cargar el detalle.');
-            return respuesta.text();
-        })
-        .then(function (html) {
-            contenido.innerHTML = html;
-        })
-        .catch(function () {
-            contenido.innerHTML =
-                '<div class="alert alert-danger mb-0">' +
-                '<i class="fas fa-exclamation-triangle mr-1"></i>' +
-                'No se pudo cargar la trazabilidad de esta OT.' +
-                '</div>';
-        });
-});
-
 {{-- Detalle completo del KPI, sin paginación: el total coincide con el resumen. --}}
 <div class="modal fade" id="modalPendienteRemitirTerminacion" tabindex="-1" role="dialog" aria-labelledby="tituloPendienteRemitirTerminacion" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document" style="max-width:1150px">
@@ -540,5 +507,39 @@ document.addEventListener('click', function (event) {
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('click', function (event) {
+    var boton = event.target.closest('.btn-detalle-ot');
+    if (!boton) return;
+
+    var contenido = document.getElementById('contenidoDetalleTerminacion');
+    var url = boton.getAttribute('data-url');
+
+    contenido.innerHTML =
+        '<div class="text-center py-5">' +
+        '<i class="fas fa-spinner fa-spin fa-2x text-primary"></i>' +
+        '<div class="text-muted mt-2">Cargando trazabilidad…</div>' +
+        '</div>';
+
+    $('#modalDetalleTerminacion').modal('show');
+
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function (respuesta) {
+            if (!respuesta.ok) throw new Error('No se pudo cargar el detalle.');
+            return respuesta.text();
+        })
+        .then(function (html) {
+            contenido.innerHTML = html;
+        })
+        .catch(function () {
+            contenido.innerHTML =
+                '<div class="alert alert-danger mb-0">' +
+                '<i class="fas fa-exclamation-triangle mr-1"></i>' +
+                'No se pudo cargar la trazabilidad de esta OT.' +
+                '</div>';
+        });
+});
+
 </script>
 @endsection
