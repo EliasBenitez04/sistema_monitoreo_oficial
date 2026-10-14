@@ -147,18 +147,18 @@
             <div class="cc-kpi"><div class="label text-danger">Falta Terminación</div><div class="value">{{ number_format($resumen->falta_terminacion,0,',','.') }}</div><div class="meta">producción incompleta</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label text-warning">Sin destino</div><div class="value">{{ number_format($resumen->sin_destino,0,',','.') }}</div><div class="meta">PT sin asignación suficiente</div></div>
+            <button type="button" class="cc-kpi w-100 text-left" style="cursor:pointer;border:1px solid #ecd9a5;background:#fff;padding:16px" data-toggle="modal" data-target="#modalSinDestinoReporte" aria-label="Ver detalle de prendas sin destino">
+                <div class="label text-warning">Sin destino <i class="fas fa-search-plus float-right"></i></div>
+                <div class="value">{{ number_format($resumen->sin_destino,0,',','.') }}</div>
+                <div class="meta">PT sin asignación suficiente · <span class="text-primary font-weight-bold">Ver OT</span></div>
+            </button>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi">
-                <div class="label text-info">Pendiente remitir</div>
+            <button type="button" class="cc-kpi w-100 text-left" style="cursor:pointer;border:1px solid #cce5ee;background:#fff;padding:16px" data-toggle="modal" data-target="#modalPendienteRemitirReporte" aria-label="Ver detalle de prendas pendientes de remitir">
+                <div class="label text-info">Pendiente remitir <i class="fas fa-search-plus float-right"></i></div>
                 <div class="value">{{ number_format($resumen->pendiente_remitir_plan,0,',','.') }}</div>
-                <div class="meta">
-                    con destino asignado ·
-                    {{ number_format($resumen->pendiente_real_salida,0,',','.') }}
-                    pendientes de salida en total
-                </div>
-            </div>
+                <div class="meta">Con destino asignado · {{ number_format($resumen->pendiente_real_salida,0,',','.') }} pendientes de salida en total · <span class="text-primary font-weight-bold">Ver OT</span></div>
+            </button>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label text-primary">En tránsito</div><div class="value">{{ number_format($resumen->en_transito,0,',','.') }}</div><div class="meta">Tiene remisión pero todavía no tiene fecha_recepcion</div></div>
@@ -562,4 +562,60 @@
         </div>
     </div>
 </div>
+
+{{-- Desgloses calculados desde el mismo universo y campos que los KPI. --}}
+@foreach([
+    ['id' => 'modalSinDestinoReporte', 'titulo' => 'PT sin destino asignado', 'detalle' => $detalleSinDestino, 'campo' => 'sin_destino', 'total' => $resumen->sin_destino],
+    ['id' => 'modalPendienteRemitirReporte', 'titulo' => 'Pendiente de remitir con destino', 'detalle' => $detallePendienteRemitir, 'campo' => 'pendiente_remitir_plan', 'total' => $resumen->pendiente_remitir_plan]
+] as $desglose)
+<div class="modal fade" id="{{ $desglose['id'] }}" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document" style="max-width:1150px">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <div>
+                    <h5 class="modal-title font-weight-bold">{{ $desglose['titulo'] }}</h5>
+                    <small class="text-muted">OT con Producto Terminado en el período {{ $fechaDesde }} a {{ $fechaHasta }}; conciliación acumulada de sus movimientos.</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                @php $totalDesglose = (int) $desglose['detalle']->sum($desglose['campo']); @endphp
+                <div class="row mb-3">
+                    <div class="col-md-4 mb-2"><div class="border rounded p-3"><small class="text-muted d-block">OT CON PENDIENTE</small><h4 class="font-weight-bold mb-0">{{ number_format($desglose['detalle']->count(),0,',','.') }}</h4></div></div>
+                    <div class="col-md-4 mb-2"><div class="border rounded p-3"><small class="text-muted d-block">PRENDAS</small><h4 class="font-weight-bold mb-0">{{ number_format($totalDesglose,0,',','.') }}</h4></div></div>
+                    <div class="col-md-4 mb-2"><div class="border rounded p-3"><small class="text-muted d-block">CONCILIACIÓN KPI</small><h4 class="font-weight-bold mb-0 {{ $totalDesglose === (int)$desglose['total'] ? 'text-success' : 'text-danger' }}">{{ $totalDesglose === (int)$desglose['total'] ? 'COINCIDE' : 'REVISAR' }}</h4></div></div>
+                </div>
+                <div class="table-responsive" style="max-height:60vh;overflow:auto">
+                    <table class="table table-sm table-hover table-striped cc-table">
+                        <thead class="thead-light"><tr>
+                            <th>OT</th><th>Código</th><th>Descripción</th>
+                            <th class="text-right">Cantidad OT</th><th class="text-right">PT</th><th class="text-right">Plan asignado</th><th class="text-right">Remitido</th><th class="text-right">Pendiente</th>
+                        </tr></thead>
+                        <tbody>
+                        @forelse($desglose['detalle'] as $filaDetalle)
+                        <tr>
+                            <td class="font-weight-bold">{{ $filaDetalle->nro_ot }}</td>
+                            <td><code>{{ $filaDetalle->codigo }}</code></td>
+                            <td>{{ $filaDetalle->descripcion }}</td>
+                            <td class="text-right">{{ number_format($filaDetalle->cantidad_orden,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($filaDetalle->producto_terminado,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($filaDetalle->planificado,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($filaDetalle->remitido_original,0,',','.') }}</td>
+                            <td class="text-right text-danger font-weight-bold">{{ number_format($filaDetalle->{$desglose['campo']},0,',','.') }}</td>
+                        </tr>
+                        @empty
+                        <tr><td colspan="8" class="text-center text-muted py-3">Sin OT para este indicador.</td></tr>
+                        @endforelse
+                        </tbody>
+                        <tfoot class="bg-light font-weight-bold"><tr><td colspan="7">TOTAL</td><td class="text-right text-danger">{{ number_format($totalDesglose,0,',','.') }}</td></tr></tfoot>
+                    </table>
+                </div>
+                <p class="small text-muted mt-2 mb-0">Sin destino: PT todavía sin asignación suficiente. Pendiente remitir: plan asignado aún sin remisión. Ambas listas respetan el mismo filtro y la misma fórmula del reporte.</p>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
+@endforeach
+
 @endsection
