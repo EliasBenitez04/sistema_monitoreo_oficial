@@ -8,6 +8,10 @@
             <div class="trk-eyebrow">CONTROL DE PEDIDOS</div>
             <h1 class="trk-title mb-1"><i class="fas fa-sign-in-alt mr-2"></i>Seguimiento Pedido a Ingreso Terminación</h1>
             <p class="trk-subtitle mb-0">Pedidos <strong>IT1, IT2...</strong> completos cuando todas sus OT alcanzan <strong>TERMINACION - TERMINACION</strong>.</p>
+            <p class="small text-muted mt-2 mb-0">
+                <i class="far fa-calendar-alt mr-1"></i>Corte: <strong>{{ $resumen->fecha_corte->format('d/m/Y') }}</strong>
+                · OT únicas con vínculo activo · Las cantidades globales no se duplican entre pedidos.
+            </p>
         </div>
         <div class="mt-2 mt-md-0">
             <a href="{{ route('pedidos.index') }}" class="btn btn-dark shadow-sm mr-1">
@@ -73,7 +77,7 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="trk-kpi">
                 <div class="trk-kpi-icon"><i class="fas fa-list-ol"></i></div>
-                <div><strong>{{ number_format($resumen->ots,0,',','.') }}</strong><span>OT vinculadas</span><small>Total de OT en pedidos IT</small></div>
+                <div><strong>{{ number_format($resumen->ots,0,',','.') }}</strong><span>OT vinculadas</span><small>OT únicas activas en pedidos IT</small></div>
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
@@ -91,7 +95,7 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="trk-kpi is-volume">
                 <div class="trk-kpi-icon"><i class="fas fa-boxes"></i></div>
-                <div><strong>{{ number_format($resumen->prendas,0,',','.') }}</strong><span>Prendas del seguimiento</span><small>{{ number_format($resumen->prendas_ingresadas,0,',','.') }} ya ingresadas</small></div>
+                <div><strong>{{ number_format($resumen->prendas,0,',','.') }}</strong><span>Prendas del seguimiento</span><small>{{ number_format($resumen->prendas_ingresadas,0,',','.') }} ingresadas T-T · sin duplicar OT</small></div>
             </div>
         </div>
     </div>
