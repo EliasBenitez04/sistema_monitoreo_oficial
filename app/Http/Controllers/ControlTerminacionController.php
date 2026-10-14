@@ -421,6 +421,15 @@ class ControlTerminacionController extends Controller
             })
             ->count();
 
+        // Mismo universo de OTs y mismo campo de cálculo del KPI.
+        // No paginar este detalle: debe sumar el total mostrado arriba.
+        $detallePendienteRemitirPlan = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->pendiente_remitir_plan > 0;
+            })
+            ->sortByDesc('pendiente_remitir_plan')
+            ->values();
+
         $totalRemitidoReal = (int) $produccionTerminada
             ->sum('remitido_efectivo');
 
@@ -584,6 +593,7 @@ class ControlTerminacionController extends Controller
             'otsSinDestino',
             'totalPendienteRemitirPlan',
             'otsPendienteRemitirPlan',
+            'detallePendienteRemitirPlan',
             'totalRemitidoReal',
             'totalEnTransito',
             'otsEnTransito',
