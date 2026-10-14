@@ -123,13 +123,13 @@
         </div>
 
         <div class="col-lg-4 mb-3">
-            <div class="card lg-card lg-kpi h-100 {{ $resumenEjecutivo->pendiente_remitir>0?'lg-attention':'lg-ok' }}">
-                <div class="card-body">
-                    <div class="label">Pendiente remitir</div>
+            <button type="button" class="card lg-card lg-kpi h-100 w-100 text-left {{ $resumenEjecutivo->pendiente_remitir>0?'lg-attention':'lg-ok' }}" style="background:#fff;border-top:1px solid #e7ecf2;border-right:1px solid #e7ecf2;border-bottom:1px solid #e7ecf2;padding:0" data-toggle="modal" data-target="#modalPendienteRemitir" aria-label="Ver detalle de prendas pendientes de remitir">
+                <div class="card-body w-100">
+                    <div class="label">Pendiente remitir <i class="fas fa-external-link-alt float-right text-primary"></i></div>
                     <div class="value">{{ number_format($resumenEjecutivo->pendiente_remitir,0,',','.') }}</div>
-                    <div class="meta">Plan asignado que todavía no tiene salida real</div>
+                    <div class="meta">{{ number_format($detallePendienteRemitir->count(),0,',','.') }} OT con plan asignado pendiente · <span class="text-primary font-weight-bold">Ver detalle</span></div>
                 </div>
-            </div>
+            </button>
         </div>
     </div>
 
@@ -346,6 +346,56 @@
         </div>
     </div>
 </div>
+
+    {{-- Detalle calculado con la misma conciliación y los mismos filtros del KPI. --}}
+    <div class="modal fade" id="modalPendienteRemitir" tabindex="-1" role="dialog" aria-labelledby="tituloPendienteRemitir" aria-hidden="true">
+        <div class="modal-dialog modal-xl" role="document" style="max-width:1150px">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <div>
+                        <h5 class="modal-title font-weight-bold" id="tituloPendienteRemitir"><i class="fas fa-clipboard-list text-primary mr-2"></i>OT pendientes de remitir</h5>
+                        <small class="text-muted">Detalle del mismo conjunto de OT y la misma conciliación utilizada por el KPI.</small>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">OT CON PENDIENTE</small><h4 class="mb-0 font-weight-bold">{{ number_format($detallePendienteRemitir->count(),0,',','.') }}</h4></div></div>
+                        <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">PRENDAS PENDIENTES</small><h4 class="mb-0 font-weight-bold text-danger">{{ number_format($detallePendienteRemitir->sum('pendiente_remitir'),0,',','.') }}</h4></div></div>
+                        <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">CONCILIACIÓN CON KPI</small><h4 class="mb-0 font-weight-bold {{ (int)$detallePendienteRemitir->sum('pendiente_remitir') === (int)$resumenEjecutivo->pendiente_remitir ? 'text-success' : 'text-danger' }}">{{ (int)$detallePendienteRemitir->sum('pendiente_remitir') === (int)$resumenEjecutivo->pendiente_remitir ? 'COINCIDE' : 'REVISAR' }}</h4></div></div>
+                    </div>
+                    <div class="table-responsive" style="max-height:60vh;overflow:auto">
+                        <table class="table table-sm table-striped table-hover lg-table">
+                            <thead class="thead-light"><tr><th>OT</th><th>Código</th><th>Descripción</th><th class="text-right">Cantidad OT</th><th class="text-right">Plan asignado</th><th class="text-right">Enviado / remitido</th><th class="text-right">Pendiente remitir</th></tr></thead>
+                            <tbody>
+                                @forelse($detallePendienteRemitir as $item)
+                                <tr>
+                                    <td class="font-weight-bold">{{ $item->nro_ot }}</td>
+                                    <td class="lg-code">{{ $item->codigo }}</td>
+                                    <td>{{ $item->descripcion }}</td>
+                                    <td class="text-right">{{ number_format($item->objetivo,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($item->planificado,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($item->remitido_original,0,',','.') }}</td>
+                                    <td class="text-right text-danger font-weight-bold">{{ number_format($item->pendiente_remitir,0,',','.') }}</td>
+                                </tr>
+                                @empty
+                                <tr><td colspan="7" class="text-muted text-center py-4">No hay prendas pendientes de remitir con los filtros actuales.</td></tr>
+                                @endforelse
+                            </tbody>
+                            <tfoot class="bg-light font-weight-bold">
+                                <tr>
+                                    <td colspan="6">TOTAL PENDIENTE · {{ number_format($detallePendienteRemitir->count(),0,',','.') }} OT</td>
+                                    <td class="text-right text-danger">{{ number_format($detallePendienteRemitir->sum('pendiente_remitir'),0,',','.') }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p class="small text-muted mb-0 mt-2">El pendiente de cada OT proviene de la conciliación logística del sistema. El total debe coincidir exactamente con el KPI superior; los filtros del dashboard también se aplican a esta lista.</p>
+                </div>
+                <div class="modal-footer"><button class="btn btn-secondary" type="button" data-dismiss="modal">Cerrar</button></div>
+            </div>
+        </div>
+    </div>
 
 <script>
 $(function () {
