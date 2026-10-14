@@ -730,10 +730,15 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
 
     public function informeGerencial(Request $request)
     {
-        $hoy = Carbon::today();
+        // Mismo universo que el análisis de atención del calendario IT:
+        // pedidos solicitados al corte, vínculos activos y OT únicas.
+        $hoy = Carbon::today()->startOfDay();
+        $fechaCorte = $hoy->format('Y-m-d');
 
         $pedidos = SeguimientoPedido::query()
             ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
+            ->whereNotNull('fecha_pedido')
+            ->whereDate('fecha_pedido', '<=', $fechaCorte)
             ->select('id', 'nro_pedido', 'fecha_pedido')
             ->orderBy('fecha_pedido')
             ->get();
@@ -746,6 +751,15 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
                 ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
                 ->whereIn('spd.seguimiento_pedido_id', $idsPedido)
+                // Una OT anulada o reemplazada ya no constituye carga activa.
+                // Exactamente la misma regla de seguimientoDiario().
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('pedido_ot_cambios as c')
+                        ->whereColumn('c.pedido_id', 'sp.id')
+                        ->whereRaw('c.ot_anterior = CAST(o.nro_ot AS TEXT)')
+                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
+                })
                 ->select(
                     'spd.seguimiento_pedido_id',
                     'sp.nro_pedido',
@@ -756,7 +770,21 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                     'o.descripcion',
                     'o.cantidad_orden'
                 )
-                ->get();
+                ->orderBy('sp.fecha_pedido')
+                ->orderBy('sp.id')
+                ->get()
+                // La misma OT puede aparecer en más de un pedido IT.
+                // El informe muestra todos sus pedidos, pero cuenta la OT una sola vez.
+                ->groupBy('id_ot')
+                ->map(function ($vinculos) {
+                    $ot = clone $vinculos->first();
+                    $ot->nro_pedido = $vinculos
+                        ->pluck('nro_pedido')->unique()->implode(', ');
+                    $ot->pedido_ids = $vinculos
+                        ->pluck('seguimiento_pedido_id')->unique()->values();
+                    return $ot;
+                })
+                ->values();
         }
 
         $idsOt = $filas->pluck('id_ot')->unique()->values()->all();
@@ -765,6 +793,8 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         if (!empty($idsOt)) {
             $trazas = DB::table('ot_trazabilidad')
                 ->whereIn('id_ot', $idsOt)
+                // No anticipar trazas posteriores al corte del informe.
+                ->whereDate('fecha_proceso', '<=', $fechaCorte)
                 ->select('id_trazabilidad', 'id_ot', 'proceso', 'resultado', 'fecha_proceso')
                 ->orderBy('fecha_proceso')
                 ->orderBy('id_trazabilidad')
@@ -828,11 +858,14 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         $avance = $totalOt > 0 ? round(($totalCompletas / $totalOt) * 100, 1) : 0;
 
         $pedidosConPendiente = $pendientes
-            ->pluck('seguimiento_pedido_id')
+            ->flatMap(function ($ot) {
+                return $ot->pedido_ids->all();
+            })
             ->unique()
             ->count();
 
         $resumen = (object) [
+            'fecha_corte' => $hoy,
             'pedidos' => $pedidos->count(),
             'pedidos_completos' => max(0, $pedidos->count() - $pedidosConPendiente),
             'pedidos_con_pendiente' => $pedidosConPendiente,
@@ -855,7 +888,9 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                     'proceso' => $proceso,
                     'ots' => $otsProceso,
                     'prendas' => (int) $grupo->sum('cantidad_orden'),
-                    'pedidos' => $grupo->pluck('seguimiento_pedido_id')->unique()->count(),
+                    'pedidos' => $grupo->flatMap(function ($ot) {
+                        return $ot->pedido_ids->all();
+                    })->unique()->count(),
                     'porcentaje' => $totalPendientes > 0
                         ? round(($otsProceso / $totalPendientes) * 100, 1)
                         : 0,
