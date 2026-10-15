@@ -338,6 +338,11 @@ Route::get(
 )->name('ventas.vendedores.todos');
 
 Route::get(
+    '/ventas/clientes/opciones',
+    [VentaController::class, 'opcionesClientes']
+)->name('ventas.clientes.opciones');
+
+Route::get(
     '/ventas/clientes/resumen',
     [VentaController::class, 'clientesResumen']
 )->name('ventas.clientes.resumen');
