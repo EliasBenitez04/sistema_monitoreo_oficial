@@ -149,9 +149,34 @@
                             {{ number_format($conc->devoluciones_en_transito ?? 0,0,',','.') }}
                         </div>
                     </div>
+                    @if($consulta->destinos_remitidos->isNotEmpty())
+                        <div class="table-responsive mb-2">
+                            <table class="table table-sm table-bordered bg-white mb-0 it-day-table">
+                                <thead>
+                                    <tr>
+                                        <th>Destino de salida desde Casa Central</th>
+                                        <th class="text-right">Remitido bruto</th>
+                                        <th class="text-right">Recepción confirmada</th>
+                                        <th class="text-right">En tránsito</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($consulta->destinos_remitidos as $destinoOt)
+                                        <tr>
+                                            <td><strong>{{ $destinoOt->sucursal }}</strong></td>
+                                            <td class="text-right">{{ number_format($destinoOt->emitidas,0,',','.') }}</td>
+                                            <td class="text-right text-success font-weight-bold">{{ number_format($destinoOt->recibidas,0,',','.') }}</td>
+                                            <td class="text-right text-warning">{{ number_format($destinoOt->en_transito,0,',','.') }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
                     <div class="text-muted small">
                         Una OT puede distribuirse entre varias sucursales. La ubicación física exacta se determina por las remisiones y recepciones de cada línea, no por el nombre de la última etapa ni del último documento.
                         El saldo Central es teórico y no sustituye el inventario físico por talle y color.
+                        Los documentos ENVIOS que no tengan relación segura con esta OT no se atribuyen automáticamente.
                     </div>
                     @if($consulta->sin_vinculo_recuperado > 0)
                         <div class="text-info small mt-2">
