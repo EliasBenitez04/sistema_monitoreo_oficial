@@ -771,18 +771,17 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             $cursor->addDay();
         }
 
-        // Consulta puntual de OT: independiente de la fecha y mes del calendario.
+        // Consulta por OT independiente de la fecha y mes del calendario.
         $numeroOtBuscado = trim((string) $request->query('ot', ''));
         $resultadoOt = null;
         $errorOt = null;
-
         if ($numeroOtBuscado !== '') {
-            if (!preg_match('/^[0-9]{1,12}$/', $numeroOtBuscado)) {
+            if (!ctype_digit($numeroOtBuscado) || strlen($numeroOtBuscado) > 12) {
                 $errorOt = 'Ingresá un número de OT válido (solo números).';
             } else {
                 $resultadoOt = $this->buscarOtConMovimientos((int) $numeroOtBuscado);
                 if (!$resultadoOt) {
-                    $errorOt = 'No se encontró la OT ' . $numeroOtBuscado . ' en la base de datos.';
+                    $errorOt = 'No se encontró la OT ' . $numeroOtBuscado . '.';
                 }
             }
         }
@@ -790,9 +789,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
         return view(
             'seguimiento_pedidos_ingreso_terminacion.seguimiento_diario',
             compact(
-                'numeroOtBuscado',
-                'resultadoOt',
-                'errorOt',
+                'numeroOtBuscado', 'resultadoOt', 'errorOt',
                 'fechaControl',
                 'salidas',
                 'resumen',
@@ -808,44 +805,39 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
     }
 
     /**
-     * Búsqueda puntual por número de OT, sin limitarla al día del calendario.
-     * Toda fila corresponde a un dato importado: proceso, asignación logística
-     * o documento de remisión/retorno. No se suman como si fueran producción.
+     * Busca el recorrido histórico completo de una OT por número.
+     * No cambia las reglas ni los KPI del seguimiento diario/mensual.
      */
     private function buscarOtConMovimientos(int $numeroOt): ?object
     {
         $ot = DB::table('ot')
             ->where('nro_ot', $numeroOt)
-            ->first(['id_ot', 'nro_ot', 'codigo', 'descripcion', 'cantidad_orden', 'estado']);
+            ->first(['id_ot','nro_ot','codigo','descripcion','cantidad_orden','estado']);
 
         if (!$ot) {
             return null;
         }
 
         $idOt = (int) $ot->id_ot;
-
         $trazabilidad = DB::table('ot_trazabilidad')
             ->where('id_ot', $idOt)
             ->orderBy('fecha_proceso')
             ->orderBy('id_trazabilidad')
-            ->get(['id_trazabilidad', 'proceso', 'resultado', 'fecha_proceso']);
+            ->get(['id_trazabilidad','proceso','resultado','fecha_proceso']);
 
         $ultimoProceso = $trazabilidad->last();
-        $primeraTerminacion = $trazabilidad
-            ->filter(function ($item) {
-                return strtoupper(trim((string) $item->proceso))
-                    === self::PROCESO_CIERRE;
-            })->first();
+        $primeraTerminacion = $trazabilidad->first(function ($item) {
+            return strtoupper(trim((string) $item->proceso)) === self::PROCESO_CIERRE;
+        });
 
-        $pedidos = DB::table('seguimiento_pedido_detalle as spd')
-            ->join('seguimiento_pedido as sp',
-                'sp.id', '=', 'spd.seguimiento_pedido_id')
-            ->where('spd.id_ot', $idOt)
-            ->where('sp.nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->select('sp.id', 'sp.nro_pedido', 'sp.fecha_pedido')
+        $pedidos = DB::table('seguimiento_pedido_detalle as d')
+            ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
+            ->where('d.id_ot', $idOt)
+            ->where('p.nro_pedido', 'ILIKE', self::PREFIJO . '%')
+            ->select('p.id','p.nro_pedido','p.fecha_pedido')
             ->distinct()
-            ->orderBy('sp.fecha_pedido')
-            ->orderBy('sp.id')
+            ->orderBy('p.fecha_pedido')
+            ->orderBy('p.id')
             ->get();
 
         $idsAnulados = collect();
@@ -853,729 +845,101 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             $idsAnulados = DB::table('pedido_ot_cambios')
                 ->whereIn('pedido_id', $pedidos->pluck('id')->all())
                 ->where('ot_anterior', (string) $ot->nro_ot)
-                ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
-                ->pluck('pedido_id')
-                ->map(function ($id) { return (int) $id; });
+                ->whereIn('accion', ['ANULAR','REEMPLAZAR'])
+                ->pluck('pedido_id')->map(function ($id) { return (int) $id; });
         }
-
-        $pedidos = $pedidos->map(function ($pedido) use ($idsAnulados) {
+        foreach ($pedidos as $pedido) {
             $pedido->vigente = !$idsAnulados->contains((int) $pedido->id);
-            return $pedido;
-        });
+        }
 
         $plan = Schema::hasTable('ot_logistica_detalle')
             ? DB::table('ot_logistica_detalle as d')
-                ->leftJoin('ot_trazabilidad as tr',
-                    'tr.id_trazabilidad', '=', 'd.id_trazabilidad')
+                ->leftJoin('ot_trazabilidad as t',
+                    't.id_trazabilidad', '=', 'd.id_trazabilidad')
                 ->where('d.id_ot', $idOt)
-                ->orderBy('tr.fecha_proceso')
+                ->orderBy('t.fecha_proceso')
                 ->orderBy('d.id')
-                ->get(['d.id', 'd.sucursal', 'd.cantidad',
-                    'tr.fecha_proceso', 'tr.proceso'])
+                ->get(['d.id','d.sucursal','d.cantidad','t.fecha_proceso'])
             : collect();
 
-        $remisiones = collect();
-        $sinVinculoRecuperado = 0;
-        if (Schema::hasTable('ot_logistica_remisiones')) {
-            // Recuperar documentos sin id_ot solo cuando el código base
-            // identifica UNA única OT en toda la BD.
-            $base = strtoupper(trim((string) $ot->codigo));
-            $base = preg_replace('/[^0-9A-Z]/', '', $base);
-            if (preg_match('/^[0-9]{8}$/', $base)) {
-                $base = str_pad($base, 9, '0', STR_PAD_LEFT);
-            } elseif (preg_match('/^[0-9]{9}/', $base)) {
-                $base = substr($base, 0, 9);
-            } else {
-                $base = '';
-            }
-
-            $expresionCodigoOt = "CASE WHEN REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g') ~ '^[0-9]{8}
-    {
-        // Mismo universo que el análisis de atención del calendario IT:
-        // pedidos solicitados al corte, vínculos activos y OT únicas.
-        $hoy = Carbon::today()->startOfDay();
-        $fechaCorte = $hoy->format('Y-m-d');
-
-        $pedidos = SeguimientoPedido::query()
-            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->whereNotNull('fecha_pedido')
-            ->whereDate('fecha_pedido', '<=', $fechaCorte)
-            ->select('id', 'nro_pedido', 'fecha_pedido')
-            ->orderBy('fecha_pedido')
-            ->get();
-
-        $idsPedido = $pedidos->pluck('id')->all();
-        $filas = collect();
-
-        if (!empty($idsPedido)) {
-            $filas = DB::table('seguimiento_pedido_detalle as spd')
-                ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
-                ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
-                ->whereIn('spd.seguimiento_pedido_id', $idsPedido)
-                // Una OT anulada o reemplazada ya no constituye carga activa.
-                // Exactamente la misma regla de seguimientoDiario().
-                ->whereNotExists(function ($q) {
-                    $q->select(DB::raw(1))
-                        ->from('pedido_ot_cambios as c')
-                        ->whereColumn('c.pedido_id', 'sp.id')
-                        ->whereRaw('c.ot_anterior = CAST(o.nro_ot AS TEXT)')
-                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
-                })
-                ->select(
-                    'spd.seguimiento_pedido_id',
-                    'sp.nro_pedido',
-                    'sp.fecha_pedido',
-                    'o.id_ot',
-                    'o.nro_ot',
-                    'o.codigo',
-                    'o.descripcion',
-                    'o.cantidad_orden'
-                )
-                ->orderBy('sp.fecha_pedido')
-                ->orderBy('sp.id')
-                ->get()
-                // La misma OT puede aparecer en más de un pedido IT.
-                // El informe muestra todos sus pedidos, pero cuenta la OT una sola vez.
-                ->groupBy('id_ot')
-                ->map(function ($vinculos) {
-                    $ot = clone $vinculos->first();
-                    $ot->nro_pedido = $vinculos
-                        ->pluck('nro_pedido')->unique()->implode(', ');
-                    $ot->pedido_ids = $vinculos
-                        ->pluck('seguimiento_pedido_id')->unique()->values();
-                    return $ot;
-                })
-                ->values();
-        }
-
-        $idsOt = $filas->pluck('id_ot')->unique()->values()->all();
-        $trazas = collect();
-
-        if (!empty($idsOt)) {
-            $trazas = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $idsOt)
-                // No anticipar trazas posteriores al corte del informe.
-                ->whereDate('fecha_proceso', '<=', $fechaCorte)
-                ->select('id_trazabilidad', 'id_ot', 'proceso', 'resultado', 'fecha_proceso')
-                ->orderBy('fecha_proceso')
-                ->orderBy('id_trazabilidad')
-                ->get()
-                ->groupBy('id_ot');
-        }
-
-        $filas = $filas->map(function ($ot) use ($trazas, $hoy) {
-            $historial = collect($trazas->get($ot->id_ot, collect()));
-
-            $cierre = $historial
-                ->filter(function ($t) {
-                    return strtoupper(trim((string) $t->proceso)) === self::PROCESO_CIERRE;
-                })
-                ->sortBy('fecha_proceso')
-                ->first();
-
-            $ultimoProceso = $historial
-                ->sortBy(function ($t) {
-                    return sprintf('%s-%010d', (string) $t->fecha_proceso, (int) $t->id_trazabilidad);
-                })
-                ->last();
-
-            $completo = $cierre !== null;
-            $fechaPedido = $ot->fecha_pedido
-                ? Carbon::parse($ot->fecha_pedido)->startOfDay()
-                : null;
-
-            $ot->completo = $completo;
-            $ot->fecha_cierre = $cierre->fecha_proceso ?? null;
-            $ot->proceso_actual = $ultimoProceso->proceso ?? 'SIN PROCESO';
-            $ot->fecha_proceso_actual = $ultimoProceso->fecha_proceso ?? null;
-            $ot->cantidad_proceso_actual = (int) ($ultimoProceso->resultado ?? 0);
-            $ot->dias_pendiente = (!$completo && $fechaPedido)
-                ? max(0, $fechaPedido->diffInDays($hoy, false))
-                : 0;
-
-            return $ot;
-        });
-
-        $pendientes = $filas
-            ->where('completo', false)
-            ->sort(function ($a, $b) {
-                $procesoA = strtoupper(trim((string) $a->proceso_actual));
-                $procesoB = strtoupper(trim((string) $b->proceso_actual));
-
-                $cmp = strcmp($procesoA, $procesoB);
-                if ($cmp !== 0) {
-                    return $cmp;
-                }
-
-                return ((int) $b->dias_pendiente) <=> ((int) $a->dias_pendiente);
-            })
-            ->values();
-
-        $completas = $filas->where('completo', true)->values();
-
-        $totalOt = $filas->count();
-        $totalCompletas = $completas->count();
-        $totalPendientes = $pendientes->count();
-        $avance = $totalOt > 0 ? round(($totalCompletas / $totalOt) * 100, 1) : 0;
-
-        $pedidosConPendiente = $pendientes
-            ->flatMap(function ($ot) {
-                return $ot->pedido_ids->all();
-            })
-            ->unique()
-            ->count();
-
-        $resumen = (object) [
-            'fecha_corte' => $hoy,
-            'pedidos' => $pedidos->count(),
-            'pedidos_completos' => max(0, $pedidos->count() - $pedidosConPendiente),
-            'pedidos_con_pendiente' => $pedidosConPendiente,
-            'ots' => $totalOt,
-            'ots_completas' => $totalCompletas,
-            'ots_pendientes' => $totalPendientes,
-            'prendas_pendientes' => (int) $pendientes->sum('cantidad_orden'),
-            'avance' => $avance,
-        ];
-
-        $porProcesos = $pendientes
-            ->groupBy(function ($fila) {
-                $proceso = trim((string) $fila->proceso_actual);
-                return $proceso !== '' ? $proceso : 'SIN PROCESO';
-            })
-            ->map(function ($grupo, $proceso) use ($totalPendientes) {
-                $otsProceso = $grupo->count();
-
-                return (object) [
-                    'proceso' => $proceso,
-                    'ots' => $otsProceso,
-                    'prendas' => (int) $grupo->sum('cantidad_orden'),
-                    'pedidos' => $grupo->flatMap(function ($ot) {
-                        return $ot->pedido_ids->all();
-                    })->unique()->count(),
-                    'porcentaje' => $totalPendientes > 0
-                        ? round(($otsProceso / $totalPendientes) * 100, 1)
-                        : 0,
-                ];
-            })
-            ->sortByDesc('ots')
-            ->values();
-
-        return view('seguimiento_pedidos_ingreso_terminacion.informe_gerencial', compact(
-            'pendientes',
-            'resumen',
-            'porProcesos'
-        ));
-    }
-
-
-    public function show($id)
-    {
-        $pedido = SeguimientoPedido::query()
-            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->findOrFail($id);
-
-        $ots = DB::table('seguimiento_pedido_detalle as spd')
-            ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
-            ->where('spd.seguimiento_pedido_id', $pedido->id)
-            ->select(
-                'o.id_ot',
-                'o.nro_ot',
-                'o.codigo',
-                'o.descripcion',
-                'o.cantidad_orden'
-            )
-            ->orderBy('o.nro_ot')
-            ->get();
-
-        $idsOt = $ots->pluck('id_ot')->all();
-        $ingresos = collect();
-
-        if (!empty($idsOt)) {
-            $ingresos = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $idsOt)
-                ->whereRaw("UPPER(TRIM(proceso)) = ?", [self::PROCESO_CIERRE])
-                ->select(
-                    'id_ot',
-                    DB::raw('SUM(resultado) as cantidad'),
-                    DB::raw('MIN(fecha_proceso) as primera_fecha'),
-                    DB::raw('MAX(fecha_proceso) as ultima_fecha')
-                )
-                ->groupBy('id_ot')
-                ->get()
-                ->keyBy('id_ot');
-        }
-
-        $fechaPedido = $pedido->fecha_pedido
-            ? Carbon::parse($pedido->fecha_pedido)->startOfDay()
-            : null;
-
-        foreach ($ots as $ot) {
-            $ingreso = $ingresos->get($ot->id_ot);
-
-            $ot->cantidad_ingreso = min(
-                (int) $ot->cantidad_orden,
-                (int) ($ingreso->cantidad ?? 0)
-            );
-            $ot->fecha_ingreso = $ingreso->primera_fecha ?? null;
-            $ot->fecha_ingreso_ultima = $ingreso->ultima_fecha ?? null;
-            $ot->completo = $ingreso !== null;
-            $ot->dias = null;
-            $ot->ingreso_previo = false;
-
-            if ($ot->completo && $fechaPedido && $ot->fecha_ingreso) {
-                $fechaIngreso = Carbon::parse($ot->fecha_ingreso)->startOfDay();
-
-                if ($fechaIngreso->lt($fechaPedido)) {
-                    $ot->ingreso_previo = true;
-                } else {
-                    $ot->dias = $fechaPedido->diffInDays($fechaIngreso, false);
-                }
-            }
-        }
-
-        $totalOt = $ots->count();
-        $completas = $ots->where('completo', true)->count();
-        $cantidad = (int) $ots->sum('cantidad_orden');
-        $cantidadIngreso = min($cantidad, (int) $ots->sum('cantidad_ingreso'));
-
-        $fechasValidas = $ots->filter(function ($ot) {
-            return $ot->completo && !$ot->ingreso_previo && !empty($ot->fecha_ingreso);
-        })->pluck('fecha_ingreso')->filter();
-
-        $ultimaFecha = $fechasValidas->max();
-
-        $resumen = (object) [
-            'ots' => $totalOt,
-            'completas' => $completas,
-            'pendientes' => max(0, $totalOt - $completas),
-            'cantidad' => $cantidad,
-            'cantidad_ingreso' => $cantidadIngreso,
-            'porcentaje' => $totalOt > 0
-                ? min(100, (int) round(($completas / $totalOt) * 100))
-                : 0,
-            'completo' => $totalOt > 0 && $completas >= $totalOt,
-            'ultima_fecha' => $ultimaFecha,
-            'dias' => ($fechaPedido && $ultimaFecha)
-                ? $fechaPedido->diffInDays(Carbon::parse($ultimaFecha)->startOfDay(), false)
-                : null,
-            'dias_en_curso' => ($fechaPedido && $completas < $totalOt)
-                ? max(0, $fechaPedido->diffInDays(Carbon::today(), false))
-                : null,
-        ];
-
-        return view('seguimiento_pedidos_ingreso_terminacion.show', compact(
-            'pedido',
-            'ots',
-            'resumen'
-        ));
-    }
-}
-
-                THEN LPAD(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9, '0')
-                ELSE LEFT(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9) END";
-
-            $puedeRecuperar = $base !== ''
-                && DB::table('ot')
-                    ->whereRaw($expresionCodigoOt . ' = ?', [$base])
-                    ->count() === 1;
-
-            $queryRemisiones = DB::table('ot_logistica_remisiones as r')
-                ->where(function ($q) use ($idOt, $base, $puedeRecuperar) {
-                    $q->where('r.id_ot', $idOt);
-
-                    if ($puedeRecuperar) {
-                        $exp = "CASE WHEN REGEXP_REPLACE(UPPER(BTRIM(COALESCE(r.codigo, ''))), '[^0-9A-Z]', '', 'g') ~ '^[0-9]{8}
-    {
-        // Mismo universo que el análisis de atención del calendario IT:
-        // pedidos solicitados al corte, vínculos activos y OT únicas.
-        $hoy = Carbon::today()->startOfDay();
-        $fechaCorte = $hoy->format('Y-m-d');
-
-        $pedidos = SeguimientoPedido::query()
-            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->whereNotNull('fecha_pedido')
-            ->whereDate('fecha_pedido', '<=', $fechaCorte)
-            ->select('id', 'nro_pedido', 'fecha_pedido')
-            ->orderBy('fecha_pedido')
-            ->get();
-
-        $idsPedido = $pedidos->pluck('id')->all();
-        $filas = collect();
-
-        if (!empty($idsPedido)) {
-            $filas = DB::table('seguimiento_pedido_detalle as spd')
-                ->join('seguimiento_pedido as sp', 'sp.id', '=', 'spd.seguimiento_pedido_id')
-                ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
-                ->whereIn('spd.seguimiento_pedido_id', $idsPedido)
-                // Una OT anulada o reemplazada ya no constituye carga activa.
-                // Exactamente la misma regla de seguimientoDiario().
-                ->whereNotExists(function ($q) {
-                    $q->select(DB::raw(1))
-                        ->from('pedido_ot_cambios as c')
-                        ->whereColumn('c.pedido_id', 'sp.id')
-                        ->whereRaw('c.ot_anterior = CAST(o.nro_ot AS TEXT)')
-                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR']);
-                })
-                ->select(
-                    'spd.seguimiento_pedido_id',
-                    'sp.nro_pedido',
-                    'sp.fecha_pedido',
-                    'o.id_ot',
-                    'o.nro_ot',
-                    'o.codigo',
-                    'o.descripcion',
-                    'o.cantidad_orden'
-                )
-                ->orderBy('sp.fecha_pedido')
-                ->orderBy('sp.id')
-                ->get()
-                // La misma OT puede aparecer en más de un pedido IT.
-                // El informe muestra todos sus pedidos, pero cuenta la OT una sola vez.
-                ->groupBy('id_ot')
-                ->map(function ($vinculos) {
-                    $ot = clone $vinculos->first();
-                    $ot->nro_pedido = $vinculos
-                        ->pluck('nro_pedido')->unique()->implode(', ');
-                    $ot->pedido_ids = $vinculos
-                        ->pluck('seguimiento_pedido_id')->unique()->values();
-                    return $ot;
-                })
-                ->values();
-        }
-
-        $idsOt = $filas->pluck('id_ot')->unique()->values()->all();
-        $trazas = collect();
-
-        if (!empty($idsOt)) {
-            $trazas = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $idsOt)
-                // No anticipar trazas posteriores al corte del informe.
-                ->whereDate('fecha_proceso', '<=', $fechaCorte)
-                ->select('id_trazabilidad', 'id_ot', 'proceso', 'resultado', 'fecha_proceso')
-                ->orderBy('fecha_proceso')
-                ->orderBy('id_trazabilidad')
-                ->get()
-                ->groupBy('id_ot');
-        }
-
-        $filas = $filas->map(function ($ot) use ($trazas, $hoy) {
-            $historial = collect($trazas->get($ot->id_ot, collect()));
-
-            $cierre = $historial
-                ->filter(function ($t) {
-                    return strtoupper(trim((string) $t->proceso)) === self::PROCESO_CIERRE;
-                })
-                ->sortBy('fecha_proceso')
-                ->first();
-
-            $ultimoProceso = $historial
-                ->sortBy(function ($t) {
-                    return sprintf('%s-%010d', (string) $t->fecha_proceso, (int) $t->id_trazabilidad);
-                })
-                ->last();
-
-            $completo = $cierre !== null;
-            $fechaPedido = $ot->fecha_pedido
-                ? Carbon::parse($ot->fecha_pedido)->startOfDay()
-                : null;
-
-            $ot->completo = $completo;
-            $ot->fecha_cierre = $cierre->fecha_proceso ?? null;
-            $ot->proceso_actual = $ultimoProceso->proceso ?? 'SIN PROCESO';
-            $ot->fecha_proceso_actual = $ultimoProceso->fecha_proceso ?? null;
-            $ot->cantidad_proceso_actual = (int) ($ultimoProceso->resultado ?? 0);
-            $ot->dias_pendiente = (!$completo && $fechaPedido)
-                ? max(0, $fechaPedido->diffInDays($hoy, false))
-                : 0;
-
-            return $ot;
-        });
-
-        $pendientes = $filas
-            ->where('completo', false)
-            ->sort(function ($a, $b) {
-                $procesoA = strtoupper(trim((string) $a->proceso_actual));
-                $procesoB = strtoupper(trim((string) $b->proceso_actual));
-
-                $cmp = strcmp($procesoA, $procesoB);
-                if ($cmp !== 0) {
-                    return $cmp;
-                }
-
-                return ((int) $b->dias_pendiente) <=> ((int) $a->dias_pendiente);
-            })
-            ->values();
-
-        $completas = $filas->where('completo', true)->values();
-
-        $totalOt = $filas->count();
-        $totalCompletas = $completas->count();
-        $totalPendientes = $pendientes->count();
-        $avance = $totalOt > 0 ? round(($totalCompletas / $totalOt) * 100, 1) : 0;
-
-        $pedidosConPendiente = $pendientes
-            ->flatMap(function ($ot) {
-                return $ot->pedido_ids->all();
-            })
-            ->unique()
-            ->count();
-
-        $resumen = (object) [
-            'fecha_corte' => $hoy,
-            'pedidos' => $pedidos->count(),
-            'pedidos_completos' => max(0, $pedidos->count() - $pedidosConPendiente),
-            'pedidos_con_pendiente' => $pedidosConPendiente,
-            'ots' => $totalOt,
-            'ots_completas' => $totalCompletas,
-            'ots_pendientes' => $totalPendientes,
-            'prendas_pendientes' => (int) $pendientes->sum('cantidad_orden'),
-            'avance' => $avance,
-        ];
-
-        $porProcesos = $pendientes
-            ->groupBy(function ($fila) {
-                $proceso = trim((string) $fila->proceso_actual);
-                return $proceso !== '' ? $proceso : 'SIN PROCESO';
-            })
-            ->map(function ($grupo, $proceso) use ($totalPendientes) {
-                $otsProceso = $grupo->count();
-
-                return (object) [
-                    'proceso' => $proceso,
-                    'ots' => $otsProceso,
-                    'prendas' => (int) $grupo->sum('cantidad_orden'),
-                    'pedidos' => $grupo->flatMap(function ($ot) {
-                        return $ot->pedido_ids->all();
-                    })->unique()->count(),
-                    'porcentaje' => $totalPendientes > 0
-                        ? round(($otsProceso / $totalPendientes) * 100, 1)
-                        : 0,
-                ];
-            })
-            ->sortByDesc('ots')
-            ->values();
-
-        return view('seguimiento_pedidos_ingreso_terminacion.informe_gerencial', compact(
-            'pendientes',
-            'resumen',
-            'porProcesos'
-        ));
-    }
-
-
-    public function show($id)
-    {
-        $pedido = SeguimientoPedido::query()
-            ->where('nro_pedido', 'ILIKE', self::PREFIJO . '%')
-            ->findOrFail($id);
-
-        $ots = DB::table('seguimiento_pedido_detalle as spd')
-            ->join('ot as o', 'o.id_ot', '=', 'spd.id_ot')
-            ->where('spd.seguimiento_pedido_id', $pedido->id)
-            ->select(
-                'o.id_ot',
-                'o.nro_ot',
-                'o.codigo',
-                'o.descripcion',
-                'o.cantidad_orden'
-            )
-            ->orderBy('o.nro_ot')
-            ->get();
-
-        $idsOt = $ots->pluck('id_ot')->all();
-        $ingresos = collect();
-
-        if (!empty($idsOt)) {
-            $ingresos = DB::table('ot_trazabilidad')
-                ->whereIn('id_ot', $idsOt)
-                ->whereRaw("UPPER(TRIM(proceso)) = ?", [self::PROCESO_CIERRE])
-                ->select(
-                    'id_ot',
-                    DB::raw('SUM(resultado) as cantidad'),
-                    DB::raw('MIN(fecha_proceso) as primera_fecha'),
-                    DB::raw('MAX(fecha_proceso) as ultima_fecha')
-                )
-                ->groupBy('id_ot')
-                ->get()
-                ->keyBy('id_ot');
-        }
-
-        $fechaPedido = $pedido->fecha_pedido
-            ? Carbon::parse($pedido->fecha_pedido)->startOfDay()
-            : null;
-
-        foreach ($ots as $ot) {
-            $ingreso = $ingresos->get($ot->id_ot);
-
-            $ot->cantidad_ingreso = min(
-                (int) $ot->cantidad_orden,
-                (int) ($ingreso->cantidad ?? 0)
-            );
-            $ot->fecha_ingreso = $ingreso->primera_fecha ?? null;
-            $ot->fecha_ingreso_ultima = $ingreso->ultima_fecha ?? null;
-            $ot->completo = $ingreso !== null;
-            $ot->dias = null;
-            $ot->ingreso_previo = false;
-
-            if ($ot->completo && $fechaPedido && $ot->fecha_ingreso) {
-                $fechaIngreso = Carbon::parse($ot->fecha_ingreso)->startOfDay();
-
-                if ($fechaIngreso->lt($fechaPedido)) {
-                    $ot->ingreso_previo = true;
-                } else {
-                    $ot->dias = $fechaPedido->diffInDays($fechaIngreso, false);
-                }
-            }
-        }
-
-        $totalOt = $ots->count();
-        $completas = $ots->where('completo', true)->count();
-        $cantidad = (int) $ots->sum('cantidad_orden');
-        $cantidadIngreso = min($cantidad, (int) $ots->sum('cantidad_ingreso'));
-
-        $fechasValidas = $ots->filter(function ($ot) {
-            return $ot->completo && !$ot->ingreso_previo && !empty($ot->fecha_ingreso);
-        })->pluck('fecha_ingreso')->filter();
-
-        $ultimaFecha = $fechasValidas->max();
-
-        $resumen = (object) [
-            'ots' => $totalOt,
-            'completas' => $completas,
-            'pendientes' => max(0, $totalOt - $completas),
-            'cantidad' => $cantidad,
-            'cantidad_ingreso' => $cantidadIngreso,
-            'porcentaje' => $totalOt > 0
-                ? min(100, (int) round(($completas / $totalOt) * 100))
-                : 0,
-            'completo' => $totalOt > 0 && $completas >= $totalOt,
-            'ultima_fecha' => $ultimaFecha,
-            'dias' => ($fechaPedido && $ultimaFecha)
-                ? $fechaPedido->diffInDays(Carbon::parse($ultimaFecha)->startOfDay(), false)
-                : null,
-            'dias_en_curso' => ($fechaPedido && $completas < $totalOt)
-                ? max(0, $fechaPedido->diffInDays(Carbon::today(), false))
-                : null,
-        ];
-
-        return view('seguimiento_pedidos_ingreso_terminacion.show', compact(
-            'pedido',
-            'ots',
-            'resumen'
-        ));
-    }
-}
-
-                            THEN LPAD(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(r.codigo, ''))), '[^0-9A-Z]', '', 'g'), 9, '0')
-                            ELSE LEFT(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(r.codigo, ''))), '[^0-9A-Z]', '', 'g'), 9) END";
-                        $q->orWhere(function ($sinOt) use ($exp, $base) {
-                            $sinOt->whereNull('r.id_ot')
-                                ->whereRaw($exp . ' = ?', [$base]);
-                        });
-                    }
-                });
-
-            $remisiones = $queryRemisiones
-                ->orderByRaw('COALESCE(r.fecha_remision, r.fecha_creacion) ASC')
-                ->orderBy('r.serie')
-                ->orderBy('r.numero_remision')
-                ->orderBy('r.id')
-                ->get([
-                    'r.id', 'r.id_ot', 'r.serie', 'r.numero_remision',
-                    'r.codigo', 'r.descripcion', 'r.cantidad',
-                    'r.fecha_remision', 'r.fecha_creacion',
-                    'r.fecha_recepcion', 'r.cod_sucursal_salida',
-                    'r.sucursal_salida', 'r.cod_sucursal_destino',
-                    'r.sucursal_destino'
-                ]);
-
-            $sinVinculoRecuperado = $remisiones
-                ->filter(function ($item) { return $item->id_ot === null; })
-                ->count();
-        }
+        // Solamente movimientos asociados a la OT de forma segura.
+        // Remisiones sin id_ot no se atribuyen a una OT arbitraria.
+        $remisiones = Schema::hasTable('ot_logistica_remisiones')
+            ? DB::table('ot_logistica_remisiones')
+                ->where('id_ot', $idOt)
+                ->orderByRaw('COALESCE(fecha_remision, fecha_creacion) ASC')
+                ->orderBy('serie')
+                ->orderBy('numero_remision')
+                ->orderBy('id')
+                ->get(['id','id_ot','serie','numero_remision','codigo',
+                    'cantidad','fecha_remision','fecha_creacion','fecha_recepcion',
+                    'cod_sucursal_salida','sucursal_salida','cod_sucursal_destino',
+                    'sucursal_destino'])
+            : collect();
 
         $conciliacion = app(\App\Services\LogisticaConciliacionService::class)
             ->conciliarPorIds([$idOt])->get($idOt);
 
         $movimientos = collect();
-
-        foreach ($trazabilidad as $movimiento) {
+        foreach ($trazabilidad as $traza) {
             $movimientos->push((object) [
-                'fecha' => $movimiento->fecha_proceso,
+                'fecha' => $traza->fecha_proceso,
                 'tipo' => 'PROCESO',
-                'detalle' => $movimiento->proceso,
+                'detalle' => $traza->proceso,
                 'informacion' => 'Registro de trazabilidad',
-                'cantidad' => (int) $movimiento->resultado,
+                'cantidad' => (int) $traza->resultado,
                 'documento' => null,
-                'estado' => null,
+                'estado' => null
             ]);
         }
-
         foreach ($plan as $asignacion) {
             $movimientos->push((object) [
                 'fecha' => $asignacion->fecha_proceso,
                 'tipo' => 'PLAN LOGÍSTICO',
                 'detalle' => 'Asignación a ' . $asignacion->sucursal,
-                'informacion' => 'Cantidad planificada por destino (no es despacho)',
+                'informacion' => 'Plan por sucursal; no es salida física',
                 'cantidad' => (int) $asignacion->cantidad,
                 'documento' => null,
-                'estado' => null,
+                'estado' => null
             ]);
         }
-
         foreach ($remisiones as $remision) {
-            $origen = $remision->sucursal_salida
-                ?: 'Sucursal ' . $remision->cod_sucursal_salida;
-            $destino = $remision->sucursal_destino
-                ?: 'Sucursal ' . $remision->cod_sucursal_destino;
-            $esDevolucion = (int) $remision->cod_sucursal_destino === 1
+            $origen = $remision->sucursal_salida ?: 'Suc. ' . $remision->cod_sucursal_salida;
+            $destino = $remision->sucursal_destino ?: 'Suc. ' . $remision->cod_sucursal_destino;
+            $retorno = (int) $remision->cod_sucursal_destino === 1
                 && (int) $remision->cod_sucursal_salida !== 1;
-            $esDespachoCentral = (int) $remision->cod_sucursal_salida === 1
+            $central = (int) $remision->cod_sucursal_salida === 1
                 && (int) $remision->cod_sucursal_destino !== 1;
-            $tipo = $esDevolucion
-                ? 'DEVOLUCIÓN'
-                : ($esDespachoCentral ? 'REMISIÓN CENTRAL' : 'TRASLADO');
-            $documento = (string) $remision->serie
-                . '-' . (string) $remision->numero_remision;
-            $info = $origen . ' → ' . $destino
-                . ' · Código ' . $remision->codigo;
-            if ($remision->id_ot === null) {
-                $info .= ' · OT recuperada por código único';
-            }
+            $tipo = $retorno ? 'DEVOLUCIÓN' : ($central ? 'REMISIÓN CENTRAL' : 'TRASLADO');
+            $documento = $remision->serie . '-' . $remision->numero_remision;
+            $info = $origen . ' → ' . $destino . ' · Código ' . $remision->codigo;
 
             $movimientos->push((object) [
-                'fecha' => $remision->fecha_remision
-                    ?: $remision->fecha_creacion,
+                'fecha' => $remision->fecha_remision ?: $remision->fecha_creacion,
                 'tipo' => $tipo,
                 'detalle' => $origen . ' → ' . $destino,
                 'informacion' => $info,
                 'cantidad' => (int) $remision->cantidad,
                 'documento' => $documento,
-                'estado' => $remision->fecha_recepcion
-                    ? 'RECIBIDO' : 'EN TRÁNSITO',
+                'estado' => $remision->fecha_recepcion ? 'RECIBIDO' : 'EN TRÁNSITO'
             ]);
-
             if ($remision->fecha_recepcion) {
                 $movimientos->push((object) [
                     'fecha' => $remision->fecha_recepcion,
                     'tipo' => 'RECEPCIÓN',
-                    'detalle' => 'Confirmación en ' . $destino,
+                    'detalle' => 'Recepción en ' . $destino,
                     'informacion' => $info,
                     'cantidad' => (int) $remision->cantidad,
                     'documento' => $documento,
-                    'estado' => 'RECIBIDO',
+                    'estado' => 'RECIBIDO'
                 ]);
             }
         }
 
-        $movimientos = $movimientos
-            ->sortBy(function ($item) {
-                return (string) $item->fecha . '|'
-                    . ($item->tipo === 'RECEPCIÓN' ? '2' : '1');
-            })->values();
-
-        $ultimoMovimiento = $movimientos->last();
-        $ultimaRemision = $remisiones->last();
+        $movimientos = $movimientos->sortBy(function ($item) {
+            return (string) $item->fecha . '|'
+                . ($item->tipo === 'RECEPCIÓN' ? '2' : '1');
+        })->values();
 
         return (object) [
             'ot' => $ot,
@@ -1586,10 +950,10 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             'movimientos' => $movimientos,
             'ultimo_proceso' => $ultimoProceso,
             'primera_terminacion' => $primeraTerminacion,
-            'ultimo_movimiento' => $ultimoMovimiento,
-            'ultima_remision' => $ultimaRemision,
+            'ultimo_movimiento' => $movimientos->last(),
+            'ultima_remision' => $remisiones->last(),
             'conciliacion' => $conciliacion,
-            'sin_vinculo_recuperado' => $sinVinculoRecuperado,
+            'sin_vinculo_recuperado' => 0
         ];
     }
 
