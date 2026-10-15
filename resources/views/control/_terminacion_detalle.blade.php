@@ -144,6 +144,86 @@
         </div></div>
     </div>
 
+    @if($devolucionesOt->isNotEmpty())
+        <div class="card border-info mb-3">
+            <div class="card-header bg-light font-weight-bold">
+                <i class="fas fa-undo text-info mr-1"></i>Devoluciones desde locales hacia Casa Central
+            </div>
+            <div class="card-body py-2">
+                <div class="row small mb-2">
+                    <div class="col-md-3 mb-1">
+                        <strong>Despachos brutos:</strong>
+                        {{ number_format($conciliacion->remitido_central_bruto ?? 0,0,',','.') }}
+                    </div>
+                    <div class="col-md-3 mb-1">
+                        <strong>Devoluciones recibidas:</strong>
+                        {{ number_format($conciliacion->devoluciones_recibidas ?? 0,0,',','.') }}
+                    </div>
+                    <div class="col-md-3 mb-1">
+                        <strong>Salida neta OT:</strong>
+                        {{ number_format($conciliacion->remitido_original ?? 0,0,',','.') }}
+                    </div>
+                    <div class="col-md-3 mb-1">
+                        <strong>Stock teórico pendiente Central:</strong>
+                        {{ number_format($conciliacion->stock_central_disponible ?? 0,0,',','.') }}
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-bordered mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Documento retorno</th>
+                                <th>Origen</th>
+                                <th>Destino</th>
+                                <th>Código variante</th>
+                                <th>Fecha remisión</th>
+                                <th>Fecha recepción Central</th>
+                                <th class="text-right">Cantidad</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($devolucionesOt as $retorno)
+                                <tr>
+                                    <td><strong>{{ $retorno->serie }}-{{ $retorno->numero_remision }}</strong></td>
+                                    <td>{{ $retorno->sucursal_salida }} ({{ $retorno->cod_sucursal_salida }})</td>
+                                    <td>{{ $retorno->sucursal_destino ?: 'CASA CENTRAL' }}</td>
+                                    <td><code>{{ $retorno->codigo }}</code></td>
+                                    <td>{{ $retorno->fecha_remision ? \Carbon\Carbon::parse($retorno->fecha_remision)->format('d/m/Y') : '—' }}</td>
+                                    <td>{{ $retorno->fecha_recepcion ? \Carbon\Carbon::parse($retorno->fecha_recepcion)->format('d/m/Y') : '—' }}</td>
+                                    <td class="text-right font-weight-bold">{{ number_format($retorno->cantidad,0,',','.') }}</td>
+                                    <td>
+                                        @if($retorno->fecha_recepcion)
+                                            <span class="badge badge-success">INGRESADO CENTRAL</span>
+                                        @else
+                                            <span class="badge badge-warning">RETORNO EN TRÁNSITO</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                        <tfoot class="bg-light font-weight-bold">
+                            <tr>
+                                <td colspan="6">Total devoluciones recibidas / pendientes de recibir</td>
+                                <td class="text-right">{{ number_format($devolucionesOt->sum('cantidad'),0,',','.') }}</td>
+                                <td>{{ number_format($conciliacion->devoluciones_en_transito ?? 0,0,',','.') }} en camino</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                @if(($conciliacion->devoluciones_sin_salida ?? 0) > 0)
+                    <div class="alert alert-warning small mt-2 mb-0">
+                        {{ number_format($conciliacion->devoluciones_sin_salida,0,',','.') }}
+                        prendas devueltas superan los despachos centrales vinculados: revisar identificación de OT.
+                    </div>
+                @endif
+                <small class="text-muted d-block mt-2">
+                    Las devoluciones sólo reponen stock central cuando existe fecha_recepcion. El saldo teórico no sustituye un conteo físico del depósito.
+                </small>
+            </div>
+        </div>
+    @endif
+
     <div class="alert alert-light border py-2 small mb-3">
         <strong>Cuadre de esta OT:</strong>
         objetivo {{ number_format($totalPlan,0,',','.') }}
