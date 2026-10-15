@@ -45,6 +45,7 @@ class VentaController extends Controller
         $local = trim((string) $request->input('local', ''));
         $vendedor = trim((string) $request->input('vendedor', ''));
         $tipo = trim((string) $request->input('tipo', ''));
+        $cliente = trim((string) $request->input('cliente', ''));
         $buscar = trim((string) $request->input('buscar', ''));
 
         $base = DB::table('ventas as v');
@@ -56,7 +57,8 @@ class VentaController extends Controller
             $local,
             $vendedor,
             $tipo,
-            $buscar
+            $buscar,
+            $cliente
         );
 
         $resumen = (clone $base)
@@ -240,7 +242,8 @@ class VentaController extends Controller
             $local,
             $vendedor,
             $tipo,
-            $buscar
+            $buscar,
+            $cliente
         );
 
         $detalleQuery->select(
@@ -302,6 +305,23 @@ class VentaController extends Controller
         $vendedores = $filtrosCatalogo['vendedores'];
         $tipos = $filtrosCatalogo['tipos'];
 
+        $clienteSeleccionadoLabel = null;
+        if ($cliente !== '') {
+            $registroCliente = DB::table('ventas as v')
+                ->whereRaw($this->expresionClaveCliente() . ' = ?', [$cliente])
+                ->select('v.cliente', 'v.cli_cod', 'v.local')
+                ->first();
+            if ($registroCliente) {
+                $clienteSeleccionadoLabel = trim(
+                    (string) ($registroCliente->cliente ?: 'SIN NOMBRE')
+                );
+                if (!empty($registroCliente->cli_cod)) {
+                    $clienteSeleccionadoLabel .= ' · ' . trim((string) $registroCliente->cli_cod);
+                }
+                $clienteSeleccionadoLabel .= ' (' . $registroCliente->local . ')';
+            }
+        }
+
         $ultimaImportacion = DB::table(
             'ventas_importaciones'
         )
@@ -325,9 +345,66 @@ class VentaController extends Controller
             'local',
             'vendedor',
             'tipo',
+            'cliente',
+            'clienteSeleccionadoLabel',
             'buscar',
             'todo'
         ));
+    }
+
+    /**
+     * Opciones para el filtro AJAX del dashboard de Ventas.
+     * No se precarga el catálogo: sólo se buscan los clientes ingresados.
+     * Usa la misma clave de identidad que Inteligencia de Clientes.
+     */
+    public function opcionesClientes(Request $request)
+    {
+        $this->asegurarTablas();
+
+        $termino = trim((string) $request->input('q', ''));
+        if (mb_strlen($termino) < 2) {
+            return response()->json(['results' => []]);
+        }
+
+        $base = DB::table('ventas as v');
+        $this->aplicarFiltros(
+            $base,
+            $request->input('desde'),
+            $request->input('hasta'),
+            trim((string) $request->input('local', '')),
+            trim((string) $request->input('vendedor', '')),
+            trim((string) $request->input('tipo', '')),
+            ''
+        );
+
+        $base->where(function ($q) use ($termino) {
+            $q->where('v.cliente', 'ILIKE', '%' . $termino . '%')
+              ->orWhere('v.cli_cod', 'ILIKE', '%' . $termino . '%');
+        });
+
+        $clave = $this->expresionClaveCliente();
+        $resultados = $base
+            ->selectRaw($clave . ' as id')
+            ->selectRaw(
+                "MAX(NULLIF(BTRIM(v.cliente), '')) as nombre,
+                 MAX(NULLIF(BTRIM(v.cli_cod), '')) as codigo_cliente,
+                 MAX(NULLIF(BTRIM(v.local), '')) as local_cliente"
+            )
+            ->groupBy(DB::raw($clave))
+            ->orderByRaw("MAX(NULLIF(BTRIM(v.cliente), '')) ASC")
+            ->limit(30)
+            ->get()
+            ->map(function ($item) {
+                $nombre = $item->nombre ?: 'SIN NOMBRE';
+                $codigo = $item->codigo_cliente
+                    ? ' · ' . $item->codigo_cliente : '';
+                return [
+                    'id' => $item->id,
+                    'text' => $nombre . $codigo . ' (' . $item->local_cliente . ')',
+                ];
+            });
+
+        return response()->json(['results' => $resultados]);
     }
 
     /**
@@ -356,6 +433,7 @@ class VentaController extends Controller
         $local = trim((string) $request->input('local', ''));
         $vendedor = trim((string) $request->input('vendedor', ''));
         $tipo = trim((string) $request->input('tipo', ''));
+        $cliente = trim((string) $request->input('cliente', ''));
         $buscar = trim((string) $request->input('buscar', ''));
 
         $base = DB::table('ventas as v');
@@ -367,7 +445,8 @@ class VentaController extends Controller
             $local,
             $vendedor,
             $tipo,
-            $buscar
+            $buscar,
+            $cliente
         );
 
         $base->where(function ($q) {
@@ -1306,6 +1385,7 @@ class VentaController extends Controller
         $local = trim((string) $request->input('local', ''));
         $vendedor = trim((string) $request->input('vendedor', ''));
         $tipo = trim((string) $request->input('tipo', ''));
+        $cliente = trim((string) $request->input('cliente', ''));
         $buscar = trim((string) $request->input('buscar', ''));
 
         $query = DB::table('ventas as v');
@@ -1317,7 +1397,8 @@ class VentaController extends Controller
             $local,
             $vendedor,
             $tipo,
-            $buscar
+            $buscar,
+            $cliente
         );
 
         $ranking = $query
@@ -1380,6 +1461,7 @@ class VentaController extends Controller
         $local = trim((string) $request->input('local', ''));
         $vendedor = trim((string) $request->input('vendedor', ''));
         $tipo = trim((string) $request->input('tipo', ''));
+        $cliente = trim((string) $request->input('cliente', ''));
         $buscar = trim((string) $request->input('buscar', ''));
 
         $query = DB::table('ventas as v')
@@ -1392,7 +1474,8 @@ class VentaController extends Controller
             $local,
             $vendedor,
             $tipo,
-            $buscar
+            $buscar,
+            $cliente
         );
 
         $producto = (clone $query)
@@ -1842,7 +1925,8 @@ class VentaController extends Controller
         string $local,
         string $vendedor,
         string $tipo,
-        string $buscar
+        string $buscar,
+        string $cliente = ''
     ): void {
         /*
          * fecha ya es DATE en PostgreSQL. Comparar directamente permite usar
@@ -1882,6 +1966,15 @@ class VentaController extends Controller
             $query->where(
                 'v.tipo_comprobante',
                 $tipo
+            );
+        }
+
+        // Identidad consistente con el módulo Inteligencia de Clientes:
+        // nombre + código + local. cli_cod solo no identifica unívocamente.
+        if ($cliente !== '') {
+            $query->whereRaw(
+                $this->expresionClaveCliente() . ' = ?',
+                [$cliente]
             );
         }
 
