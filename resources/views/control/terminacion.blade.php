@@ -482,7 +482,7 @@
                 </div>
                 <div class="table-responsive" style="max-height:65vh;overflow:auto">
                     <table class="table table-sm table-striped table-hover ct-table mb-0">
-                        <thead class="thead-light"><tr><th>OT</th><th>Código</th><th>Descripción</th><th class="text-right">Cantidad OT</th><th class="text-right">Plan asignado</th><th class="text-right">Enviado / remitido</th><th class="text-right">Pendiente</th></tr></thead>
+                        <thead class="thead-light"><tr><th>OT</th><th>Código</th><th>Descripción</th><th class="text-right">Cantidad OT</th><th class="text-right">Plan asignado</th><th class="text-right">Remitido (fecha remisión)</th><th class="text-right">Recibido (fecha recepción)</th><th class="text-right">En tránsito</th><th class="text-right">Pendiente de remitir</th></tr></thead>
                         <tbody>
                         @forelse($detallePendienteRemitirPlan as $otPendiente)
                             <tr>
@@ -491,17 +491,19 @@
                                 <td>{{ $otPendiente->descripcion }}</td>
                                 <td class="text-right">{{ number_format($otPendiente->cantidad_orden,0,',','.') }}</td>
                                 <td class="text-right">{{ number_format($otPendiente->cantidad_logistica,0,',','.') }}</td>
-                                <td class="text-right">{{ number_format($otPendiente->remitido_efectivo,0,',','.') }}</td>
+                                <td class="text-right text-primary font-weight-bold">{{ number_format($otPendiente->remitido_efectivo,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($otPendiente->recibido_efectivo,0,',','.') }}</td>
+                                <td class="text-right text-info font-weight-bold">{{ number_format($otPendiente->en_transito,0,',','.') }}</td>
                                 <td class="text-right font-weight-bold text-danger">{{ number_format($otPendiente->pendiente_remitir_plan,0,',','.') }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" class="text-center text-muted py-4">No existen OT pendientes de remitir con estos filtros.</td></tr>
+                            <tr><td colspan="9" class="text-center text-muted py-4">No existen OT pendientes de remitir con estos filtros.</td></tr>
                         @endforelse
                         </tbody>
-                        <tfoot class="bg-light font-weight-bold"><tr><td colspan="6">TOTAL · {{ number_format($detallePendienteRemitirPlan->count(),0,',','.') }} OT</td><td class="text-right text-danger">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</td></tr></tfoot>
+                        <tfoot class="bg-light font-weight-bold"><tr><td colspan="8">TOTAL · {{ number_format($detallePendienteRemitirPlan->count(),0,',','.') }} OT</td><td class="text-right text-danger">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</td></tr></tfoot>
                     </table>
                 </div>
-                <p class="small text-muted mt-3 mb-0">Se utiliza el mismo pendiente remitido por OT de la conciliación que genera el KPI, incluyendo las OT fuera de la página actual. No se altera la base de datos.</p>
+                <p class="small text-muted mt-3 mb-0">Remitido = documento de remisión emitido/importado (no espera fecha de recepción). Recibido = confirmado con fecha_recepcion. En tránsito = remitido menos recibido. Pendiente de remitir = todavía sin remisión de salida. Las OT de esta lista siguen teniendo algún pendiente de remitir; los envíos en tránsito también aparecen en el KPI de tránsito. No se altera la base de datos.</p>
             </div>
             <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button></div>
         </div>
