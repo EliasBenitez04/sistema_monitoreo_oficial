@@ -155,9 +155,13 @@
     <div class="row mb-2">
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card ct-card ct-kpi h-100"><div class="card-body">
-                <div class="label"><i class="fas fa-file-invoice text-info mr-1"></i>Remitido real</div>
+                <div class="label"><i class="fas fa-file-invoice text-info mr-1"></i>Salida neta de OT</div>
                 <div class="value">{{ number_format($totalRemitidoReal,0,',','.') }}</div>
-                <div class="meta">Remisión emitida/importada · cuenta aunque todavía no tenga recepción</div>
+                <div class="meta">
+                    {{ number_format($totalRemitidoBruto,0,',','.') }} remitidas desde Central
+                    − {{ number_format($totalDevolucionesRecibidas,0,',','.') }} retornos ingresados
+                    (más coberturas locales válidas). No espera la recepción del local destino.
+                </div>
             </div></div>
         </div>
 
@@ -314,6 +318,63 @@
             <div class="card-footer bg-white small text-muted py-2">
                 La diferencia se calcula por OT: remitido efectivo menos plan aplicable a PT.
                 El botón Ver detalle abre su distribución, remisiones y recepción.
+            </div>
+        </div>
+    @endif
+
+    @if($detalleDevoluciones->isNotEmpty())
+        <div class="card ct-card mb-3">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
+                <strong><i class="fas fa-undo text-info mr-1"></i>Entradas por devolución y reenvíos de OT</strong>
+                <span class="text-muted small">{{ number_format($detalleDevoluciones->count(),0,',','.') }} OTs con devoluciones importadas</span>
+            </div>
+            <div class="card-body py-2">
+                <div class="row small">
+                    <div class="col-md-3 mb-2"><strong>Remisiones brutas Central:</strong> {{ number_format($totalRemitidoBruto,0,',','.') }}</div>
+                    <div class="col-md-3 mb-2"><strong>Retornos emitidos:</strong> {{ number_format($totalDevolucionesEmitidas,0,',','.') }}</div>
+                    <div class="col-md-3 mb-2"><strong>Retornos recibidos Central:</strong> {{ number_format($totalDevolucionesRecibidas,0,',','.') }}</div>
+                    <div class="col-md-3 mb-2"><strong>Retornos en camino:</strong> {{ number_format($totalDevolucionesEnTransito,0,',','.') }}</div>
+                </div>
+                @if($totalDevolucionesSinSalida > 0)
+                    <div class="alert alert-warning small py-2">
+                        {{ number_format($totalDevolucionesSinSalida,0,',','.') }} devoluciones superan las remisiones centrales vinculadas.
+                        Revisar identificación de OT antes de acreditar el movimiento.
+                    </div>
+                @endif
+                <div class="table-responsive" style="max-height:45vh;overflow:auto">
+                    <table class="table table-sm table-striped table-hover ct-table mb-0">
+                        <thead class="thead-light"><tr>
+                            <th>OT</th><th>Código</th>
+                            <th class="text-right">PT</th>
+                            <th class="text-right">Salida bruta</th>
+                            <th class="text-right">Retornos ingresados</th>
+                            <th class="text-right">Retornos en tránsito</th>
+                            <th class="text-right">Salida neta</th>
+                            <th class="text-right">Saldo teórico Central</th>
+                            <th></th>
+                        </tr></thead>
+                        <tbody>
+                        @foreach($detalleDevoluciones as $itemRetorno)
+                            <tr>
+                                <td><strong>{{ $itemRetorno->nro_ot }}</strong></td>
+                                <td><code>{{ $itemRetorno->codigo }}</code></td>
+                                <td class="text-right">{{ number_format($itemRetorno->cantidad_terminada,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($itemRetorno->remitido_bruto,0,',','.') }}</td>
+                                <td class="text-right text-success font-weight-bold">{{ number_format($itemRetorno->devoluciones_recibidas,0,',','.') }}</td>
+                                <td class="text-right text-warning">{{ number_format($itemRetorno->devoluciones_en_transito,0,',','.') }}</td>
+                                <td class="text-right font-weight-bold">{{ number_format($itemRetorno->remitido_efectivo,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($itemRetorno->stock_central_disponible,0,',','.') }}</td>
+                                <td><button type="button" class="btn btn-sm btn-outline-primary btn-detalle-ot"
+                                            data-url="{{ route('control.terminacion.detalle', ['idOt' => $itemRetorno->id_ot]) }}">
+                                        Ver movimientos
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <small class="text-muted">El stock Central es un saldo teórico de la OT: PT menos salida neta; no sustituye el stock físico registrado por código, color y talle. Los retornos sin fecha_recepcion todavía no reponen stock.</small>
             </div>
         </div>
     @endif
