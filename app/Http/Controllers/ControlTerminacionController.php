@@ -202,6 +202,20 @@ class ControlTerminacionController extends Controller
             $item->remitido_efectivo =
                 $item->movimiento_fisico;
 
+            // Auditoría de movimiento: no sumar retornos como producción.
+            $item->remitido_bruto =
+                (int) $resumen->remitido_central_bruto;
+            $item->devoluciones_emitidas =
+                (int) $resumen->devoluciones_emitidas;
+            $item->devoluciones_recibidas =
+                (int) $resumen->devoluciones_recibidas;
+            $item->devoluciones_en_transito =
+                (int) $resumen->devoluciones_en_transito;
+            $item->devoluciones_sin_salida =
+                (int) $resumen->devoluciones_sin_salida;
+            $item->stock_central_disponible =
+                (int) $resumen->stock_central_disponible;
+
             $item->remitido_sin_vinculo_recuperado =
                 (int) ($resumen->remitido_sin_vinculo_recuperado ?? 0);
 
@@ -436,6 +450,21 @@ class ControlTerminacionController extends Controller
         $totalRemitidoReal = (int) $produccionTerminada
             ->sum('remitido_efectivo');
 
+        $totalRemitidoBruto = (int) $produccionTerminada
+            ->sum('remitido_bruto');
+        $totalDevolucionesEmitidas = (int) $produccionTerminada
+            ->sum('devoluciones_emitidas');
+        $totalDevolucionesRecibidas = (int) $produccionTerminada
+            ->sum('devoluciones_recibidas');
+        $totalDevolucionesEnTransito = (int) $produccionTerminada
+            ->sum('devoluciones_en_transito');
+        $totalDevolucionesSinSalida = (int) $produccionTerminada
+            ->sum('devoluciones_sin_salida');
+        $detalleDevoluciones = $produccionTerminada
+            ->filter(function ($item) {
+                return (int) $item->devoluciones_emitidas > 0;
+            })->sortByDesc('devoluciones_emitidas')->values();
+
         $totalEnTransito = (int) $produccionTerminada
             ->sum('en_transito');
 
@@ -603,6 +632,12 @@ class ControlTerminacionController extends Controller
             'otsPendienteRemitirPlan',
             'detallePendienteRemitirPlan',
             'totalRemitidoReal',
+            'totalRemitidoBruto',
+            'totalDevolucionesEmitidas',
+            'totalDevolucionesRecibidas',
+            'totalDevolucionesEnTransito',
+            'totalDevolucionesSinSalida',
+            'detalleDevoluciones',
             'totalEnTransito',
             'otsEnTransito',
             'totalPendienteEnvio',
@@ -1056,6 +1091,18 @@ class ControlTerminacionController extends Controller
                     (int) $c->remitido_original;
                 $ot->recibido_original =
                     (int) $c->recibido_original;
+                $ot->remitido_bruto =
+                    (int) $c->remitido_central_bruto;
+                $ot->devoluciones_emitidas =
+                    (int) $c->devoluciones_emitidas;
+                $ot->devoluciones_recibidas =
+                    (int) $c->devoluciones_recibidas;
+                $ot->devoluciones_en_transito =
+                    (int) $c->devoluciones_en_transito;
+                $ot->devoluciones_sin_salida =
+                    (int) $c->devoluciones_sin_salida;
+                $ot->stock_central_disponible =
+                    (int) $c->stock_central_disponible;
 
                 $ot->falta_terminacion =
                     (int) $c->falta_terminacion;
@@ -1240,6 +1287,20 @@ class ControlTerminacionController extends Controller
             'recibido' => (int) $reporteCompleto
                 ->sum('recibido_original'),
 
+            // Auditoría bruta / devoluciones / reenvíos: no cambiar PT.
+            'remitido_bruto' => (int) $reporteCompleto
+                ->sum('remitido_bruto'),
+            'devoluciones_emitidas' => (int) $reporteCompleto
+                ->sum('devoluciones_emitidas'),
+            'devoluciones_recibidas' => (int) $reporteCompleto
+                ->sum('devoluciones_recibidas'),
+            'devoluciones_en_transito' => (int) $reporteCompleto
+                ->sum('devoluciones_en_transito'),
+            'devoluciones_sin_salida' => (int) $reporteCompleto
+                ->sum('devoluciones_sin_salida'),
+            'stock_central_disponible' => (int) $reporteCompleto
+                ->sum('stock_central_disponible'),
+
             'falta_terminacion' => (int) $reporteCompleto
                 ->sum('falta_terminacion'),
             'sin_destino' => (int) $reporteCompleto
@@ -1314,6 +1375,12 @@ class ControlTerminacionController extends Controller
             (int) $resumen->producto_terminado
             - (int) $resumen->cuadre_fisico;
 
+        $detalleDevoluciones = $reporteCompleto
+            ->filter(function ($ot) {
+                return (int) $ot->devoluciones_emitidas > 0;
+            })
+            ->sortByDesc('devoluciones_emitidas')->values();
+
         $detalleSinDestino = $reporteCompleto
             ->filter(function ($ot) { return (int) $ot->sin_destino > 0; })
             ->sortByDesc('sin_destino')->values();
@@ -1333,6 +1400,7 @@ class ControlTerminacionController extends Controller
             'diagnosticoPlan',
             'detalleSinDestino',
             'detallePendienteRemitir',
+            'detalleDevoluciones',
             'resumen'
         );
     }
@@ -1358,6 +1426,10 @@ class ControlTerminacionController extends Controller
         $conciliacion = $this->conciliacionService
             ->conciliarPorIds([(int) $idOt])
             ->get((int) $idOt);
+
+        // Mismos documentos LOCAL -> CENTRAL que afectan la conciliación.
+        $devolucionesOt = $this->conciliacionService
+            ->devolucionesDetallePorOt((int) $idOt);
 
         $queryDetalles = DB::table('ot_trazabilidad as tl')
             ->join(
@@ -2207,6 +2279,8 @@ class ControlTerminacionController extends Controller
 
         return view('control._terminacion_detalle', compact(
             'ot',
+            'conciliacion',
+            'devolucionesOt',
             'detalles',
             'remisionesSinDetalle',
             'totalPlan',
