@@ -202,6 +202,9 @@ class ControlTerminacionController extends Controller
             $item->remitido_efectivo =
                 $item->movimiento_fisico;
 
+            $item->remitido_sin_vinculo_recuperado =
+                (int) ($resumen->remitido_sin_vinculo_recuperado ?? 0);
+
             $item->recibido_efectivo =
                 $item->movimiento_recibido;
 
