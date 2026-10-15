@@ -102,6 +102,10 @@ class LogisticaConciliacionService
 
         $remisionesPorOt = $this->remisionesOriginalesPorOt($idsOt);
 
+        // Retornos físicos LOCAL -> CASA CENTRAL importados desde ENVIOS.
+        // No se acredita stock hasta existir fecha_recepcion en Casa Central.
+        $devolucionesPorOt = $this->devolucionesPorOt($idsOt);
+
         /*
          * Complementos/reenvíos que cierran saldos reales del plan.
          * Se calculan por detalle logístico y se capan por la cantidad
@@ -115,6 +119,7 @@ class LogisticaConciliacionService
                 $trazabilidad,
                 $planPorOt,
                 $remisionesPorOt,
+                $devolucionesPorOt,
                 $coberturaPlanPorOt
             ) {
                 $ot = $ots->get($idOt);
@@ -154,6 +159,7 @@ class LogisticaConciliacionService
 
                 $plan = $planPorOt->get($idOt);
                 $remision = $remisionesPorOt->get($idOt);
+                $devolucion = $devolucionesPorOt->get($idOt);
                 $coberturaPlan = $coberturaPlanPorOt->get($idOt);
 
                 $objetivo = max(0, (int) $ot->cantidad_orden);
@@ -230,16 +236,49 @@ class LogisticaConciliacionService
                 );
 
                 /*
-                 * Un complemento sólo puede cerrar una OT que ya tuvo salida
-                 * central real. Nunca permitimos que una redistribución por sí
-                 * sola sustituya el despacho original.
+                 * La OT no fabrica prendas nuevas al recibir una devolución.
+                 * SALIDA NETA = remisiones desde Central - devoluciones
+                 * efectivamente RECIBIDAS en Central.
+                 *
+                 * Una devolución con fecha_remision pero SIN fecha_recepcion
+                 * continúa en tránsito de retorno y NO repone stock Central.
+                 * Ej.: PT=360; 359 salidas; 4 regresan; 5 reenvíos:
+                 * bruto=364, retorno recibido=4, neto=360.
                  */
-                $saldoDespachoCentral = max(
-                    0,
-                    $ptEfectivo - $remitidoCentralRaw
+                $devolucionesEmitidas = max(
+                    0, (int) ($devolucion->emitidas ?? 0)
+                );
+                $devolucionesRecibidas = max(
+                    0, (int) ($devolucion->recibidas ?? 0)
+                );
+                $devolucionesEnTransito = max(
+                    0, $devolucionesEmitidas - $devolucionesRecibidas
                 );
 
-                $remitidoCierre = $remitidoCentralRaw > 0
+                // Impedir que un retorno mal atribuido cree stock negativo
+                // o prendas adicionales; la inconsistencia queda auditable.
+                $retornoAplicado = min(
+                    $remitidoCentralRaw, $devolucionesRecibidas
+                );
+                $remitidoCentralNeto = max(
+                    0, $remitidoCentralRaw - $retornoAplicado
+                );
+                $recibidoCentralNeto = max(
+                    0, $recibidoCentralRaw - min(
+                        $recibidoCentralRaw, $retornoAplicado
+                    )
+                );
+
+                /*
+                 * Un movimiento local->local puede completar un detalle
+                 * histórico, pero un retorno hacia Central NUNCA cuenta
+                 * como una nueva salida ni como cierre del plan.
+                 */
+                $saldoDespachoCentral = max(
+                    0, $ptEfectivo - $remitidoCentralNeto
+                );
+
+                $remitidoCierre = $remitidoCentralNeto > 0
                     ? min(
                         $saldoDespachoCentral,
                         max(
@@ -258,10 +297,10 @@ class LogisticaConciliacionService
                 );
 
                 $remitidoRaw =
-                    $remitidoCentralRaw + $remitidoCierre;
+                    $remitidoCentralNeto + $remitidoCierre;
 
                 $recibidoRaw =
-                    $recibidoCentralRaw + $recibidoCierre;
+                    $recibidoCentralNeto + $recibidoCierre;
 
                 $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
                 $recibidoEfectivo = min(
@@ -396,6 +435,19 @@ class LogisticaConciliacionService
                         // *_raw conserva el despacho central puro para
                         // auditoría; *_efectivo_raw suma el cierre reconocido.
                         'remitido_original_raw' => $remitidoCentralRaw,
+                        'remitido_central_bruto' => $remitidoCentralRaw,
+                        'recibido_central_bruto' => $recibidoCentralRaw,
+                        'devoluciones_emitidas' => $devolucionesEmitidas,
+                        'devoluciones_recibidas' => $devolucionesRecibidas,
+                        'devoluciones_en_transito' => $devolucionesEnTransito,
+                        'devoluciones_aplicadas' => $retornoAplicado,
+                        'devoluciones_sin_salida' => max(
+                            0, $devolucionesRecibidas - $retornoAplicado
+                        ),
+                        'remitido_central_neto' => $remitidoCentralNeto,
+                        'stock_central_disponible' => max(
+                            0, $ptEfectivo - $remitidoEfectivo
+                        ),
                         'remitido_efectivo_raw' => $remitidoRaw,
                         'remitido_cierre' => $remitidoCierre,
                         'remitido_original' => $remitidoEfectivo,
@@ -759,6 +811,254 @@ class LogisticaConciliacionService
     }
 
     /**
+     * Movimientos de devolución LOCAL -> CASA CENTRAL en el mismo ENVIOS.
+     * Reconoce el movimiento emitido y acredita stock solo al confirmarse
+     * fecha_recepcion. No altera documentos ni inventa PT.
+     *
+     * Para líneas históricas sin id_ot, sólo asocia un código base si
+     * pertenece a una ÚNICA OT de toda la base, no sólo del filtro actual.
+     */
+    private function devolucionesPorOt(array $idsOt): Collection
+    {
+        if (empty($idsOt) || !Schema::hasTable('ot_logistica_remisiones')) {
+            return collect();
+        }
+
+        $ids = array_fill_keys(array_map('intval', $idsOt), true);
+
+        $filas = DB::table('ot_logistica_remisiones as r')
+            ->whereIn('r.id_ot', $idsOt)
+            ->where('r.cod_sucursal_destino', 1)
+            ->where('r.cod_sucursal_salida', '<>', 1)
+            ->whereNotNull('r.fecha_remision')
+            ->select(
+                'r.id_ot', 'r.serie', 'r.numero_remision', 'r.codigo',
+                'r.cantidad', 'r.fecha_remision', 'r.fecha_recepcion',
+                'r.cod_sucursal_salida', 'r.sucursal_salida',
+                'r.sucursal_destino'
+            )
+            ->get();
+
+        // Remisiones de retorno sin vínculo: resolver SOLO código base único.
+        $codigoOtSql = "CASE WHEN REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g') ~ '^[0-9]{8}
+     * por encima del despacho central ya contado.
+     *
+     * Ejemplo:
+     *   plan SL = 30
+     *   Central -> SL = 29
+     *   Comercial Matriz -> SL = 1
+     *   cobertura efectiva = 30
+     *
+     * Si luego existe otra redistribución de 5 hacia SL, el detalle sigue
+     * cubierto en 30 porque cada id_logistica_detalle se limita a d.cantidad.
+     */
+    private function coberturaPlanPorOt(array $idsOt): Collection
+    {
+        if (
+            empty($idsOt)
+            || !Schema::hasTable('ot_logistica_detalle')
+            || !Schema::hasTable('ot_logistica_remisiones')
+        ) {
+            return collect();
+        }
+
+        return DB::table('ot_logistica_detalle as d')
+            ->leftJoin('ot_logistica_remisiones as r', function ($join) {
+                $join->on('r.id_logistica_detalle', '=', 'd.id')
+                    ->on('r.id_ot', '=', 'd.id_ot')
+                    // Las devoluciones a Casa Central son entradas de stock.
+                    // Nunca se usan como "remitido_cierre".
+                    ->where(function ($q) {
+                        $q->whereNull('r.cod_sucursal_destino')
+                          ->orWhere('r.cod_sucursal_destino', '<>', 1);
+                    })
+                    ->whereRaw(
+                        "UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')"
+                    );
+            })
+            ->whereIn('d.id_ot', $idsOt)
+            ->groupBy('d.id_ot', 'd.id', 'd.cantidad')
+            ->select(
+                'd.id_ot',
+                'd.id',
+                'd.cantidad as plan',
+                DB::raw(
+                    'COALESCE(SUM(r.cantidad), 0) as movido_total'
+                ),
+                DB::raw(
+                    "COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ') THEN r.cantidad ELSE 0 END), 0) as movido_central"
+                ),
+                DB::raw(
+                    'COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
+                ),
+                DB::raw(
+                    "COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
+                )
+            )
+            ->get()
+            ->groupBy('id_ot')
+            ->map(function ($filas) {
+                $coberturaTotal = 0;
+                $coberturaCentral = 0;
+                $recibidoTotal = 0;
+                $recibidoCentral = 0;
+
+                foreach ($filas as $fila) {
+                    $plan = max(0, (int) $fila->plan);
+
+                    $cubierto = min(
+                        $plan,
+                        max(0, (int) $fila->movido_total)
+                    );
+
+                    $cubiertoCentral = min(
+                        $plan,
+                        max(0, (int) $fila->movido_central)
+                    );
+
+                    $confirmado = min(
+                        $cubierto,
+                        max(0, (int) $fila->recibido_total)
+                    );
+
+                    $confirmadoCentral = min(
+                        $cubiertoCentral,
+                        max(0, (int) $fila->recibido_central)
+                    );
+
+                    $coberturaTotal += $cubierto;
+                    $coberturaCentral += $cubiertoCentral;
+                    $recibidoTotal += $confirmado;
+                    $recibidoCentral += $confirmadoCentral;
+                }
+
+                return (object) [
+                    'remitido_cierre' => max(
+                        0,
+                        $coberturaTotal - $coberturaCentral
+                    ),
+                    'recibido_cierre' => max(
+                        0,
+                        $recibidoTotal - $recibidoCentral
+                    ),
+                ];
+            });
+    }
+
+    private function resolverEstado(
+        int $faltaTerminacion,
+        int $sinDestino,
+        int $pendienteRemitir,
+        int $enTransito,
+        int $productoTerminado,
+        int $recibido
+    ): string {
+        if ($faltaTerminacion > 0) {
+            return 'FALTA TERMINACION';
+        }
+
+        if ($sinDestino > 0) {
+            return 'SIN DESTINO';
+        }
+
+        if ($pendienteRemitir > 0) {
+            return 'PENDIENTE REMITIR';
+        }
+
+        if ($enTransito > 0) {
+            return 'EN TRANSITO';
+        }
+
+        if ($productoTerminado > 0 && $recibido >= $productoTerminado) {
+            return 'CONFIRMADO';
+        }
+
+        if ($productoTerminado > 0) {
+            return 'PENDIENTE SALIDA';
+        }
+
+        return 'SIN PRODUCTO TERMINADO';
+    }
+}
+
+            THEN LPAD(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9, '0')
+            ELSE LEFT(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9) END";
+
+        $bases = DB::table('ot')
+            ->whereIn('id_ot', $idsOt)
+            ->pluck('codigo')
+            ->map(function ($codigo) {
+                return $this->codigoBaseRemision($codigo);
+            })->filter()->unique()->values();
+
+        if ($bases->isNotEmpty()) {
+            $unicas = DB::table('ot')
+                ->whereIn(DB::raw($codigoOtSql), $bases->all())
+                ->select('id_ot', 'codigo')
+                ->get()
+                ->groupBy(function ($ot) {
+                    return $this->codigoBaseRemision($ot->codigo);
+                })
+                ->filter(function ($grupo) {
+                    return $grupo->pluck('id_ot')->unique()->count() === 1;
+                })
+                ->map(function ($grupo) {
+                    return (int) $grupo->first()->id_ot;
+                });
+
+            $codigoRemisionSql = str_replace('codigo', 'r.codigo', $codigoOtSql);
+
+            $sinVinculo = DB::table('ot_logistica_remisiones as r')
+                ->whereNull('r.id_ot')
+                ->where('r.cod_sucursal_destino', 1)
+                ->where('r.cod_sucursal_salida', '<>', 1)
+                ->whereNotNull('r.fecha_remision')
+                ->whereIn(DB::raw($codigoRemisionSql), $unicas->keys()->all())
+                ->select(
+                    'r.id_ot', 'r.serie', 'r.numero_remision', 'r.codigo',
+                    'r.cantidad', 'r.fecha_remision', 'r.fecha_recepcion',
+                    'r.cod_sucursal_salida', 'r.sucursal_salida',
+                    'r.sucursal_destino'
+                )->get();
+
+            foreach ($sinVinculo as $fila) {
+                $idOt = $unicas->get(
+                    $this->codigoBaseRemision($fila->codigo)
+                );
+                if ($idOt && isset($ids[$idOt])) {
+                    $fila->id_ot = $idOt;
+                    $filas->push($fila);
+                }
+            }
+        }
+
+        return $filas->groupBy('id_ot')->map(function ($movimientos) {
+            $emitidas = (int) $movimientos->sum('cantidad');
+            $recibidas = (int) $movimientos
+                ->filter(function ($m) {
+                    return !empty($m->fecha_recepcion);
+                })->sum('cantidad');
+
+            return (object) [
+                'emitidas' => $emitidas,
+                'recibidas' => $recibidas,
+                'documentos' => $movimientos->sortBy('fecha_remision')
+                    ->values(),
+            ];
+        });
+    }
+
+    /**
+     * Documentos de devolución para el detalle auditable de una OT.
+     * Son los mismos movimientos usados en la conciliación general.
+     */
+    public function devolucionesDetallePorOt(int $idOt): Collection
+    {
+        $devolucion = $this->devolucionesPorOt([$idOt])->get($idOt);
+        return $devolucion ? $devolucion->documentos : collect();
+    }
+
+    /**
      * Devuelve solamente el complemento que una remisión vinculada aporta
      * por encima del despacho central ya contado.
      *
@@ -784,7 +1084,16 @@ class LogisticaConciliacionService
         return DB::table('ot_logistica_detalle as d')
             ->leftJoin('ot_logistica_remisiones as r', function ($join) {
                 $join->on('r.id_logistica_detalle', '=', 'd.id')
-                    ->on('r.id_ot', '=', 'd.id_ot');
+                    ->on('r.id_ot', '=', 'd.id_ot')
+                    // Las devoluciones a Casa Central son entradas de stock.
+                    // Nunca se usan como "remitido_cierre".
+                    ->where(function ($q) {
+                        $q->whereNull('r.cod_sucursal_destino')
+                          ->orWhere('r.cod_sucursal_destino', '<>', 1);
+                    })
+                    ->whereRaw(
+                        "UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')"
+                    );
             })
             ->whereIn('d.id_ot', $idsOt)
             ->groupBy('d.id_ot', 'd.id', 'd.cantidad')
