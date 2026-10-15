@@ -1034,7 +1034,13 @@ class ControlTerminacionController extends Controller
                 $ot->planificado =
                     (int) $c->planificado;
 
-                // Plan realmente asignado por sucursal/destino.
+                // Cantidad realmente registrada en el plan por sucursal.
+                // NO caparla por PT para el KPI "Plan asignado".
+                $ot->plan_registrado =
+                    (int) $c->plan_detallado_raw;
+
+                // La cobertura del plan sí se limita por PT para conservar
+                // el resto de los KPI operativos (destino y pendientes).
                 $ot->plan_detallado =
                     (int) $c->plan_detallado;
                 $ot->plan_disponible =
@@ -1099,7 +1105,7 @@ class ControlTerminacionController extends Controller
 
                 $ot->exceso_plan_sobre_pt = max(
                     0,
-                    $ot->plan_detallado
+                    $ot->plan_registrado
                     - $ot->producto_terminado
                 );
 
@@ -1214,7 +1220,10 @@ class ControlTerminacionController extends Controller
             'planificado' => (int) $reporteCompleto
                 ->sum('planificado'),
 
-            // Distribución/destino realmente cargado.
+            // Suma REAL registrada en ot_logistica_detalle.
+            // Distinta de la cobertura efectiva capada por PT.
+            'plan_registrado' => (int) $reporteCompleto
+                ->sum('plan_registrado'),
             'plan_detallado' => (int) $reporteCompleto
                 ->sum('plan_detallado'),
             'plan_disponible' => (int) $reporteCompleto
@@ -1252,6 +1261,13 @@ class ControlTerminacionController extends Controller
             'hueco_plan_vs_real' => (int) $reporteCompleto
                 ->sum('hueco_plan_vs_real'),
         ];
+
+        $resumen->exceso_plan_sobre_pt = (int) $reporteCompleto
+            ->sum('exceso_plan_sobre_pt');
+
+        $resumen->diferencia_plan_registrado_pt =
+            (int) $resumen->plan_registrado
+            - (int) $resumen->producto_terminado;
 
         $resumen->cubierto_sin_plan_por_remision = max(
             0,
