@@ -491,7 +491,14 @@
                                 <td>{{ $otPendiente->descripcion }}</td>
                                 <td class="text-right">{{ number_format($otPendiente->cantidad_orden,0,',','.') }}</td>
                                 <td class="text-right">{{ number_format($otPendiente->cantidad_logistica,0,',','.') }}</td>
-                                <td class="text-right text-primary font-weight-bold">{{ number_format($otPendiente->remitido_efectivo,0,',','.') }}</td>
+                                <td class="text-right text-primary font-weight-bold">
+                                    {{ number_format($otPendiente->remitido_efectivo,0,',','.') }}
+                                    @if(($otPendiente->remitido_sin_vinculo_recuperado ?? 0) > 0)
+                                        <small class="d-block text-info font-weight-normal" title="Remisión emitida sin id_ot, asociada en consulta porque el código pertenece a una sola OT.">
+                                            {{ number_format($otPendiente->remitido_sin_vinculo_recuperado,0,',','.') }} con OT recuperada por código
+                                        </small>
+                                    @endif
+                                </td>
                                 <td class="text-right">{{ number_format($otPendiente->recibido_efectivo,0,',','.') }}</td>
                                 <td class="text-right text-info font-weight-bold">{{ number_format($otPendiente->en_transito,0,',','.') }}</td>
                                 <td class="text-right font-weight-bold text-danger">{{ number_format($otPendiente->pendiente_remitir_plan,0,',','.') }}</td>
