@@ -482,14 +482,19 @@ class ControlTerminacionController extends Controller
          * Diagnóstico de calidad: remisiones reales que superan lo explicado
          * por el plan. No son faltantes físicos.
          */
-        $totalHuecoDetalleLogistico = (int) $produccionTerminada
-            ->sum('hueco_detalle_logistico');
-
-        $otsHuecoDetalleLogistico = $produccionTerminada
+        // El desglose proviene del mismo conjunto filtrado usado por el KPI,
+        // antes de la paginación de 50 OTs. Cada OT figura una sola vez.
+        $detalleHuecoLogistico = $produccionTerminada
             ->filter(function ($item) {
                 return (int) $item->hueco_detalle_logistico > 0;
             })
-            ->count();
+            ->sortByDesc('hueco_detalle_logistico')
+            ->values();
+
+        $totalHuecoDetalleLogistico = (int) $detalleHuecoLogistico
+            ->sum('hueco_detalle_logistico');
+
+        $otsHuecoDetalleLogistico = $detalleHuecoLogistico->count();
 
         /*
          * Alias temporal para el reporte existente. Ahora representa únicamente
@@ -604,6 +609,7 @@ class ControlTerminacionController extends Controller
             'otsPendientesEnvio',
             'totalHuecoDetalleLogistico',
             'otsHuecoDetalleLogistico',
+            'detalleHuecoLogistico',
             'totalPendienteTerminar',
             'totalExcesoProductoTerminado',
             'totalOTs',
