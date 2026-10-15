@@ -76,6 +76,17 @@
                         </select>
                     </div>
                     <div class="col-lg-2 col-md-4 mb-2">
+                        <label class="small font-weight-bold">Cliente</label>
+                        <select id="ventasFiltroCliente" name="cliente" class="form-control" style="width:100%">
+                            <option value="">Todos</option>
+                            @if($cliente !== '')
+                                <option value="{{ $cliente }}" selected>
+                                    {{ $clienteSeleccionadoLabel ?: $cliente }}
+                                </option>
+                            @endif
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-4 mb-2">
                         <label class="small font-weight-bold">Vendedor</label>
                         <select name="vendedor" class="form-control select2">
                             <option value="">Todos</option>
@@ -86,7 +97,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-lg-1 col-md-4 mb-2">
+                    <div class="col-lg-2 col-md-4 mb-2">
                         <label class="small font-weight-bold">Tipo</label>
                         <select name="tipo" class="form-control">
                             <option value="">Todos</option>
@@ -97,7 +108,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-lg-3 col-md-8 mb-2">
+                    <div class="col-lg-6 col-md-8 mb-2">
                         <label class="small font-weight-bold">Buscar</label>
                         <input type="text"
                                name="buscar"
@@ -967,12 +978,65 @@
         route('ventas.vendedores.todos')
     );
 
+    const urlOpcionesClientes = @json(
+        route('ventas.clientes.opciones')
+    );
+
+    // Select2 busca clientes a demanda para evitar cargar todo el catálogo
+    // de ventas. La selección conserva la clave nombre+código+local.
+    if (window.jQuery && $.fn.select2) {
+        $(function () {
+            const selector = $('#ventasFiltroCliente');
+            if (selector.hasClass('select2-hidden-accessible')) {
+                selector.select2('destroy');
+            }
+            selector.select2({
+                width: '100%',
+                placeholder: 'Todos',
+                allowClear: true,
+                minimumInputLength: 2,
+                ajax: {
+                    url: urlOpcionesClientes,
+                    dataType: 'json',
+                    delay: 300,
+                    cache: true,
+                    data: function (params) {
+                        const form = selector.closest('form');
+                        return {
+                            q: params.term || '',
+                            desde: form.find('[name="desde"]').val(),
+                            hasta: form.find('[name="hasta"]').val(),
+                            local: form.find('[name="local"]').val(),
+                            vendedor: form.find('[name="vendedor"]').val(),
+                            tipo: form.find('[name="tipo"]').val()
+                        };
+                    },
+                    processResults: function (response) {
+                        return { results: response.results || [] };
+                    }
+                },
+                language: {
+                    inputTooShort: function () {
+                        return 'Escribí al menos 2 caracteres';
+                    },
+                    noResults: function () {
+                        return 'No se encontraron clientes';
+                    },
+                    searching: function () {
+                        return 'Buscando clientes...';
+                    }
+                }
+            });
+        });
+    }
+
     const filtrosActuales = {
         desde: @json($desde),
         hasta: @json($hasta),
         local: @json($local),
         vendedor: @json($vendedor),
         tipo: @json($tipo),
+        cliente: @json($cliente),
         buscar: @json($buscar)
     };
 
