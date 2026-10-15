@@ -115,7 +115,7 @@
         <strong>Lectura:</strong>
         <strong>Falta Terminación</strong> = Ingreso a Terminación − PT ·
         <strong>Sin destino</strong> = PT todavía sin destino asignado ·
-        <strong>Pendiente remitir</strong> = Plan asignado − Remitido ·
+        <strong>Pendiente remitir</strong> = cobertura de plan disponible para PT sin remisión ·
         <strong>Pendiente salida total</strong> = PT − Remitido ·
         <strong>En tránsito</strong> = Remitido − Recibido.
     </div>
@@ -127,10 +127,12 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi">
                 <div class="label">Plan asignado</div>
-                <div class="value">{{ number_format($resumen->plan_detallado,0,',','.') }}</div>
+                <div class="value">{{ number_format($resumen->plan_registrado,0,',','.') }}</div>
                 <div class="meta">
-                    de {{ number_format($resumen->planificado,0,',','.') }} de objetivo ·
-                    referencia de distribución, no se suma al Remitido
+                    Suma de cantidades por sucursal en ot_logistica_detalle.
+                    Cobertura efectiva limitada al PT:
+                    <strong>{{ number_format($resumen->plan_detallado,0,',','.') }}</strong>.
+                    No se suma al Remitido.
                 </div>
             </div>
         </div>
@@ -189,8 +191,10 @@
             </div>
 
             <div class="small text-muted">
-                El Plan asignado ({{ number_format($resumen->plan_detallado,0,',','.') }})
+                El Plan asignado registrado ({{ number_format($resumen->plan_registrado,0,',','.') }})
                 es una referencia de distribución y se superpone con lo ya remitido.
+                Para los saldos operativos se usa únicamente el plan aplicable al PT
+                ({{ number_format($resumen->plan_detallado,0,',','.') }}).
                 @if($resumen->cubierto_sin_plan_por_remision > 0)
                     {{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}
                     prendas sin plan suficiente ya demostraron destino mediante una remisión real.
@@ -269,7 +273,15 @@
                             </span>
                         </div>
                         <div class="small text-muted">
-                            PT no explicado inicialmente por el plan detallado.
+                            Plan registrado: <strong>{{ number_format($resumen->plan_registrado,0,',','.') }}</strong> ·
+                            cobertura aplicable al PT: <strong>{{ number_format($resumen->plan_detallado,0,',','.') }}</strong> ·
+                            PT: <strong>{{ number_format($resumen->producto_terminado,0,',','.') }}</strong>
+                        </div>
+                        <div class="small mt-2">
+                            Exceso de plan por OT sobre PT:
+                            <strong>{{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}</strong> ·
+                            PT no cubierto por plan:
+                            <strong>{{ number_format($resumen->sin_destino_plan,0,',','.') }}</strong>.
                         </div>
                         <div class="small mt-2">
                             <strong>{{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}</strong>
@@ -394,7 +406,8 @@
                                             <th>OT</th>
                                             <th>Código / Descripción</th>
                                             <th class="text-right">PT</th>
-                                            <th class="text-right">Plan asignado</th>
+                                            <th class="text-right">Plan registrado</th>
+                                            <th class="text-right">Plan aplicable a PT</th>
                                             <th class="text-right">Hueco plan</th>
                                             <th class="text-right">Cubierto por remisión</th>
                                             <th class="text-right">Sin destino real</th>
@@ -411,6 +424,9 @@
                                                 </td>
                                                 <td class="text-right">
                                                     <strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong>
+                                                </td>
+                                                <td class="text-right">
+                                                    {{ number_format($item->plan_registrado,0,',','.') }}
                                                 </td>
                                                 <td class="text-right">
                                                     {{ number_format($item->plan_detallado,0,',','.') }}
@@ -448,7 +464,7 @@
                                             </tr>
                                         @empty
                                             <tr>
-                                                <td colspan="8" class="text-center text-success py-3">
+                                                <td colspan="9" class="text-center text-success py-3">
                                                     Sin diferencias entre PT y Plan asignado.
                                                 </td>
                                             </tr>
@@ -524,11 +540,11 @@
                         <td class="text-right">{{ number_format($item->ingreso_terminacion,0,',','.') }}</td>
                         <td class="text-right"><strong>{{ number_format($item->producto_terminado,0,',','.') }}</strong></td>
                         <td class="text-right">
-                            {{ number_format($item->plan_detallado,0,',','.') }}
-                            @if($item->plan_detallado !== $item->planificado)
+                            {{ number_format($item->plan_registrado,0,',','.') }}
+                            @if($item->plan_registrado !== $item->plan_detallado)
                                 <br>
                                 <small class="text-muted">
-                                    objetivo {{ number_format($item->planificado,0,',','.') }}
+                                    aplicable PT: {{ number_format($item->plan_detallado,0,',','.') }}
                                 </small>
                             @endif
                         </td>
