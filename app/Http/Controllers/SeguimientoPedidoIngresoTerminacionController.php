@@ -877,6 +877,31 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                     'sucursal_destino'])
             : collect();
 
+        // Destinos documentados por despachos desde Casa Central.
+        // No es stock físico del local: puede haber ventas y redistribuciones.
+        $destinosRemitidos = $remisiones
+            ->filter(function ($r) {
+                $origen = strtoupper(trim((string) $r->sucursal_salida));
+                return (int) $r->cod_sucursal_destino !== 1
+                    && ((int) $r->cod_sucursal_salida === 1
+                        || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true));
+            })
+            ->groupBy('cod_sucursal_destino')
+            ->map(function ($lineas) {
+                $primera = $lineas->first();
+                $emitidas = (int) $lineas->sum('cantidad');
+                $recibidas = (int) $lineas
+                    ->filter(function ($r) { return !empty($r->fecha_recepcion); })
+                    ->sum('cantidad');
+                return (object) [
+                    'sucursal' => $primera->sucursal_destino
+                        ?: 'Sucursal ' . $primera->cod_sucursal_destino,
+                    'emitidas' => $emitidas,
+                    'recibidas' => $recibidas,
+                    'en_transito' => max(0, $emitidas - $recibidas)
+                ];
+            })->sortBy('sucursal')->values();
+
         $conciliacion = app(\App\Services\LogisticaConciliacionService::class)
             ->conciliarPorIds([$idOt])->get($idOt);
 
@@ -947,6 +972,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             'trazabilidad' => $trazabilidad,
             'plan' => $plan,
             'remisiones' => $remisiones,
+            'destinos_remitidos' => $destinosRemitidos,
             'movimientos' => $movimientos,
             'ultimo_proceso' => $ultimoProceso,
             'primera_terminacion' => $primeraTerminacion,
