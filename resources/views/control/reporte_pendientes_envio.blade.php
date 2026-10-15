@@ -139,7 +139,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="cc-kpi"><div class="label">Remitido real</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Tiene remisión emitida/importada · no requiere recepción</div></div>
+            <div class="cc-kpi"><div class="label">Salida neta de OT</div><div class="value">{{ number_format($resumen->remitido,0,',','.') }}</div><div class="meta">Remisión central emitida menos devoluciones recibidas en Central, más coberturas locales válidas. No requiere recepción del local destino.</div></div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi"><div class="label">Recibido</div><div class="value">{{ number_format($resumen->recibido,0,',','.') }}</div><div class="meta">Confirmado únicamente cuando existe fecha_recepcion</div></div>
@@ -223,6 +223,67 @@
             </div>
         </div>
     </div>
+
+    @if($detalleDevoluciones->isNotEmpty())
+        <div class="cc-card card mb-3">
+            <div class="card-header bg-white">
+                <strong><i class="fas fa-undo text-info mr-1"></i>Devoluciones a Casa Central y reenvíos</strong>
+            </div>
+            <div class="card-body">
+                <div class="row small mb-2">
+                    <div class="col-lg-3 mb-2"><strong>Despacho bruto Central:</strong> {{ number_format($resumen->remitido_bruto,0,',','.') }}</div>
+                    <div class="col-lg-3 mb-2"><strong>Retornos emitidos:</strong> {{ number_format($resumen->devoluciones_emitidas,0,',','.') }}</div>
+                    <div class="col-lg-3 mb-2"><strong>Retornos ingresados a Central:</strong> {{ number_format($resumen->devoluciones_recibidas,0,',','.') }}</div>
+                    <div class="col-lg-3 mb-2"><strong>Retornos en tránsito:</strong> {{ number_format($resumen->devoluciones_en_transito,0,',','.') }}</div>
+                </div>
+                <p class="small text-muted">
+                    Remisiones brutas − devoluciones efectivamente recibidas en Casa Central = salidas netas centrales.
+                    El resumen operativo puede incluir otras coberturas locales admitidas por la conciliación.
+                    Retornos sin recepción no reponen stock y se muestran aparte.
+                </p>
+                @if($resumen->devoluciones_sin_salida > 0)
+                    <div class="alert alert-warning small">
+                        {{ number_format($resumen->devoluciones_sin_salida,0,',','.') }}
+                        devoluciones recibidas no pudieron descontarse de salidas centrales vinculadas.
+                        Revisar la OT asignada al retorno.
+                    </div>
+                @endif
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover table-striped cc-table mb-0">
+                        <thead><tr>
+                            <th>OT</th><th>Código</th><th class="text-right">PT</th>
+                            <th class="text-right">Salida bruta</th>
+                            <th class="text-right">Dev. recibida</th>
+                            <th class="text-right">Dev. en tránsito</th>
+                            <th class="text-right">Salida neta</th>
+                            <th class="text-right">Saldo teórico Central</th>
+                            <th>Detalle</th>
+                        </tr></thead>
+                        <tbody>
+                            @foreach($detalleDevoluciones as $ret)
+                                <tr>
+                                    <td><strong>{{ $ret->nro_ot }}</strong></td>
+                                    <td><code>{{ $ret->codigo }}</code></td>
+                                    <td class="text-right">{{ number_format($ret->producto_terminado,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($ret->remitido_bruto,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($ret->devoluciones_recibidas,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($ret->devoluciones_en_transito,0,',','.') }}</td>
+                                    <td class="text-right font-weight-bold">{{ number_format($ret->remitido_original,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($ret->stock_central_disponible,0,',','.') }}</td>
+                                    <td>
+                                        <a class="btn btn-sm btn-outline-primary" href="{{ route('control.terminacion', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>(string) $ret->nro_ot]) }}">
+                                            Seguir OT
+                                        </a>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <small class="text-muted">El stock de Central es teórico por OT, no un ajuste automático del stock físico por variante. Los detalles del documento, color y talle están en el seguimiento individual.</small>
+            </div>
+        </div>
+    @endif
 
     @if($resumen->hueco_plan_vs_real > 0)
         <div class="alert alert-info py-2">
@@ -523,8 +584,8 @@
                         <th class="text-right">Ingreso Term.</th>
                         <th class="text-right">PT</th>
                         <th class="text-right">Plan asignado</th>
-                        <th class="text-right">Remitido</th>
-                        <th class="text-right">Recibido</th>
+                        <th class="text-right">Remitido neto</th>
+                        <th class="text-right">Recibido neto</th>
                         <th class="text-right">Falta Term.</th>
                         <th class="text-right">Sin destino</th>
                         <th class="text-right">Pend. remitir</th>
