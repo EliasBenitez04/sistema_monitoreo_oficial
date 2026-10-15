@@ -542,7 +542,7 @@ class LogisticaConciliacionService
          * COMERCIAL MATRIZ NO se considera origen central.
          * Los movimientos Local -> Local tampoco se vuelven a sumar.
          */
-        return DB::table('ot_logistica_remisiones')
+        $vinculadas = DB::table('ot_logistica_remisiones')
             ->whereIn('id_ot', $idsOt)
             ->where(function ($q) {
                 $q->where('cod_sucursal_salida', 1)
@@ -573,6 +573,180 @@ class LogisticaConciliacionService
             )
             ->get()
             ->keyBy('id_ot');
+
+        /*
+         * Los ENVIOS se importan aunque todavía no estén confirmados.
+         * Si en la importación no pudo resolverse id_ot (por no existir
+         * todavía el plan de distribución), la remisión real permanece en BD.
+         *
+         * Recuperación SOLO de lectura y SOLO por código base inequívoco:
+         * evita mostrar como "pendiente remitir" mercadería ya despachada,
+         * sin asignar arbitrariamente un mismo código a varias OT.
+         *
+         * No suma remisiones que YA tienen id_ot, ni movimientos locales.
+         */
+        $sinOt = $this->remisionesEmitidasSinOtUnica($idsOt);
+
+        foreach ($sinOt as $idOt => $faltantesVinculo) {
+            $actual = $vinculadas->get($idOt);
+
+            if (!$actual) {
+                $actual = (object) [
+                    'id_ot' => (int) $idOt,
+                    'remitido_original' => 0,
+                    'recibido_original' => 0,
+                    'primera_remision' => null,
+                    'ultima_remision' => null,
+                    'ultima_recepcion' => null,
+                ];
+            }
+
+            $actual->remitido_original +=
+                (int) $faltantesVinculo->remitido_original;
+            $actual->recibido_original +=
+                (int) $faltantesVinculo->recibido_original;
+
+            foreach (['primera_remision', 'ultima_remision', 'ultima_recepcion'] as $campo) {
+                $fecha = $faltantesVinculo->{$campo};
+                if (!$fecha) {
+                    continue;
+                }
+
+                if (!$actual->{$campo}) {
+                    $actual->{$campo} = $fecha;
+                } elseif ($campo === 'primera_remision') {
+                    $actual->{$campo} = min($actual->{$campo}, $fecha);
+                } else {
+                    $actual->{$campo} = max($actual->{$campo}, $fecha);
+                }
+            }
+
+            $vinculadas->put((int) $idOt, $actual);
+        }
+
+        return $vinculadas;
+    }
+
+    /**
+     * Recupera remisiones centrales SIN id_ot únicamente cuando el código
+     * de artículo (sus primeros nueve dígitos) pertenece a una OT inequívoca
+     * en TODA la tabla ot. No modifica los vínculos almacenados.
+     *
+     * Si dos OT comparten código base, no se imputa cantidad: se requiere
+     * resolver el documento y la OT de origen antes de descontar saldos.
+     */
+    private function remisionesEmitidasSinOtUnica(array $idsOt): Collection
+    {
+        $basesSeleccionadas = DB::table('ot')
+            ->whereIn('id_ot', $idsOt)
+            ->pluck('codigo')
+            ->map(function ($codigo) {
+                return $this->codigoBaseRemision($codigo);
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($basesSeleccionadas->isEmpty()) {
+            return collect();
+        }
+
+        /*
+         * Comparar también contra las OT fuera del filtro: un código que
+         * pertenece a dos OT NO se considera inequívoco aunque el usuario
+         * esté viendo sólo una de ellas.
+         */
+        $codigoOtSql = "CASE WHEN REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g') ~ '^[0-9]{8}$'
+            THEN LPAD(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9, '0')
+            ELSE LEFT(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9) END";
+
+        $candidatos = DB::table('ot')
+            ->whereIn(DB::raw($codigoOtSql), $basesSeleccionadas->all())
+            ->select('id_ot', 'codigo')
+            ->get()
+            ->groupBy(function ($ot) {
+                return $this->codigoBaseRemision($ot->codigo);
+            });
+
+        $otPorBaseUnica = $candidatos
+            ->filter(function ($grupo) {
+                return $grupo->pluck('id_ot')->unique()->count() === 1;
+            })
+            ->map(function ($grupo) {
+                return (int) $grupo->first()->id_ot;
+            });
+
+        $idsSeleccionados = array_fill_keys($idsOt, true);
+        $otPorBaseUnica = $otPorBaseUnica
+            ->filter(function ($idOt) use ($idsSeleccionados) {
+                return isset($idsSeleccionados[$idOt]);
+            });
+
+        if ($otPorBaseUnica->isEmpty()) {
+            return collect();
+        }
+
+        $bases = $otPorBaseUnica->keys()->all();
+
+        // Usar el código BASE de los artículos de remisión, no el talle/color.
+        $codigoRemisionSql = "CASE WHEN REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g') ~ '^[0-9]{8}$'
+            THEN LPAD(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9, '0')
+            ELSE LEFT(REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g'), 9) END";
+
+        $filas = DB::table('ot_logistica_remisiones')
+            ->whereNull('id_ot')
+            ->whereNotNull('fecha_remision')
+            ->whereIn(DB::raw($codigoRemisionSql), $bases)
+            ->where(function ($q) {
+                $q->where('cod_sucursal_salida', 1)
+                    ->orWhereRaw(
+                        "UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'CASA CENTRAL'"
+                    )
+                    ->orWhereRaw(
+                        "UPPER(TRIM(COALESCE(sucursal_salida, ''))) = 'MATRIZ'"
+                    );
+            })
+            ->where(function ($q) {
+                $q->whereNull('cod_sucursal_destino')
+                    ->orWhere('cod_sucursal_destino', '<>', 1);
+            })
+            ->whereRaw(
+                "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
+            )
+            ->select('codigo', 'cantidad', 'fecha_remision', 'fecha_recepcion')
+            ->get();
+
+        return $filas->groupBy(function ($fila) use ($otPorBaseUnica) {
+            return $otPorBaseUnica->get(
+                $this->codigoBaseRemision($fila->codigo)
+            );
+        })->map(function ($grupo, $idOt) {
+            return (object) [
+                'id_ot' => (int) $idOt,
+                'remitido_original' => (int) $grupo->sum('cantidad'),
+                'recibido_original' => (int) $grupo
+                    ->filter(function ($fila) {
+                        return !empty($fila->fecha_recepcion);
+                    })->sum('cantidad'),
+                'primera_remision' => $grupo->min('fecha_remision'),
+                'ultima_remision' => $grupo->max('fecha_remision'),
+                'ultima_recepcion' => $grupo->max('fecha_recepcion'),
+            ];
+        });
+    }
+
+    private function codigoBaseRemision($codigo): string
+    {
+        $texto = strtoupper(trim((string) $codigo));
+        $texto = preg_replace('/[^0-9A-Z]/', '', $texto);
+
+        if (preg_match('/^[0-9]{8}$/', $texto)) {
+            return str_pad($texto, 9, '0', STR_PAD_LEFT);
+        }
+
+        return preg_match('/^[0-9]{9}/', $texto)
+            ? substr($texto, 0, 9)
+            : '';
     }
 
     /**
