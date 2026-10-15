@@ -57,6 +57,60 @@
         </div>
     </div>
 
+    <div class="card it-day-filter mb-3" id="buscador-ot-it">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap mb-2">
+                <div>
+                    <h5 class="font-weight-bold mb-1">
+                        <i class="fas fa-search-location text-primary mr-1"></i>
+                        Buscar OT y consultar sus movimientos
+                    </h5>
+                    <p class="small text-muted mb-0">
+                        Ingresá el número de OT para ver dónde se encuentra según sus registros,
+                        sus pedidos IT, todas las etapas de producción, el plan logístico,
+                        los envíos, devoluciones y las recepciones.
+                    </p>
+                </div>
+                <span class="badge badge-light border p-2 mt-2 mt-md-0">Búsqueda histórica · todas las fechas</span>
+            </div>
+
+            <form method="GET"
+                  action="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario') }}#resultado-busqueda-ot">
+                <input type="hidden" name="fecha" value="{{ $fechaControl->format('Y-m-d') }}">
+                <input type="hidden" name="mes" value="{{ $mesControl->format('Y-m') }}">
+                <div class="row align-items-end">
+                    <div class="col-lg-7 col-md-7 mb-2 mb-md-0">
+                        <label class="small font-weight-bold mb-1" for="numero-ot-consulta">Número de OT</label>
+                        <input id="numero-ot-consulta" type="text" name="ot"
+                               class="form-control" inputmode="numeric"
+                               pattern="[0-9]+" maxlength="12" required
+                               autocomplete="off"
+                               placeholder="Ej.: 30652"
+                               value="{{ $numeroOtBuscado }}">
+                    </div>
+                    <div class="col-lg-3 col-md-3 mb-2 mb-md-0">
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i class="fas fa-search mr-1"></i>Buscar OT
+                        </button>
+                    </div>
+                    <div class="col-lg-2 col-md-2">
+                        <a class="btn btn-outline-secondary btn-block"
+                           href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario', [
+                               'fecha' => $fechaControl->format('Y-m-d'),
+                               'mes' => $mesControl->format('Y-m')
+                           ]) }}">
+                            Limpiar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if($numeroOtBuscado !== '')
+        @include('seguimiento_pedidos_ingreso_terminacion._consulta_ot')
+    @endif
+
     <div class="card shadow-sm it-calendar-card mb-3">
         <div class="card-header bg-white border-0 pb-0">
             <div class="d-flex justify-content-between align-items-center flex-wrap">
@@ -930,6 +984,50 @@
 .it-day-card{
     border:1px solid #e2e8f0;
     border-radius:14px;
+}
+.it-ot-search-kpi{
+    border:1px solid #e2e8f0;
+    border-left:3px solid #2563eb;
+    border-radius:10px;
+    padding:11px 13px;
+    height:100%;
+    min-height:90px;
+    background:#fff;
+}
+.it-ot-search-kpi small{
+    display:block;
+    font-size:9px;
+    color:#64748b;
+    font-weight:900;
+    letter-spacing:.04em;
+}
+.it-ot-search-kpi strong{
+    display:block;
+    color:#0f172a;
+    font-size:21px;
+    margin-top:5px;
+    overflow-wrap:anywhere;
+}
+.it-ot-search-kpi strong.it-ot-search-stage{
+    font-size:14px;
+    line-height:1.3;
+}
+.it-ot-search-kpi span{
+    display:block;
+    color:#64748b;
+    font-size:11px;
+    margin-top:3px;
+}
+.it-ot-search-history{
+    max-height:580px;
+    overflow:auto;
+    border:1px solid #e2e8f0;
+    border-radius:9px;
+}
+.it-ot-search-history thead th{
+    position:sticky;
+    top:0;
+    z-index:1;
 }
 .it-day-hero{
     background:#fff;
