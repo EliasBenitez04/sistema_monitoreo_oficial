@@ -224,6 +224,146 @@
         </div>
     </div>
 
+    {{-- Cuadre contable: los totales NO son iguales si hay excesos de plan
+         o despachos acreditados por documentos fuera de la cobertura. --}}
+    @php
+        $destinoAcreditado = (int) $resumen->remitido
+            + (int) $resumen->pendiente_remitir_plan;
+        $diferenciaPlanDestino = (int) $resumen->plan_registrado
+            - $destinoAcreditado;
+        $auditoriaPlanDestino = $diagnosticoPlan
+            ->filter(function ($ot) {
+                return (int) $ot->exceso_plan_sobre_pt > 0
+                    || (int) $ot->cubierto_sin_plan_por_remision > 0;
+            })
+            ->values();
+    @endphp
+
+    <div class="card cc-card mb-3" id="auditoria-plan-destino">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <strong><i class="fas fa-calculator mr-1"></i>Conciliación: Plan registrado vs. destino acreditado</strong>
+                <div class="cc-sub">
+                    La salida neta más lo pendiente de remitir no tiene por qué ser igual
+                    al plan bruto cuando existen asignaciones excedidas o remisiones sin plan suficiente.
+                </div>
+            </div>
+            <span class="badge {{ $diferenciaPlanDestino === 0 ? 'badge-success' : 'badge-warning' }} p-2">
+                {{ $diferenciaPlanDestino === 0 ? 'DIFERENCIA NETA 0' : 'DIFERENCIA NETA ' . number_format(abs($diferenciaPlanDestino),0,',','.') }}
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="row mb-2">
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <div class="border rounded p-2">
+                        <small class="text-muted d-block">Plan registrado</small>
+                        <strong>{{ number_format($resumen->plan_registrado,0,',','.') }}</strong>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <div class="border rounded p-2">
+                        <small class="text-muted d-block">Exceso de plan sobre PT, por OT</small>
+                        <strong class="text-warning">−{{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}</strong>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <div class="border rounded p-2">
+                        <small class="text-muted d-block">Remitido sin cobertura suficiente del plan</small>
+                        <strong class="text-info">+{{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}</strong>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6 mb-2">
+                    <div class="border rounded p-2">
+                        <small class="text-muted d-block">Con destino acreditado</small>
+                        <strong>{{ number_format($destinoAcreditado,0,',','.') }}</strong>
+                        <small class="text-muted d-block">
+                            {{ number_format($resumen->remitido,0,',','.') }} netas +
+                            {{ number_format($resumen->pendiente_remitir_plan,0,',','.') }} pendientes
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <p class="small mb-2">
+                <strong>Cuadre del destino:</strong>
+                {{ number_format($resumen->plan_registrado,0,',','.') }}
+                − {{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}
+                + {{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}
+                = <strong>{{ number_format($destinoAcreditado,0,',','.') }}</strong>.
+                @if($diferenciaPlanDestino !== 0)
+                    <span class="text-warning font-weight-bold">
+                        Diferencia neta con el plan bruto: {{ number_format(abs($diferenciaPlanDestino),0,',','.') }}
+                        {{ $diferenciaPlanDestino > 0 ? 'de más en plan' : 'de más en destino acreditado' }}.
+                    </span>
+                @endif
+                No se modifica el PT ni se agregan prendas para forzar el resultado.
+            </p>
+            @if($auditoriaPlanDestino->isNotEmpty())
+                <button class="btn btn-sm btn-outline-primary no-print mb-2"
+                        type="button" data-toggle="collapse"
+                        data-target="#detalleAuditoriaPlanDestino"
+                        aria-expanded="false" aria-controls="detalleAuditoriaPlanDestino">
+                    <i class="fas fa-search-plus mr-1"></i>
+                    Ver {{ $auditoriaPlanDestino->count() }} OT que explican el ajuste
+                </button>
+                <div class="collapse" id="detalleAuditoriaPlanDestino">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover cc-table mb-0">
+                            <thead><tr>
+                                <th>OT</th>
+                                <th>Código / descripción</th>
+                                <th class="text-right">PT</th>
+                                <th class="text-right">Plan registrado</th>
+                                <th class="text-right">Plan aplicable</th>
+                                <th class="text-right">Remitido neto</th>
+                                <th class="text-right">Exceso plan</th>
+                                <th class="text-right">Remitido sin plan</th>
+                                <th>Seguimiento</th>
+                            </tr></thead>
+                            <tbody>
+                                @foreach($auditoriaPlanDestino as $itemAuditoria)
+                                    <tr>
+                                        <td><strong>{{ $itemAuditoria->nro_ot }}</strong></td>
+                                        <td>
+                                            <span class="cc-code">{{ $itemAuditoria->codigo }}</span><br>
+                                            <small class="text-muted">{{ $itemAuditoria->descripcion }}</small>
+                                        </td>
+                                        <td class="text-right">{{ number_format($itemAuditoria->producto_terminado,0,',','.') }}</td>
+                                        <td class="text-right">{{ number_format($itemAuditoria->plan_registrado,0,',','.') }}</td>
+                                        <td class="text-right">{{ number_format($itemAuditoria->plan_detallado,0,',','.') }}</td>
+                                        <td class="text-right">{{ number_format($itemAuditoria->remitido_original,0,',','.') }}</td>
+                                        <td class="text-right text-warning font-weight-bold">
+                                            {{ number_format($itemAuditoria->exceso_plan_sobre_pt,0,',','.') }}
+                                        </td>
+                                        <td class="text-right text-info font-weight-bold">
+                                            {{ number_format($itemAuditoria->cubierto_sin_plan_por_remision,0,',','.') }}
+                                        </td>
+                                        <td>
+                                            <a class="btn btn-sm btn-outline-primary no-print"
+                                               href="{{ route('control.terminacion', ['fecha_desde'=>$fechaDesde, 'fecha_hasta'=>$fechaHasta, 'buscar'=>(string) $itemAuditoria->nro_ot]) }}">
+                                                Ver OT
+                                            </a>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot class="bg-light font-weight-bold"><tr>
+                                <td colspan="6">TOTAL</td>
+                                <td class="text-right text-warning">{{ number_format($auditoriaPlanDestino->sum('exceso_plan_sobre_pt'),0,',','.') }}</td>
+                                <td class="text-right text-info">{{ number_format($auditoriaPlanDestino->sum('cubierto_sin_plan_por_remision'),0,',','.') }}</td>
+                                <td></td>
+                            </tr></tfoot>
+                        </table>
+                    </div>
+                    <p class="small text-muted mt-2 mb-0">
+                        El exceso del plan se comprueba en la importación de Logística.
+                        El remitido sin plan se comprueba contra las remisiones originales y devoluciones.
+                        No corregir automáticamente ni asignar una OT por código ambiguo.
+                    </p>
+                </div>
+            @endif
+        </div>
+    </div>
+
     @if($detalleDevoluciones->isNotEmpty())
         <div class="cc-card card mb-3">
             <div class="card-header bg-white">
