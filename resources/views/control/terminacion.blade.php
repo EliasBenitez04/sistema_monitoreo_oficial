@@ -250,13 +250,71 @@
     </div>
 
     @if($totalHuecoDetalleLogistico > 0)
-        <div class="alert alert-info py-2 mb-3">
+        <div class="alert alert-info py-2 mb-2">
             <i class="fas fa-info-circle mr-1"></i>
             <strong>Conciliación de datos:</strong>
             {{ number_format($totalHuecoDetalleLogistico,0,',','.') }} prendas de
             {{ number_format($otsHuecoDetalleLogistico,0,',','.') }} OTs ya tienen remisión original,
             pero el plan logístico todavía no las explica completamente.
             <strong>No se cuentan como faltante físico.</strong>
+        </div>
+
+        {{-- Seguimiento de las mismas OT y cantidades del aviso, sin limitar a la página actual. --}}
+        <div class="card ct-card mb-3">
+            <div class="card-header bg-white py-2">
+                <strong><i class="fas fa-search-plus text-info mr-1"></i>OT con remisión no cubierta por el plan</strong>
+                <span class="text-muted small ml-1">· {{ number_format($otsHuecoDetalleLogistico,0,',','.') }} OT · {{ number_format($totalHuecoDetalleLogistico,0,',','.') }} prendas por conciliar</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-hover ct-table mb-0">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>OT</th>
+                            <th>Código / descripción</th>
+                            <th class="text-right">PT</th>
+                            <th class="text-right">Plan aplicable</th>
+                            <th class="text-right">Remitido</th>
+                            <th class="text-right">Sin cobertura del plan</th>
+                            <th>Última remisión</th>
+                            <th class="text-right">Seguimiento</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($detalleHuecoLogistico as $otHueco)
+                            <tr>
+                                <td><strong>{{ $otHueco->nro_ot }}</strong></td>
+                                <td>
+                                    <span class="ct-code">{{ $otHueco->codigo }}</span>
+                                    <br><small class="text-muted">{{ $otHueco->descripcion }}</small>
+                                </td>
+                                <td class="text-right">{{ number_format($otHueco->producto_terminado_referencia,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($otHueco->cantidad_destino_detalle,0,',','.') }}</td>
+                                <td class="text-right">{{ number_format($otHueco->remitido_efectivo,0,',','.') }}</td>
+                                <td class="text-right font-weight-bold text-info">{{ number_format($otHueco->hueco_detalle_logistico,0,',','.') }}</td>
+                                <td class="ct-nowrap">{{ $otHueco->ultima_remision ? \Carbon\Carbon::parse($otHueco->ultima_remision)->format('d/m/Y') : '—' }}</td>
+                                <td class="text-right">
+                                    <button type="button"
+                                            class="btn btn-outline-primary btn-sm btn-detalle-ot ct-nowrap"
+                                            data-url="{{ route('control.terminacion.detalle', ['idOt' => $otHueco->id_ot]) }}">
+                                        <i class="fas fa-route mr-1"></i>Ver detalle
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                    <tfoot class="bg-light font-weight-bold">
+                        <tr>
+                            <td colspan="5">TOTAL · {{ number_format($otsHuecoDetalleLogistico,0,',','.') }} OT</td>
+                            <td class="text-right text-info">{{ number_format($detalleHuecoLogistico->sum('hueco_detalle_logistico'),0,',','.') }}</td>
+                            <td colspan="2"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="card-footer bg-white small text-muted py-2">
+                La diferencia se calcula por OT: remitido efectivo menos plan aplicable a PT.
+                El botón Ver detalle abre su distribución, remisiones y recepción.
+            </div>
         </div>
     @endif
 
