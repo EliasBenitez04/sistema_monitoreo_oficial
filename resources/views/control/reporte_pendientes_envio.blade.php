@@ -129,10 +129,12 @@
                 <div class="label">Plan asignado</div>
                 <div class="value">{{ number_format($resumen->plan_registrado,0,',','.') }}</div>
                 <div class="meta">
-                    Suma de cantidades por sucursal en ot_logistica_detalle.
-                    Cobertura efectiva limitada al PT:
-                    <strong>{{ number_format($resumen->plan_detallado,0,',','.') }}</strong>.
-                    No se suma al Remitido.
+                    Suma registrada en ot_logistica_detalle.
+                    Aplicable a PT:
+                    <strong>{{ number_format($resumen->plan_detallado,0,',','.') }}</strong>;
+                    exceso por OT sobre PT:
+                    <strong>{{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}</strong>.
+                    Es un plan, no una remisión.
                 </div>
             </div>
         </div>
@@ -199,6 +201,16 @@
                     {{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}
                     prendas sin plan suficiente ya demostraron destino mediante una remisión real.
                 @endif
+            </div>
+
+            <div class="small border-top pt-2 mt-2">
+                <strong>Conciliación del plan contra PT:</strong>
+                <strong>{{ number_format($resumen->plan_registrado,0,',','.') }}</strong> plan registrado
+                − <strong>{{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}</strong> exceso de plan por OT
+                + <strong>{{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}</strong> PT con destino demostrado por remisión sin plan suficiente
+                + <strong>{{ number_format($resumen->sin_destino,0,',','.') }}</strong> sin destino
+                = <strong>{{ number_format($resumen->producto_terminado,0,',','.') }}</strong> PT.
+                <span class="text-muted">No corresponde sumar únicamente Plan asignado + Sin destino porque el plan bruto puede incluir excedentes en unas OT y faltantes en otras.</span>
             </div>
 
             <div class="small text-muted mt-1">
