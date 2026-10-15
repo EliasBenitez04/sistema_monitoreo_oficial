@@ -73,9 +73,9 @@
         <div class="col-lg-3 col-6 mb-3">
             <div class="card lg-card lg-kpi h-100">
                 <div class="card-body">
-                    <div class="label">Remitido real</div>
+                    <div class="label">Remitido real neto</div>
                     <div class="value">{{ number_format($resumenEjecutivo->remitido,0,',','.') }}</div>
-                    <div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan · cuenta la remisión aunque no esté recibida</div>
+                    <div class="meta">{{ number_format($resumenEjecutivo->avance_remision,1,',','.') }}% del plan · despachos emitidos menos devoluciones ya recibidas en Central. No requiere recepción del local destino.</div>
                 </div>
             </div>
         </div>
