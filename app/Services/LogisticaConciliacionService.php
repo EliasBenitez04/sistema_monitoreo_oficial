@@ -399,6 +399,10 @@ class LogisticaConciliacionService
                         'remitido_efectivo_raw' => $remitidoRaw,
                         'remitido_cierre' => $remitidoCierre,
                         'remitido_original' => $remitidoEfectivo,
+                        // Remisiones emitidas recuperadas sin FK id_ot,
+                        // identificadas por código de OT inequívoco.
+                        'remitido_sin_vinculo_recuperado' =>
+                            (int) ($remision->remitido_sin_vinculo ?? 0),
 
                         'recibido_original_raw' => $recibidoCentralRaw,
                         'recibido_efectivo_raw' => $recibidoRaw,
@@ -595,11 +599,16 @@ class LogisticaConciliacionService
                     'id_ot' => (int) $idOt,
                     'remitido_original' => 0,
                     'recibido_original' => 0,
+                    'remitido_sin_vinculo' => 0,
                     'primera_remision' => null,
                     'ultima_remision' => null,
                     'ultima_recepcion' => null,
                 ];
             }
+
+            $actual->remitido_sin_vinculo =
+                (int) ($actual->remitido_sin_vinculo ?? 0)
+                + (int) $faltantesVinculo->remitido_original;
 
             $actual->remitido_original +=
                 (int) $faltantesVinculo->remitido_original;
