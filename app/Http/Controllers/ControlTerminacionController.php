@@ -1084,6 +1084,83 @@ class ControlTerminacionController extends Controller
         return view('control.reporte_pendientes_envio', $datos);
     }
 
+    /**
+     * Clasifica por OT las prendas sin destino aparente justificadas como
+     * AYALA o MODELO MUESTRA. No altera planes, remisiones ni producción.
+     * La referencia documental es obligatoria para auditoría.
+     */
+    public function guardarClasificacionSinDestino(Request $request)
+    {
+        $this->middleware('auth');
+
+        $datos = $request->validate([
+            'id_ot' => 'required|integer|exists:ot,id_ot',
+            'cantidad_ayala' => 'required|integer|min:0',
+            'cantidad_modelo' => 'required|integer|min:0',
+            'referencia' => 'required|string|min:5|max:500',
+            'fecha_desde' => 'nullable|date',
+            'fecha_hasta' => 'nullable|date',
+            'buscar' => 'nullable|string|max:255',
+        ]);
+
+        $idOt = (int) $datos['id_ot'];
+        $sinDestinoActual = $this->conciliacionService
+            ->conciliarPorIds([$idOt])->get($idOt);
+
+        if (!$sinDestinoActual) {
+            return back()->withErrors([
+                'clasificacion' => 'No existe una conciliación válida para esta OT.',
+            ]);
+        }
+
+        $ayala = (int) $datos['cantidad_ayala'];
+        $modelo = (int) $datos['cantidad_modelo'];
+        $sinDestinoCalculado = (int) $sinDestinoActual->sin_destino;
+
+        if (($ayala + $modelo) > $sinDestinoCalculado) {
+            return back()->withErrors([
+                'clasificacion' => 'La clasificación (' . ($ayala + $modelo)
+                    . ') supera el saldo sin destino de la OT ('
+                    . $sinDestinoCalculado . ').',
+            ]);
+        }
+
+        if (!Schema::hasTable('ot_sin_destino_clasificaciones')) {
+            return back()->withErrors([
+                'clasificacion' => 'Falta ejecutar artisan migrate para habilitar la clasificación.',
+            ]);
+        }
+
+        // updateOrInsert garantiza una sola clasificación vigente por OT.
+        DB::table('ot_sin_destino_clasificaciones')->updateOrInsert(
+            ['id_ot' => $idOt],
+            [
+                'cantidad_ayala' => $ayala,
+                'cantidad_modelo' => $modelo,
+                'referencia' => trim($datos['referencia']),
+                'usuario_id' => auth()->id(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $filtros = array_filter([
+            'fecha_desde' => $datos['fecha_desde'] ?? null,
+            'fecha_hasta' => $datos['fecha_hasta'] ?? null,
+            'buscar' => $datos['buscar'] ?? null,
+        ], function ($valor) {
+            return $valor !== null && $valor !== '';
+        });
+
+        return redirect()->route(
+            'control.terminacion.reporte-pendientes-envio',
+            $filtros
+        )->with(
+            'clasificacion_ok',
+            'Clasificación guardada para OT ' . $sinDestinoActual->nro_ot
+                . '. El faltante real y el Excel se recalcularon.'
+        );
+    }
+
     public function exportarReportePendientesEnvioExcel(Request $request)
     {
         $datos = $this->construirReportePendientesEnvio($request);
@@ -1394,6 +1471,57 @@ class ControlTerminacionController extends Controller
             ->values();
 
         /*
+         * Clasificación de las prendas sin destino aparente.
+         * AYALA y MODELO MUESTRA son destinos internos que, cuando no
+         * tienen una vinculación logística suficiente, deben separarse del
+         * faltante real, pero NO inventamos remisiones ni movemos stock.
+         *
+         * Sólo se acreditan cantidades verificadas por OT y registradas
+         * explícitamente; nunca restamos 12/13 a todos los períodos.
+         * Si una nueva importación reduce el saldo bruto y una clasificación
+         * antigua lo supera, se invalida hasta su revisión.
+         */
+        $clasificacionesSinDestino = collect();
+        if (
+            Schema::hasTable('ot_sin_destino_clasificaciones')
+            && !empty($ids)
+        ) {
+            $clasificacionesSinDestino = DB::table(
+                'ot_sin_destino_clasificaciones'
+            )->whereIn('id_ot', $ids)->get()->keyBy('id_ot');
+        }
+
+        $reporteCompleto->each(function ($ot) use ($clasificacionesSinDestino) {
+            $registro = $clasificacionesSinDestino->get((int) $ot->id_ot);
+            $sinDestinoCalculado = max(0, (int) $ot->sin_destino);
+            $registradoAyala = max(
+                0, (int) ($registro->cantidad_ayala ?? 0)
+            );
+            $registradoModelo = max(
+                0, (int) ($registro->cantidad_modelo ?? 0)
+            );
+
+            $ot->sin_destino_calculado = $sinDestinoCalculado;
+            $ot->clasificacion_referencia = $registro->referencia ?? '';
+            $ot->clasificacion_invalida = (
+                $registradoAyala + $registradoModelo
+            ) > $sinDestinoCalculado;
+
+            // No aplicar datos de clasificación obsoletos o excesivos.
+            $ot->sin_destino_ayala = $ot->clasificacion_invalida
+                ? 0 : $registradoAyala;
+            $ot->sin_destino_modelo = $ot->clasificacion_invalida
+                ? 0 : $registradoModelo;
+
+            $ot->sin_destino_real = max(
+                0,
+                $sinDestinoCalculado
+                - $ot->sin_destino_ayala
+                - $ot->sin_destino_modelo
+            );
+        });
+
+        /*
          * DIAGNÓSTICO DE DIFERENCIAS
          *
          * Producción:
@@ -1521,6 +1649,17 @@ class ControlTerminacionController extends Controller
             'hueco_plan_vs_real' => (int) $reporteCompleto
                 ->sum('hueco_plan_vs_real'),
         ];
+
+        $resumen->sin_destino_real = (int) $reporteCompleto
+            ->sum('sin_destino_real');
+        $resumen->sin_destino_ayala = (int) $reporteCompleto
+            ->sum('sin_destino_ayala');
+        $resumen->sin_destino_modelo = (int) $reporteCompleto
+            ->sum('sin_destino_modelo');
+        $resumen->clasificaciones_invalidas = $reporteCompleto
+            ->filter(function ($ot) {
+                return $ot->clasificacion_invalida;
+            })->count();
 
         $resumen->exceso_plan_sobre_pt = (int) $reporteCompleto
             ->sum('exceso_plan_sobre_pt');
