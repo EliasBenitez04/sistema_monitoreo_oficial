@@ -1529,6 +1529,17 @@ class ControlTerminacionController extends Controller
                         . $ot->sin_destino_real;
                 } else {
                     $ot->solicitud = 'REGULARIZAR CLASIFICACION AYALA / MODELO';
+
+                    // Evitar que un registro correctamente clasificado
+                    // siga etiquetado como "SIN DESTINO" con saldo real 0.
+                    if ($ot->estado_conciliacion === 'SIN DESTINO') {
+                        $ot->estado_conciliacion =
+                            $ot->pendiente_remitir > 0
+                                ? 'PENDIENTE REMITIR'
+                                : ($ot->en_transito > 0
+                                    ? 'EN TRANSITO'
+                                    : 'CLASIFICADO INTERNO');
+                    }
                 }
             }
         });
