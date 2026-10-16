@@ -204,6 +204,154 @@
         </div>
     </div>
 
+    {{-- Los siguientes cuadres usan los mismos valores de los KPI superiores.
+         La descomposición de pendiente con destino se obtiene OT por OT,
+         no por una resta del resumen, para detectar inconsistencias. --}}
+    @php
+        $totalPendienteConDestinoCuadre = (int) $detallePendienteRemitirPlan
+            ->sum(function ($ot) {
+                return max(
+                    0,
+                    (int) $ot->pendiente_remitir_plan
+                        - (int) $ot->sin_destino
+                );
+            });
+
+        $cuadreRecepcion = (int) $totalRecepcionLocal
+            + (int) $totalEnTransito;
+        $cuadrePendientes = $totalPendienteConDestinoCuadre
+            + (int) $totalSinDestino;
+        $cuadreDistribucion = (int) $totalRemitidoReal
+            + (int) $totalPendienteRemitirPlan;
+        $cuadreProduccion = (int) $totalTerminado
+            + (int) $totalFaltaTerminacion;
+
+        $verificaRecepcion = $cuadreRecepcion === (int) $totalRemitidoReal;
+        $verificaPendientes = $cuadrePendientes === (int) $totalPendienteRemitirPlan;
+        $verificaDistribucion = $cuadreDistribucion === (int) $totalTerminado;
+        $verificaProduccion = $cuadreProduccion === (int) $totalIngresoTerminacion;
+        $verificaCuadreGeneral = $verificaRecepcion
+            && $verificaPendientes
+            && $verificaDistribucion
+            && $verificaProduccion;
+    @endphp
+
+    <div class="card ct-card mb-3" id="cuadre-indicadores-terminacion">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center">
+            <div>
+                <strong><i class="fas fa-balance-scale text-primary mr-1"></i>Cuadre de indicadores de Terminación y Logística</strong>
+                <div class="text-muted small">
+                    Conciliación automática con las mismas OT y filtros de los indicadores superiores.
+                </div>
+            </div>
+            <span class="badge {{ $verificaCuadreGeneral ? 'badge-success' : 'badge-danger' }} p-2 mt-2 mt-md-0">
+                <i class="fas {{ $verificaCuadreGeneral ? 'fa-check-circle' : 'fa-exclamation-triangle' }} mr-1"></i>
+                {{ $verificaCuadreGeneral ? 'CUADRA 100%' : 'HAY DIFERENCIAS' }}
+            </span>
+        </div>
+        <div class="card-body pt-3 pb-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-2">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Conciliación</th>
+                            <th>Comprobación de cantidades</th>
+                            <th class="text-right">Resultado</th>
+                            <th class="text-center">Control</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Recepción + Tránsito = Salida neta</strong></td>
+                            <td>
+                                {{ number_format($totalRecepcionLocal,0,',','.') }} recibidas
+                                + {{ number_format($totalEnTransito,0,',','.') }} en tránsito
+                            </td>
+                            <td class="text-right text-nowrap">
+                                <strong>{{ number_format($cuadreRecepcion,0,',','.') }}</strong>
+                                <small class="d-block text-muted">Salida neta: {{ number_format($totalRemitidoReal,0,',','.') }}</small>
+                            </td>
+                            <td class="text-center text-nowrap">
+                                @if($verificaRecepcion)
+                                    <span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i>CUADRA</span>
+                                @else
+                                    <span class="text-danger font-weight-bold">DIFERENCIA {{ number_format(abs($cuadreRecepcion - (int)$totalRemitidoReal),0,',','.') }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Con destino + Sin destino = Pendiente total</strong></td>
+                            <td>
+                                {{ number_format($totalPendienteConDestinoCuadre,0,',','.') }} pendientes con destino
+                                + {{ number_format($totalSinDestino,0,',','.') }} sin destino
+                            </td>
+                            <td class="text-right text-nowrap">
+                                <strong>{{ number_format($cuadrePendientes,0,',','.') }}</strong>
+                                <small class="d-block text-muted">Pendiente remitir: {{ number_format($totalPendienteRemitirPlan,0,',','.') }}</small>
+                            </td>
+                            <td class="text-center text-nowrap">
+                                @if($verificaPendientes)
+                                    <span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i>CUADRA</span>
+                                @else
+                                    <span class="text-danger font-weight-bold">DIFERENCIA {{ number_format(abs($cuadrePendientes - (int)$totalPendienteRemitirPlan),0,',','.') }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Salida neta + Pendiente = Producto Terminado</strong></td>
+                            <td>
+                                {{ number_format($totalRemitidoReal,0,',','.') }} salida neta
+                                + {{ number_format($totalPendienteRemitirPlan,0,',','.') }} pendiente total
+                            </td>
+                            <td class="text-right text-nowrap">
+                                <strong>{{ number_format($cuadreDistribucion,0,',','.') }}</strong>
+                                <small class="d-block text-muted">PT: {{ number_format($totalTerminado,0,',','.') }}</small>
+                            </td>
+                            <td class="text-center text-nowrap">
+                                @if($verificaDistribucion)
+                                    <span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i>CUADRA</span>
+                                @else
+                                    <span class="text-danger font-weight-bold">DIFERENCIA {{ number_format(abs($cuadreDistribucion - (int)$totalTerminado),0,',','.') }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Producto Terminado + Falta Terminación = Ingreso Terminación</strong></td>
+                            <td>
+                                {{ number_format($totalTerminado,0,',','.') }} PT
+                                + {{ number_format($totalFaltaTerminacion,0,',','.') }} falta terminar
+                            </td>
+                            <td class="text-right text-nowrap">
+                                <strong>{{ number_format($cuadreProduccion,0,',','.') }}</strong>
+                                <small class="d-block text-muted">Ingreso: {{ number_format($totalIngresoTerminacion,0,',','.') }}</small>
+                            </td>
+                            <td class="text-center text-nowrap">
+                                @if($verificaProduccion)
+                                    <span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i>CUADRA</span>
+                                @else
+                                    <span class="text-danger font-weight-bold">DIFERENCIA {{ number_format(abs($cuadreProduccion - (int)$totalIngresoTerminacion),0,',','.') }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            @unless($verificaCuadreGeneral)
+                <div class="alert alert-warning py-2 small mb-2">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Hay saldos que no coinciden. Revisar las OT del filtro, trazabilidad de producción,
+                    distribución y remisiones antes de modificar importaciones.
+                </div>
+            @endunless
+            <p class="small text-muted mb-0">
+                <strong>Nota:</strong> estas sumas verifican la consistencia de los indicadores, no confirman
+                por sí solas el stock físico ni cada remisión. La cuarta ecuación puede evidenciar
+                exceso de PT o registros de trazabilidad incompletos. El control del plan asignado
+                se realiza por separado en <strong>Ver conciliación</strong>.
+            </p>
+        </div>
+    </div>
+
     <div class="card ct-card mb-3">
         <div class="card-header bg-white">
             <strong><i class="fas fa-coins text-warning mr-1"></i>Valorización económica</strong>
