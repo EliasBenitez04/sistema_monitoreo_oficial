@@ -896,7 +896,7 @@
                         <th class="text-right">Remitido neto</th>
                         <th class="text-right">Recibido neto</th>
                         <th class="text-right">Falta Term.</th>
-                        <th class="text-right">Sin destino</th>
+                        <th class="text-right">Sin destino real</th>
                         <th class="text-right">Pend. remitir</th>
                         <th class="text-right">Tránsito</th>
                         <th>Estado</th>
@@ -933,7 +933,15 @@
                         <td class="text-right">{{ number_format($item->remitido_original,0,',','.') }}</td>
                         <td class="text-right">{{ number_format($item->recibido_original,0,',','.') }}</td>
                         <td class="text-right text-danger">{{ number_format($item->falta_terminacion,0,',','.') }}</td>
-                        <td class="text-right text-warning">{{ number_format($item->sin_destino,0,',','.') }}</td>
+                        <td class="text-right text-warning">
+                            <strong>{{ number_format($item->sin_destino_real,0,',','.') }}</strong>
+                            @if($item->sin_destino_ayala > 0 || $item->sin_destino_modelo > 0)
+                                <small class="d-block text-muted">
+                                    {{ number_format($item->sin_destino_ayala,0,',','.') }} Ayala,
+                                    {{ number_format($item->sin_destino_modelo,0,',','.') }} Modelo
+                                </small>
+                            @endif
+                        </td>
                         <td class="text-right text-info">
                             {{ number_format($item->pendiente_remitir_plan,0,',','.') }}
                             @if($item->pendiente_remitir > $item->pendiente_remitir_plan)
@@ -1008,7 +1016,7 @@
                         <tfoot class="bg-light font-weight-bold"><tr><td colspan="7">TOTAL</td><td class="text-right text-danger">{{ number_format($totalDesglose,0,',','.') }}</td></tr></tfoot>
                     </table>
                 </div>
-                <p class="small text-muted mt-2 mb-0">Sin destino: PT todavía sin asignación suficiente. Pendiente remitir: plan asignado aún sin remisión. Ambas listas respetan el mismo filtro y la misma fórmula del reporte.</p>
+                <p class="small text-muted mt-2 mb-0">Sin destino real: PT que no tiene plan ni remisión suficiente, después de descontar sólo las clasificaciones de Ayala y Modelo Muestra registradas por OT. Pendiente remitir: plan asignado aún sin remisión. Se conserva el saldo bruto para auditoría.</p>
             </div>
             <div class="modal-footer"><button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button></div>
         </div>
