@@ -169,6 +169,160 @@
         </div>
     </div>
 
+    {{-- Control matemático con los mismos datos del reporte y TODOS los registros
+         filtrados, no sólo las filas visibles en tablas paginadas. --}}
+    @php
+        $cuadreReporteRecepcion = (int) $resumen->recibido
+            + (int) $resumen->en_transito;
+        $cuadreReportePendientes = (int) $resumen->pendiente_remitir_plan
+            + (int) $resumen->sin_destino;
+        $cuadreReportePt = (int) $resumen->remitido
+            + (int) $resumen->pendiente_real_salida;
+        $cuadreReporteProduccion = (int) $resumen->producto_terminado
+            + (int) $resumen->falta_terminacion;
+        $cuadreReportePlan = (int) $resumen->plan_registrado
+            - (int) $resumen->exceso_plan_sobre_pt;
+        $cuadreReporteCobertura = (int) $resumen->plan_detallado
+            + (int) $resumen->cubierto_sin_plan_por_remision
+            + (int) $resumen->sin_destino;
+
+        $controlesCuadreReporte = [
+            [
+                'nombre' => 'Recepción + En tránsito = Salida neta',
+                'formula' => number_format($resumen->recibido,0,',','.')
+                    . ' + ' . number_format($resumen->en_transito,0,',','.'),
+                'resultado' => $cuadreReporteRecepcion,
+                'esperado' => (int) $resumen->remitido,
+                'etiqueta' => 'Salida neta de OT',
+            ],
+            [
+                'nombre' => 'Pendiente con destino + Sin destino = Pendiente total',
+                'formula' => number_format($resumen->pendiente_remitir_plan,0,',','.')
+                    . ' + ' . number_format($resumen->sin_destino,0,',','.'),
+                'resultado' => $cuadreReportePendientes,
+                'esperado' => (int) $resumen->pendiente_real_salida,
+                'etiqueta' => 'Pendiente total de salida',
+            ],
+            [
+                'nombre' => 'Salida neta + Pendiente total = Producto Terminado',
+                'formula' => number_format($resumen->remitido,0,',','.')
+                    . ' + ' . number_format($resumen->pendiente_real_salida,0,',','.'),
+                'resultado' => $cuadreReportePt,
+                'esperado' => (int) $resumen->producto_terminado,
+                'etiqueta' => 'Producto Terminado',
+            ],
+            [
+                'nombre' => 'PT + Falta Terminación = Ingreso Terminación',
+                'formula' => number_format($resumen->producto_terminado,0,',','.')
+                    . ' + ' . number_format($resumen->falta_terminacion,0,',','.'),
+                'resultado' => $cuadreReporteProduccion,
+                'esperado' => (int) $resumen->ingreso_terminacion,
+                'etiqueta' => 'Ingreso Terminación',
+            ],
+            [
+                'nombre' => 'Plan registrado − Exceso de plan = Plan aplicable',
+                'formula' => number_format($resumen->plan_registrado,0,',','.')
+                    . ' − ' . number_format($resumen->exceso_plan_sobre_pt,0,',','.'),
+                'resultado' => $cuadreReportePlan,
+                'esperado' => (int) $resumen->plan_detallado,
+                'etiqueta' => 'Plan aplicable a PT',
+            ],
+            [
+                'nombre' => 'Plan aplicable + Remitido sin plan + Sin destino = PT',
+                'formula' => number_format($resumen->plan_detallado,0,',','.')
+                    . ' + ' . number_format($resumen->cubierto_sin_plan_por_remision,0,',','.')
+                    . ' + ' . number_format($resumen->sin_destino,0,',','.'),
+                'resultado' => $cuadreReporteCobertura,
+                'esperado' => (int) $resumen->producto_terminado,
+                'etiqueta' => 'Producto Terminado',
+            ],
+        ];
+        $controlesCuadreReporteCorrectos = count(array_filter(
+            $controlesCuadreReporte,
+            function ($control) {
+                return $control['resultado'] === $control['esperado'];
+            }
+        ));
+        $cuadreReporteCompleto = $controlesCuadreReporteCorrectos
+            === count($controlesCuadreReporte);
+    @endphp
+
+    <div class="card cc-card mb-3" id="cuadre-indicadores-reporte">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center">
+            <div>
+                <strong><i class="fas fa-balance-scale text-primary mr-1"></i>
+                    Cuadre automático de indicadores de Terminación y Logística
+                </strong>
+                <div class="cc-sub">Usa las OT de los filtros del reporte; se recalcula al consultar o importar nuevos datos.</div>
+            </div>
+            <span class="badge {{ $cuadreReporteCompleto ? 'badge-success' : 'badge-danger' }} p-2 mt-2 mt-md-0">
+                <i class="fas {{ $cuadreReporteCompleto ? 'fa-check-circle' : 'fa-exclamation-triangle' }} mr-1"></i>
+                {{ $cuadreReporteCompleto ? 'CUADRA 100%' : 'HAY DIFERENCIAS' }}
+                ({{ $controlesCuadreReporteCorrectos }}/{{ count($controlesCuadreReporte) }})
+            </span>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-striped cc-table mb-2">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Control</th>
+                            <th>Operación</th>
+                            <th class="text-right">Resultado</th>
+                            <th class="text-right">Indicador esperado</th>
+                            <th class="text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($controlesCuadreReporte as $control)
+                            @php
+                                $coincide = $control['resultado'] === $control['esperado'];
+                                $diferencia = $control['resultado'] - $control['esperado'];
+                            @endphp
+                            <tr>
+                                <td><strong>{{ $control['nombre'] }}</strong></td>
+                                <td class="text-nowrap">{{ $control['formula'] }}</td>
+                                <td class="text-right font-weight-bold">
+                                    {{ number_format($control['resultado'],0,',','.') }}
+                                </td>
+                                <td class="text-right text-nowrap">
+                                    {{ number_format($control['esperado'],0,',','.') }}
+                                    <small class="d-block text-muted">{{ $control['etiqueta'] }}</small>
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    @if($coincide)
+                                        <span class="text-success font-weight-bold">
+                                            <i class="fas fa-check-circle mr-1"></i>CUADRA
+                                        </span>
+                                    @else
+                                        <span class="text-danger font-weight-bold">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i>
+                                            DIFERENCIA {{ number_format(abs($diferencia),0,',','.') }}
+                                            <small class="d-block">{{ $diferencia > 0 ? 'De más' : 'De menos' }} en el resultado</small>
+                                        </span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @unless($cuadreReporteCompleto)
+                <div class="alert alert-warning py-2 small mb-2">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Hay cifras que no coinciden. Revisar OT, plan logístico, remisiones
+                    y fechas de recepción antes de corregir importaciones.
+                </div>
+            @endunless
+            <p class="text-muted small mb-0">
+                <strong>Importante:</strong> CUADRA confirma igualdad matemática entre los KPI; no demuestra
+                por sí solo que cada remisión esté correctamente vinculada ni que el stock físico
+                exista en el local. Un exceso de plan puede compensarse en el total con remisiones
+                sin plan suficiente: revisar el detalle de las OT en la conciliación siguiente.
+            </p>
+        </div>
+    </div>
+
     <div class="card cc-card mb-3">
         <div class="card-body py-3">
             <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
