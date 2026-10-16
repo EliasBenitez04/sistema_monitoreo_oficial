@@ -148,9 +148,14 @@
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <button type="button" class="cc-kpi w-100 text-left" style="cursor:pointer;border:1px solid #ecd9a5;background:#fff;padding:16px" data-toggle="modal" data-target="#modalSinDestinoReporte" aria-label="Ver detalle de prendas sin destino">
-                <div class="label text-warning">Sin destino <i class="fas fa-search-plus float-right"></i></div>
-                <div class="value">{{ number_format($resumen->sin_destino,0,',','.') }}</div>
-                <div class="meta">PT sin asignación suficiente · <span class="text-primary font-weight-bold">Ver OT</span></div>
+                <div class="label text-warning">Sin destino real <i class="fas fa-search-plus float-right"></i></div>
+                <div class="value">{{ number_format($resumen->sin_destino_real,0,',','.') }}</div>
+                <div class="meta">
+                    Calculado {{ number_format($resumen->sin_destino,0,',','.') }}
+                    − Ayala {{ number_format($resumen->sin_destino_ayala,0,',','.') }}
+                    − Modelo {{ number_format($resumen->sin_destino_modelo,0,',','.') }}
+                    · <span class="text-primary font-weight-bold">Ver OT</span>
+                </div>
             </button>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
@@ -165,13 +170,17 @@
         </div>
     </div>
 
+    @include('control._sin_destino_clasificacion')
+
     {{-- Control matemático con los mismos datos del reporte y TODOS los registros
          filtrados, no sólo las filas visibles en tablas paginadas. --}}
     @php
         $cuadreReporteRecepcion = (int) $resumen->recibido
             + (int) $resumen->en_transito;
         $cuadreReportePendientes = (int) $resumen->pendiente_remitir_plan
-            + (int) $resumen->sin_destino;
+            + (int) $resumen->sin_destino_ayala
+            + (int) $resumen->sin_destino_modelo
+            + (int) $resumen->sin_destino_real;
         $cuadreReportePt = (int) $resumen->remitido
             + (int) $resumen->pendiente_real_salida;
         $cuadreReporteProduccion = (int) $resumen->producto_terminado
@@ -180,7 +189,9 @@
             - (int) $resumen->exceso_plan_sobre_pt;
         $cuadreReporteCobertura = (int) $resumen->plan_detallado
             + (int) $resumen->cubierto_sin_plan_por_remision
-            + (int) $resumen->sin_destino;
+            + (int) $resumen->sin_destino_ayala
+            + (int) $resumen->sin_destino_modelo
+            + (int) $resumen->sin_destino_real;
 
         $controlesCuadreReporte = [
             [
@@ -192,9 +203,11 @@
                 'etiqueta' => 'Salida neta de OT',
             ],
             [
-                'nombre' => 'Pendiente con destino + Sin destino = Pendiente total',
+                'nombre' => 'Con destino + Ayala + Modelo + Sin destino real = Pendiente total',
                 'formula' => number_format($resumen->pendiente_remitir_plan,0,',','.')
-                    . ' + ' . number_format($resumen->sin_destino,0,',','.'),
+                    . ' + ' . number_format($resumen->sin_destino_ayala,0,',','.')
+                    . ' + ' . number_format($resumen->sin_destino_modelo,0,',','.')
+                    . ' + ' . number_format($resumen->sin_destino_real,0,',','.'),
                 'resultado' => $cuadreReportePendientes,
                 'esperado' => (int) $resumen->pendiente_real_salida,
                 'etiqueta' => 'Pendiente total de salida',
@@ -224,10 +237,12 @@
                 'etiqueta' => 'Plan aplicable a PT',
             ],
             [
-                'nombre' => 'Plan aplicable + Remitido sin plan + Sin destino = PT',
+                'nombre' => 'Plan aplicable + Remitido sin plan + Ayala + Modelo + Faltante real = PT',
                 'formula' => number_format($resumen->plan_detallado,0,',','.')
                     . ' + ' . number_format($resumen->cubierto_sin_plan_por_remision,0,',','.')
-                    . ' + ' . number_format($resumen->sin_destino,0,',','.'),
+                    . ' + ' . number_format($resumen->sin_destino_ayala,0,',','.')
+                    . ' + ' . number_format($resumen->sin_destino_modelo,0,',','.')
+                    . ' + ' . number_format($resumen->sin_destino_real,0,',','.'),
                 'resultado' => $cuadreReporteCobertura,
                 'esperado' => (int) $resumen->producto_terminado,
                 'etiqueta' => 'Producto Terminado',
@@ -337,7 +352,9 @@
                 +
                 <strong>{{ number_format($resumen->pendiente_remitir_plan,0,',','.') }}</strong> con destino pendientes de remitir
                 +
-                <strong>{{ number_format($resumen->sin_destino,0,',','.') }}</strong> sin destino
+                <strong>{{ number_format($resumen->sin_destino_ayala,0,',','.') }}</strong> Ayala
+                + <strong>{{ number_format($resumen->sin_destino_modelo,0,',','.') }}</strong> Modelo Muestra
+                + <strong>{{ number_format($resumen->sin_destino_real,0,',','.') }}</strong> sin destino real
                 =
                 <strong>{{ number_format($resumen->cuadre_fisico,0,',','.') }}</strong> PT
             </div>
@@ -358,7 +375,9 @@
                 <strong>{{ number_format($resumen->plan_registrado,0,',','.') }}</strong> plan registrado
                 − <strong>{{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}</strong> exceso de plan por OT
                 + <strong>{{ number_format($resumen->cubierto_sin_plan_por_remision,0,',','.') }}</strong> PT con destino demostrado por remisión sin plan suficiente
-                + <strong>{{ number_format($resumen->sin_destino,0,',','.') }}</strong> sin destino
+                + <strong>{{ number_format($resumen->sin_destino_ayala,0,',','.') }}</strong> Ayala
+                + <strong>{{ number_format($resumen->sin_destino_modelo,0,',','.') }}</strong> Modelo Muestra
+                + <strong>{{ number_format($resumen->sin_destino_real,0,',','.') }}</strong> sin destino real
                 = <strong>{{ number_format($resumen->producto_terminado,0,',','.') }}</strong> PT.
                 <span class="text-muted">No corresponde sumar únicamente Plan asignado + Sin destino porque el plan bruto puede incluir excedentes en unas OT y faltantes en otras.</span>
             </div>
@@ -944,7 +963,7 @@
 
 {{-- Desgloses calculados desde el mismo universo y campos que los KPI. --}}
 @foreach([
-    ['id' => 'modalSinDestinoReporte', 'titulo' => 'PT sin destino asignado', 'detalle' => $detalleSinDestino, 'campo' => 'sin_destino', 'total' => $resumen->sin_destino],
+    ['id' => 'modalSinDestinoReporte', 'titulo' => 'PT sin destino real', 'detalle' => $detalleSinDestino, 'campo' => 'sin_destino_real', 'total' => $resumen->sin_destino_real],
     ['id' => 'modalPendienteRemitirReporte', 'titulo' => 'Pendiente de remitir con destino', 'detalle' => $detallePendienteRemitir, 'campo' => 'pendiente_remitir_plan', 'total' => $resumen->pendiente_remitir_plan]
 ] as $desglose)
 <div class="modal fade" id="{{ $desglose['id'] }}" tabindex="-1" role="dialog" aria-hidden="true">
