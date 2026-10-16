@@ -3,6 +3,8 @@
 namespace App\Exports;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -19,9 +21,35 @@ class ReporteFaltanteDestinoExport implements
 {
     protected $reporte;
 
+    /**
+     * Clasificaciones documentadas por OT si la tabla de auditoría
+     * ya existe. Nunca se descuentan 12/13 automáticamente del total.
+     * No depende del controlador ni modifica la interfaz.
+     *
+     * @var \Illuminate\Support\Collection
+     */
+    protected $clasificaciones;
+
     public function __construct(Collection $reporte)
     {
         $this->reporte = $reporte;
+        $this->clasificaciones = collect();
+
+        if (!Schema::hasTable('ot_sin_destino_clasificaciones')) {
+            return;
+        }
+
+        $idsOt = $reporte->pluck('id_ot')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (!empty($idsOt)) {
+            $this->clasificaciones = DB::table(
+                'ot_sin_destino_clasificaciones'
+            )->whereIn('id_ot', $idsOt)->get()->keyBy('id_ot');
+        }
     }
 
     public function collection()
@@ -56,6 +84,24 @@ class ReporteFaltanteDestinoExport implements
 
     public function map($item): array
     {
+        $bruto = max(0, (int) ($item->sin_destino ?? 0));
+        $registro = $this->clasificaciones->get((int) $item->id_ot);
+        $ayala = max(0, (int) ($registro->cantidad_ayala ?? 0));
+        $modelo = max(0, (int) ($registro->cantidad_modelo ?? 0));
+
+        // Una clasificación antigua nunca puede descontar más que el saldo
+        // actual de su OT después de una nueva importación.
+        $invalida = $ayala + $modelo > $bruto;
+        if ($invalida) {
+            $ayala = 0;
+            $modelo = 0;
+        }
+
+        $sinDestinoReal = $bruto - $ayala - $modelo;
+        $referencia = $invalida
+            ? 'CLASIFICACIÓN SUPERIOR AL SALDO ACTUAL - REVISAR'
+            : (string) ($registro->referencia ?? '');
+
         return [
             $item->nro_ot,
             $item->codigo,
@@ -67,15 +113,15 @@ class ReporteFaltanteDestinoExport implements
             (int) $item->remitido_original,
             (int) $item->recibido_original,
             (int) $item->falta_terminacion,
-            (int) ($item->sin_destino_real ?? $item->sin_destino),
-            (int) ($item->sin_destino_ayala ?? 0),
-            (int) ($item->sin_destino_modelo ?? 0),
-            (int) $item->sin_destino,
+            $sinDestinoReal,
+            $ayala,
+            $modelo,
+            $bruto,
             (int) $item->pendiente_remitir,
             (int) $item->en_transito,
             $item->estado_conciliacion,
             $item->solicitud,
-            $item->clasificacion_referencia ?? '',
+            $referencia,
         ];
     }
 
