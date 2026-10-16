@@ -1099,6 +1099,8 @@ class ControlTerminacionController extends Controller
             'fecha_desde' => 'nullable|date',
             'fecha_hasta' => 'nullable|date',
             'buscar' => 'nullable|string|max:255',
+            'temporada' => 'nullable|array',
+            'temporada.*' => 'string|max:60',
         ]);
 
         $idOt = (int) $datos['id_ot'];
@@ -1148,6 +1150,9 @@ class ControlTerminacionController extends Controller
         ], function ($valor) {
             return $valor !== null && $valor !== '';
         });
+        if (!empty($datos['temporada'])) {
+            $filtros['temporada'] = $datos['temporada'];
+        }
 
         return redirect()->route(
             'control.terminacion.reporte-pendientes-envio',
