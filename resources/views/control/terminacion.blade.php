@@ -583,12 +583,12 @@
 
 {{-- Detalle completo del KPI, sin paginación: el total coincide con el resumen. --}}
 <div class="modal fade" id="modalPendienteRemitirTerminacion" tabindex="-1" role="dialog" aria-labelledby="tituloPendienteRemitirTerminacion" aria-hidden="true">
-    <div class="modal-dialog modal-xl" role="document" style="max-width:1150px">
+    <div class="modal-dialog" role="document" style="width:96vw;max-width:1800px">
         <div class="modal-content">
             <div class="modal-header bg-light">
                 <div>
                     <h5 class="modal-title font-weight-bold" id="tituloPendienteRemitirTerminacion"><i class="fas fa-truck-loading text-primary mr-2"></i>Detalle de prendas pendientes de remitir</h5>
-                    <small class="text-muted">OT seleccionadas por los filtros del Control Terminación · {{ $fechaDesde }} al {{ $fechaHasta }}</small>
+                    <small class="text-muted">OT seleccionadas por los filtros del Control Terminación · {{ $fechaDesde }} al {{ $fechaHasta }} · ordenadas por antigüedad desde el primer PRODUCTO TERMINADO</small>
                 </div>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
             </div>
@@ -599,13 +599,44 @@
                     <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">PRENDAS PENDIENTES</small><h4 class="font-weight-bold text-danger mb-0">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</h4></div></div>
                     <div class="col-md-4 mb-2"><div class="border rounded p-3 bg-light"><small class="text-muted d-block">CONTROL CONTRA KPI</small><h4 class="font-weight-bold mb-0 {{ $totalDetalleRemitirPlan === (int)$totalPendienteRemitirPlan ? 'text-success' : 'text-danger' }}">{{ $totalDetalleRemitirPlan === (int)$totalPendienteRemitirPlan ? 'COINCIDE' : 'NO COINCIDE' }}</h4></div></div>
                 </div>
-                <div class="table-responsive" style="max-height:65vh;overflow:auto">
+                <div class="alert alert-light border py-2 mb-2 small">
+                    <i class="fas fa-clock text-danger mr-1"></i>
+                    <strong>Prioridad por antigüedad:</strong> primero las OT que llevan más días desde su
+                    <strong>primer registro en TERMINACION - PRODUCTO TERMINADO</strong> hasta hoy.
+                    Los reenvíos y devoluciones posteriores no reinician el contador.
+                    En igualdad de días, se ordena por mayor cantidad pendiente.
+                </div>
+                <div class="table-responsive" style="max-height:70vh;overflow:auto">
                     <table class="table table-sm table-striped table-hover ct-table mb-0">
-                        <thead class="thead-light"><tr><th>OT</th><th>Código</th><th>Descripción</th><th class="text-right">Cantidad OT</th><th class="text-right">Plan asignado</th><th class="text-right">Remitido (fecha remisión)</th><th class="text-right">Recibido (fecha recepción)</th><th class="text-right">En tránsito</th><th class="text-right">Pendiente de remitir</th></tr></thead>
+                        <thead class="thead-light" style="position:sticky;top:0;z-index:2"><tr>
+                            <th>OT</th>
+                            <th class="text-center">Antigüedad PT</th>
+                            <th>Fecha primer PT</th>
+                            <th>Código</th>
+                            <th>Descripción</th>
+                            <th class="text-right">Cantidad OT</th>
+                            <th class="text-right">Plan asignado</th>
+                            <th class="text-right">Remitido (fecha remisión)</th>
+                            <th class="text-right">Recibido (fecha recepción)</th>
+                            <th class="text-right">En tránsito</th>
+                            <th class="text-right">Pendiente de remitir</th>
+                        </tr></thead>
                         <tbody>
                         @forelse($detallePendienteRemitirPlan as $otPendiente)
                             <tr>
                                 <td><strong>{{ $otPendiente->nro_ot }}</strong></td>
+                                <td class="text-center">
+                                    @if($otPendiente->dias_desde_pt !== null)
+                                        <span class="badge p-2 {{ $otPendiente->dias_desde_pt >= 30 ? 'badge-danger' : ($otPendiente->dias_desde_pt >= 15 ? 'badge-warning' : 'badge-secondary') }}">
+                                            {{ number_format($otPendiente->dias_desde_pt,0,',','.') }} días
+                                        </span>
+                                    @else
+                                        <span class="text-muted">Sin fecha</span>
+                                    @endif
+                                </td>
+                                <td class="text-nowrap">
+                                    {{ $otPendiente->primera_fecha_pt_historica ? date('d/m/Y', strtotime($otPendiente->primera_fecha_pt_historica)) : 'Sin registro' }}
+                                </td>
                                 <td><code>{{ $otPendiente->codigo }}</code></td>
                                 <td>{{ $otPendiente->descripcion }}</td>
                                 <td class="text-right">{{ number_format($otPendiente->cantidad_orden,0,',','.') }}</td>
@@ -631,10 +662,10 @@
                                 <td class="text-right font-weight-bold text-danger">{{ number_format($otPendiente->pendiente_remitir_plan,0,',','.') }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="9" class="text-center text-muted py-4">No existen OT pendientes de remitir con estos filtros.</td></tr>
+                            <tr><td colspan="11" class="text-center text-muted py-4">No existen OT pendientes de remitir con estos filtros.</td></tr>
                         @endforelse
                         </tbody>
-                        <tfoot class="bg-light font-weight-bold"><tr><td colspan="8">TOTAL · {{ number_format($detallePendienteRemitirPlan->count(),0,',','.') }} OT</td><td class="text-right text-danger">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</td></tr></tfoot>
+                        <tfoot class="bg-light font-weight-bold"><tr><td colspan="10">TOTAL · {{ number_format($detallePendienteRemitirPlan->count(),0,',','.') }} OT</td><td class="text-right text-danger">{{ number_format($totalDetalleRemitirPlan,0,',','.') }}</td></tr></tfoot>
                     </table>
                 </div>
                 <p class="small text-muted mt-3 mb-0">Remitido = documento de remisión emitido/importado (no espera fecha de recepción). Recibido = confirmado con fecha_recepcion. En tránsito = remitido menos recibido. Pendiente de remitir = todavía sin remisión de salida. Las OT de esta lista siguen teniendo algún pendiente de remitir; los envíos en tránsito también aparecen en el KPI de tránsito. No se altera la base de datos.</p>
