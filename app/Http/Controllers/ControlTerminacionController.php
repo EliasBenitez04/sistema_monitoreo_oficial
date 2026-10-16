@@ -265,6 +265,24 @@ class ControlTerminacionController extends Controller
             $item->ultima_fecha_ingreso =
                 $resumen->ultima_fecha_ingreso;
 
+            /*
+             * Antigüedad de PT: primera entrada HISTÓRICA a PRODUCTO
+             * TERMINADO, no sólo el mínimo dentro del filtro mensual.
+             * No se reinicia si hubo más PT, devoluciones o reenvíos.
+             */
+            $item->primera_fecha_pt_historica =
+                $resumen->primera_fecha_pt;
+            $item->dias_desde_pt = null;
+            if ($item->primera_fecha_pt_historica) {
+                $fechaPrimerPt = \Carbon\Carbon::parse(
+                    $item->primera_fecha_pt_historica
+                )->startOfDay();
+                $item->dias_desde_pt = max(
+                    0,
+                    $fechaPrimerPt->diffInDays($hoy, false)
+                );
+            }
+
             $item->primera_fecha_logistica =
                 $resumen->primera_fecha_plan;
             $item->ultima_fecha_logistica =
@@ -440,11 +458,29 @@ class ControlTerminacionController extends Controller
 
         // Mismo universo de OTs y mismo campo de cálculo del KPI.
         // No paginar este detalle: debe sumar el total mostrado arriba.
+        // Priorizar OTs más antiguas desde su PRIMER hito PT histórico.
+        // El último despacho NO reinicia la antigüedad de la OT.
         $detallePendienteRemitirPlan = $produccionTerminada
             ->filter(function ($item) {
                 return (int) $item->pendiente_remitir_plan > 0;
             })
-            ->sortByDesc('pendiente_remitir_plan')
+            ->sort(function ($a, $b) {
+                $diasA = $a->dias_desde_pt ?? -1;
+                $diasB = $b->dias_desde_pt ?? -1;
+
+                if ($diasA !== $diasB) {
+                    return $diasB <=> $diasA;
+                }
+
+                // Misma antigüedad: primero más prendas pendientes.
+                $pendientes = (int) $b->pendiente_remitir_plan
+                    <=> (int) $a->pendiente_remitir_plan;
+                if ($pendientes !== 0) {
+                    return $pendientes;
+                }
+
+                return ((int) $a->nro_ot) <=> ((int) $b->nro_ot);
+            })
             ->values();
 
         $totalRemitidoReal = (int) $produccionTerminada
