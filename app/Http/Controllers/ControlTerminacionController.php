@@ -747,8 +747,88 @@ class ControlTerminacionController extends Controller
                 'r.sucursal_logistica'
             )->get();
 
+        // Recuperar documentos sin id_ot SOLO si el código base corresponde
+        // a una única OT de toda la BD, igual que la conciliación principal.
+        $normalizar = function ($codigo) {
+            $valor = preg_replace('/[^0-9A-Z]/', '',
+                strtoupper(trim((string) $codigo)));
+            if (strlen($valor) === 8 && ctype_digit($valor)) {
+                return str_pad($valor, 9, '0', STR_PAD_LEFT);
+            }
+            return strlen($valor) >= 9
+                && ctype_digit(substr($valor, 0, 9))
+                ? substr($valor, 0, 9) : '';
+        };
+
+        $bases = $ots->pluck('codigo')
+            ->map($normalizar)->filter()->unique()->values();
+
+        if ($bases->isNotEmpty()) {
+            $normalizadoOt = "REGEXP_REPLACE(UPPER(BTRIM(COALESCE(codigo, ''))), '[^0-9A-Z]', '', 'g')";
+            $sqlOt = "CASE WHEN LENGTH($normalizadoOt) = 8 THEN LPAD($normalizadoOt, 9, '0') ELSE LEFT($normalizadoOt, 9) END";
+
+            $codigosUnicos = DB::table('ot')
+                ->whereIn(DB::raw($sqlOt), $bases->all())
+                ->get(['id_ot','codigo'])
+                ->groupBy(function ($ot) use ($normalizar) {
+                    return $normalizar($ot->codigo);
+                })
+                ->filter(function ($grupo) {
+                    return $grupo->pluck('id_ot')->unique()->count() === 1;
+                })
+                ->map(function ($grupo) {
+                    return (int) $grupo->first()->id_ot;
+                })
+                ->filter(function ($idOt) use ($ids) {
+                    return in_array($idOt, $ids, true);
+                });
+
+            if ($codigosUnicos->isNotEmpty()) {
+                $normalizadoR = "REGEXP_REPLACE(UPPER(BTRIM(COALESCE(r.codigo, ''))), '[^0-9A-Z]', '', 'g')";
+                $sqlR = "CASE WHEN LENGTH($normalizadoR) = 8 THEN LPAD($normalizadoR, 9, '0') ELSE LEFT($normalizadoR, 9) END";
+
+                $sinVinculo = DB::table('ot_logistica_remisiones as r')
+                    ->whereNull('r.id_ot')
+                    ->whereNull('r.fecha_recepcion')
+                    ->whereNotNull('r.fecha_remision')
+                    ->where('r.cantidad', '>', 0)
+                    ->whereIn(DB::raw($sqlR), $codigosUnicos->keys()->all())
+                    ->where(function ($q) {
+                        $q->where('r.cod_sucursal_salida', 1)
+                            ->orWhereRaw(
+                                "UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')"
+                            );
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('r.cod_sucursal_destino')
+                            ->orWhere('r.cod_sucursal_destino', '<>', 1);
+                    })
+                    ->whereRaw(
+                        "UPPER(COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
+                    )
+                    ->select(
+                        'r.id', 'r.id_ot', 'r.serie', 'r.numero_remision',
+                        'r.codigo', 'r.descripcion', 'r.cantidad',
+                        'r.fecha_remision', 'r.fecha_creacion',
+                        'r.fecha_recepcion', 'r.cod_sucursal_salida',
+                        'r.sucursal_salida', 'r.cod_sucursal_destino',
+                        'r.sucursal_destino', 'r.sucursal_logistica'
+                    )->get();
+
+                foreach ($sinVinculo as $linea) {
+                    $idOt = $codigosUnicos->get($normalizar($linea->codigo));
+                    if ($idOt) {
+                        $linea->id_ot = $idOt; // Sólo vínculo visual.
+                        $linea->vinculo_ot = 'Por código único';
+                        $filas->push($linea);
+                    }
+                }
+            }
+        }
+
         return $filas->map(function ($fila) use ($porOt, $hoy) {
             $ot = $porOt->get((int) $fila->id_ot);
+            $fila->vinculo_ot = $fila->vinculo_ot ?? 'ID OT';
             $fila->nro_ot = $ot ? $ot->nro_ot : null;
             $fila->fecha_documento = $fila->fecha_remision
                 ?: $fila->fecha_creacion;
