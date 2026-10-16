@@ -1001,3 +1001,8 @@ Route::get(
     '/control/terminacion/reporte-pendientes-envio/excel',
     [ControlTerminacionController::class, 'exportarReportePendientesEnvioExcel']
 )->name('control.terminacion.reporte-pendientes-envio.excel');
+
+Route::post(
+    '/control/terminacion/reporte-pendientes-envio/clasificar',
+    [ControlTerminacionController::class, 'guardarClasificacionSinDestino']
+)->middleware('auth')->name('control.terminacion.reporte-pendientes-envio.clasificar');
