@@ -176,11 +176,23 @@
         </div>
 
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card ct-card ct-kpi h-100 {{ $totalEnTransito>0?'border-primary':'' }}"><div class="card-body">
-                <div class="label"><i class="fas fa-shipping-fast text-primary mr-1"></i>En tránsito</div>
-                <div class="value">{{ number_format($totalEnTransito,0,',','.') }}</div>
-                <div class="meta">{{ number_format($otsEnTransito,0,',','.') }} OTs remitidas pendientes de recepción</div>
-            </div></div>
+            <button type="button"
+                    class="card ct-card ct-kpi h-100 w-100 text-left {{ $totalEnTransito>0?'border-primary':'' }}"
+                    style="background:#fff;padding:0;cursor:pointer"
+                    data-toggle="modal" data-target="#modalEnTransitoTerminacion"
+                    aria-label="Ver las remisiones en tránsito">
+                <div class="card-body w-100">
+                    <div class="label">
+                        <i class="fas fa-shipping-fast text-primary mr-1"></i>En tránsito
+                        <i class="fas fa-search-plus float-right text-primary"></i>
+                    </div>
+                    <div class="value">{{ number_format($totalEnTransito,0,',','.') }}</div>
+                    <div class="meta">
+                        {{ number_format($otsEnTransito,0,',','.') }} OTs remitidas pendientes de recepción
+                        · <span class="text-primary font-weight-bold">Ver remisiones y fechas</span>
+                    </div>
+                </div>
+            </button>
         </div>
 
         <div class="col-xl-3 col-md-6 mb-3">
@@ -580,6 +592,9 @@
         </div>
     </div>
 </div>
+
+{{-- Control auditable de remisiones pendientes de recepción para las OT del KPI. --}}
+@include('control._terminacion_transito')
 
 {{-- Detalle completo del KPI, sin paginación: el total coincide con el resumen. --}}
 <div class="modal fade" id="modalPendienteRemitirTerminacion" tabindex="-1" role="dialog" aria-labelledby="tituloPendienteRemitirTerminacion" aria-hidden="true">
