@@ -127,14 +127,10 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="cc-kpi">
                 <div class="label">Plan asignado</div>
-                <div class="value">{{ number_format($resumen->plan_registrado,0,',','.') }}</div>
+                <div class="value">{{ number_format($resumen->plan_detallado,0,',','.') }}</div>
                 <div class="meta">
-                    Suma registrada en ot_logistica_detalle.
-                    Aplicable a PT:
-                    <strong>{{ number_format($resumen->plan_detallado,0,',','.') }}</strong>;
-                    exceso por OT sobre PT:
-                    <strong>{{ number_format($resumen->exceso_plan_sobre_pt,0,',','.') }}</strong>.
-                    Es un plan, no una remisión.
+                    Plan aplicable a Producto Terminado, sin exceder el PT de cada OT.
+                    No es una remisión.
                 </div>
             </div>
         </div>
