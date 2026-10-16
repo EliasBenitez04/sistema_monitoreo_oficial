@@ -504,11 +504,22 @@ class ControlTerminacionController extends Controller
         $totalEnTransito = (int) $produccionTerminada
             ->sum('en_transito');
 
-        $otsEnTransito = $produccionTerminada
+        // Exactamente las OT del KPI, antes de la paginación.
+        $detalleEnTransitoOt = $produccionTerminada
             ->filter(function ($item) {
                 return (int) $item->en_transito > 0;
-            })
-            ->count();
+            })->sortByDesc('en_transito')->values();
+        $otsEnTransito = $detalleEnTransitoOt->count();
+
+        // Remisiones originales sin fecha_recepcion. Se mantiene separado
+        // el total documental del KPI neto/efectivo por OT.
+        $remisionesEnTransito = $this->detalleRemisionesSinRecepcion(
+            $detalleEnTransitoOt
+        );
+        $remisionesEnTransitoPorOt = $remisionesEnTransito
+            ->groupBy('id_ot');
+        $totalDocumentalEnTransito = (int) $remisionesEnTransito
+            ->sum('cantidad');
 
         $totalRecepcionLocal = (int) $produccionTerminada
             ->sum('recibido_efectivo');
@@ -676,6 +687,10 @@ class ControlTerminacionController extends Controller
             'detalleDevoluciones',
             'totalEnTransito',
             'otsEnTransito',
+            'detalleEnTransitoOt',
+            'remisionesEnTransito',
+            'remisionesEnTransitoPorOt',
+            'totalDocumentalEnTransito',
             'totalPendienteEnvio',
             'otsPendientesEnvio',
             'totalHuecoDetalleLogistico',
