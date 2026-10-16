@@ -128,7 +128,8 @@
                     Documentos originales sin fecha de recepción
                 </h6>
                 <p class="text-muted small mb-2">
-                    Ordenados por antigüedad de remisión: primero los que llevan más días pendientes de confirmación.
+                    Ordenados por antigüedad: primero los que llevan más días sin confirmación.
+                    Si falta fecha de remisión se usa la fecha de creación y se señala expresamente.
                     Cada fila corresponde a una línea de artículo, no necesariamente a un documento completo.
                 </p>
                 <div class="table-responsive" style="max-height:65vh;overflow:auto">
@@ -156,6 +157,9 @@
                                     <td class="text-nowrap"><strong>{{ $remision->serie }}-{{ $remision->numero_remision }}</strong></td>
                                     <td class="text-nowrap">
                                         {{ $remision->fecha_documento ? \Carbon\Carbon::parse($remision->fecha_documento)->format('d/m/Y') : 'Sin fecha' }}
+                                        @if(!$remision->fecha_remision && $remision->fecha_creacion)
+                                            <small class="d-block text-warning">Fecha creación (sin remisión)</small>
+                                        @endif
                                     </td>
                                     <td class="text-center">
                                         @if($remision->dias_transito !== null)
