@@ -50,6 +50,7 @@ class ReporteFaltanteDestinoExport implements
             'En tránsito',
             'Estado',
             'Acción requerida',
+            'Referencia clasificación Ayala / Modelo',
         ];
     }
 
@@ -74,6 +75,7 @@ class ReporteFaltanteDestinoExport implements
             (int) $item->en_transito,
             $item->estado_conciliacion,
             $item->solicitud,
+            $item->clasificacion_referencia ?? '',
         ];
     }
 
@@ -82,7 +84,7 @@ class ReporteFaltanteDestinoExport implements
         $sheet->freezePane('A2');
         $sheet->setAutoFilter($sheet->calculateWorksheetDimension());
 
-        $sheet->getStyle('A1:R1')->applyFromArray([
+        $sheet->getStyle('A1:S1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['ARGB' => 'FFFFFFFF'],
@@ -102,7 +104,7 @@ class ReporteFaltanteDestinoExport implements
             return [];
         }
 
-        $sheet->getStyle('A2:R' . $ultimaFila)
+        $sheet->getStyle('A2:S' . $ultimaFila)
             ->getAlignment()->setVertical('center');
         $sheet->getStyle('A2:A' . $ultimaFila)
             ->getAlignment()->setHorizontal('center');
@@ -124,6 +126,11 @@ class ReporteFaltanteDestinoExport implements
 
         $sheet->getStyle('R2:R' . $ultimaFila)
             ->getFont()->setBold(true);
+
+        $sheet->getColumnDimension('S')->setAutoSize(false);
+        $sheet->getColumnDimension('S')->setWidth(45);
+        $sheet->getStyle('S2:S' . $ultimaFila)
+            ->getAlignment()->setWrapText(true);
 
         return [];
     }
