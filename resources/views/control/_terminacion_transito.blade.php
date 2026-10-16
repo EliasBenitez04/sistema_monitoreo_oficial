@@ -142,6 +142,7 @@
                                 <th>Origen</th>
                                 <th>Destino</th>
                                 <th>Movimiento</th>
+                                <th>Vínculo OT</th>
                                 <th>Código completo</th>
                                 <th>Artículo</th>
                                 <th class="text-right">Cantidad</th>
@@ -174,6 +175,13 @@
                                         <small class="d-block text-muted">Cod. {{ $remision->cod_sucursal_destino }}</small>
                                     </td>
                                     <td><small>{{ $remision->tipo_movimiento }}</small></td>
+                                    <td>
+                                        @if($remision->vinculo_ot === 'Por código único')
+                                            <span class="badge badge-info" title="Remisión importada sin id_ot. Código base único; vínculo de consulta, no guardado en la BD.">Código único</span>
+                                        @else
+                                            <small class="text-muted">ID OT</small>
+                                        @endif
+                                    </td>
                                     <td><code>{{ $remision->codigo }}</code></td>
                                     <td>{{ $remision->descripcion }}</td>
                                     <td class="text-right font-weight-bold">{{ number_format($remision->cantidad,0,',','.') }}</td>
@@ -181,7 +189,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="11" class="text-center text-muted py-4">
+                                    <td colspan="12" class="text-center text-muted py-4">
                                         No se localizaron documentos vinculados sin fecha_recepcion para las OT seleccionadas.
                                         Revisar remisiones sin id_ot o movimientos de cierre entre locales.
                                     </td>
@@ -190,7 +198,7 @@
                         </tbody>
                         <tfoot class="bg-light font-weight-bold">
                             <tr>
-                                <td colspan="9">TOTAL DOCUMENTAL SIN RECEPCIÓN</td>
+                                <td colspan="10">TOTAL DOCUMENTAL SIN RECEPCIÓN</td>
                                 <td class="text-right">{{ number_format($totalDocumentalEnTransito,0,',','.') }}</td>
                                 <td></td>
                             </tr>
