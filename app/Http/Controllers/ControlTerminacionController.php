@@ -1091,8 +1091,6 @@ class ControlTerminacionController extends Controller
      */
     public function guardarClasificacionSinDestino(Request $request)
     {
-        $this->middleware('auth');
-
         $datos = $request->validate([
             'id_ot' => 'required|integer|exists:ot,id_ot',
             'cantidad_ayala' => 'required|integer|min:0',
