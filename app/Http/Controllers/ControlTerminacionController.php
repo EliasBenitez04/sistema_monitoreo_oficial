@@ -1479,11 +1479,11 @@ class ControlTerminacionController extends Controller
          * Si una nueva importación reduce el saldo bruto y una clasificación
          * antigua lo supera, se invalida hasta su revisión.
          */
+        $clasificacionDisponible = Schema::hasTable(
+            'ot_sin_destino_clasificaciones'
+        );
         $clasificacionesSinDestino = collect();
-        if (
-            Schema::hasTable('ot_sin_destino_clasificaciones')
-            && !empty($ids)
-        ) {
+        if ($clasificacionDisponible && !empty($ids)) {
             $clasificacionesSinDestino = DB::table(
                 'ot_sin_destino_clasificaciones'
             )->whereIn('id_ot', $ids)->get()->keyBy('id_ot');
@@ -1517,6 +1517,15 @@ class ControlTerminacionController extends Controller
                 - $ot->sin_destino_ayala
                 - $ot->sin_destino_modelo
             );
+
+            if ($ot->falta_terminacion === 0 && $sinDestinoCalculado > 0) {
+                if ($ot->sin_destino_real > 0) {
+                    $ot->solicitud = 'LOGISTICA: ASIGNAR DESTINO '
+                        . $ot->sin_destino_real;
+                } else {
+                    $ot->solicitud = 'REGULARIZAR CLASIFICACION AYALA / MODELO';
+                }
+            }
         });
 
         /*
@@ -1711,9 +1720,14 @@ class ControlTerminacionController extends Controller
             })
             ->sortByDesc('devoluciones_emitidas')->values();
 
-        $detalleSinDestino = $reporteCompleto
+        $detalleSinDestinoCalculado = $reporteCompleto
             ->filter(function ($ot) { return (int) $ot->sin_destino > 0; })
             ->sortByDesc('sin_destino')->values();
+
+        // Sólo faltantes REALES: excluye clasificaciones respaldadas por OT.
+        $detalleSinDestino = $reporteCompleto
+            ->filter(function ($ot) { return (int) $ot->sin_destino_real > 0; })
+            ->sortByDesc('sin_destino_real')->values();
         $detallePendienteRemitir = $reporteCompleto
             ->filter(function ($ot) { return (int) $ot->pendiente_remitir_plan > 0; })
             ->sortByDesc('pendiente_remitir_plan')->values();
@@ -1729,6 +1743,8 @@ class ControlTerminacionController extends Controller
             'diagnosticoProduccion',
             'diagnosticoPlan',
             'detalleSinDestino',
+            'detalleSinDestinoCalculado',
+            'clasificacionDisponible',
             'detallePendienteRemitir',
             'detalleDevoluciones',
             'resumen'
