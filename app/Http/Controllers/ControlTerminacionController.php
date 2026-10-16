@@ -711,6 +711,68 @@ class ControlTerminacionController extends Controller
         ));
     }
 
+    /**
+     * Líneas de ENVIOS sin fecha_recepcion vinculadas a las OT del KPI.
+     * Excluye devoluciones hacia Casa Central (se auditan por separado).
+     * Las cantidades documentales son brutas y no se fuerzan al KPI neto.
+     */
+    private function detalleRemisionesSinRecepcion(
+        \Illuminate\Support\Collection $ots
+    ): \Illuminate\Support\Collection {
+        if ($ots->isEmpty() || !Schema::hasTable('ot_logistica_remisiones')) {
+            return collect();
+        }
+
+        $ids = $ots->pluck('id_ot')->all();
+        $porOt = $ots->keyBy('id_ot');
+        $hoy = now()->startOfDay();
+
+        $filas = DB::table('ot_logistica_remisiones as r')
+            ->whereIn('r.id_ot', $ids)
+            ->whereNull('r.fecha_recepcion')
+            ->where('r.cantidad', '>', 0)
+            ->where(function ($q) {
+                $q->whereNull('r.cod_sucursal_destino')
+                    ->orWhere('r.cod_sucursal_destino', '<>', 1);
+            })
+            ->whereRaw(
+                "UPPER(COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
+            )
+            ->select(
+                'r.id', 'r.id_ot', 'r.serie', 'r.numero_remision',
+                'r.codigo', 'r.descripcion', 'r.cantidad',
+                'r.fecha_remision', 'r.fecha_creacion', 'r.fecha_recepcion',
+                'r.cod_sucursal_salida', 'r.sucursal_salida',
+                'r.cod_sucursal_destino', 'r.sucursal_destino',
+                'r.sucursal_logistica'
+            )->get();
+
+        return $filas->map(function ($fila) use ($porOt, $hoy) {
+            $ot = $porOt->get((int) $fila->id_ot);
+            $fila->nro_ot = $ot ? $ot->nro_ot : null;
+            $fila->fecha_documento = $fila->fecha_remision
+                ?: $fila->fecha_creacion;
+            $fila->dias_transito = $fila->fecha_documento
+                ? max(0, \Carbon\Carbon::parse($fila->fecha_documento)
+                    ->startOfDay()->diffInDays($hoy, false))
+                : null;
+            $fila->destino_real = $fila->sucursal_destino
+                ?: $fila->sucursal_logistica;
+            $origen = strtoupper(trim((string) $fila->sucursal_salida));
+            $fila->tipo_movimiento = (int) $fila->cod_sucursal_salida === 1
+                || in_array($origen, ['CASA CENTRAL','MATRIZ'], true)
+                ? 'CENTRAL A LOCAL' : 'ENTRE LOCALES';
+            return $fila;
+        })->sort(function ($a, $b) {
+            $diasA = $a->dias_transito ?? -1;
+            $diasB = $b->dias_transito ?? -1;
+            if ($diasA !== $diasB) {
+                return $diasB <=> $diasA;
+            }
+            return (int) $a->nro_ot <=> (int) $b->nro_ot;
+        })->values();
+    }
+
     public function flujoDiario(Request $request)
     {
         $fechaDesde = $request->input('fecha_desde', now()->format('Y-m-d'));
