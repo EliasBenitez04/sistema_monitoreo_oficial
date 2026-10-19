@@ -182,6 +182,13 @@
 .prod-chart-card .prod-chart-switch .btn {
                 min-width: 65px
             }
+@media(max-width:575px) {
+    .prod-chart-scroll { overflow-x:auto; }
+    .prod-chart-svg { min-width:490px; }
+    .prod-day-filter { width:100%; justify-content:flex-end; }
+    .prod-chart-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .prod-chart-card>.card-header { gap:8px; }
+}
 </style>
 
             {{-- Gráfico interactivo del mismo período y los mismos indicadores usados en la tabla. --}}
