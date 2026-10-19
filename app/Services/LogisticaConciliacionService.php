@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Ot;
+use App\Support\SaldoLogisticoOt;
 use App\Support\ConfirmacionTupi;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -247,19 +248,16 @@ class LogisticaConciliacionService
                     0, $devolucionesEmitidas - $devolucionesRecibidas
                 );
 
-                // Impedir que un retorno mal atribuido cree stock negativo
-                // o prendas adicionales; la inconsistencia queda auditable.
-                $retornoAplicado = min(
-                    $remitidoCentralRaw, $devolucionesRecibidas
+                // Contabilidad neta validada: sin sumar redistribuciones.
+                $saldo = SaldoLogisticoOt::calcular(
+                    $ptEfectivo,
+                    $remitidoCentralRaw,
+                    $recibidoCentralRaw,
+                    $devolucionesRecibidas
                 );
-                $remitidoCentralNeto = max(
-                    0, $remitidoCentralRaw - $retornoAplicado
-                );
-                $recibidoCentralNeto = max(
-                    0, $recibidoCentralRaw - min(
-                        $recibidoCentralRaw, $retornoAplicado
-                    )
-                );
+                $retornoAplicado = $saldo['retorno_aplicado'];
+                $remitidoCentralNeto = $saldo['remitido_neto'];
+                $recibidoCentralNeto = $saldo['confirmado_neto'];
 
                 /*
                  * Una OT tiene una única salida neta:
@@ -277,11 +275,8 @@ class LogisticaConciliacionService
                 $remitidoRaw = $remitidoCentralNeto;
                 $recibidoRaw = $recibidoCentralNeto;
 
-                $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
-                $recibidoEfectivo = min(
-                    $remitidoEfectivo,
-                    $recibidoRaw
-                );
+                $remitidoEfectivo = $saldo['remitido_efectivo'];
+                $recibidoEfectivo = $saldo['recibido_efectivo'];
 
                 /*
                  * Terminación se mide contra lo que realmente ingresó al área,
@@ -407,8 +402,8 @@ class LogisticaConciliacionService
                         ),
                         'destinos' => (int) ($plan->destinos ?? 0),
 
-                        // *_raw conserva el despacho central puro para
-                        // auditoría; *_efectivo_raw suma el cierre reconocido.
+                        // Se separan los originales brutos y las salidas netas
+                        // para la auditoría, sin sumar traslados internos.
                         'remitido_original_raw' => $remitidoCentralRaw,
                         'remitido_central_bruto' => $remitidoCentralRaw,
                         'recibido_central_bruto' => $recibidoCentralRaw,
