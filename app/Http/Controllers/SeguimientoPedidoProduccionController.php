@@ -236,7 +236,7 @@ class SeguimientoPedidoProduccionController extends Controller
         });
         $diasProcesados = $dias->where('registrado', true);
         $ultimoDia = $diasProcesados->last();
-        $escalaPromedios = max(1, (float) $diasProcesados->max('promedio'));
+        $escalaProyecciones = max(1, (float) $diasProcesados->max('proyeccion'));
 
         // Pedidos P activos y trazabilidad de su etapa actual.
         $vinculos = DB::table('seguimiento_pedido_detalle as d')
@@ -366,7 +366,7 @@ class SeguimientoPedidoProduccionController extends Controller
         ];
         return view('seguimiento_pedidos_produccion.dashboard_mensual', compact(
             'mes', 'dias', 'salidas', 'pendientes', 'porEtapa', 'indicadores',
-            'escalaPromedios'
+            'escalaProyecciones'
         ));
     }
 
