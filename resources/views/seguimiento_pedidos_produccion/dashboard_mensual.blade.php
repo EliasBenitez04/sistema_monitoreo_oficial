@@ -78,13 +78,13 @@
     <div class="row no-gutters">
         <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
             <div class="prod-kpi-label">Promedio diario de OT</div>
-            <div class="prod-kpi-value">{{ number_format($indicadores->promedio_ot,1,',','.') }}</div>
-            <div class="prod-kpi-desc">{{ number_format($indicadores->ot_dia,0,',','.') }} registros de OT en el período</div>
+            <div class="prod-kpi-value">{{ $indicadores->promedio_ot !== null ? number_format($indicadores->promedio_ot,1,',','.') : '-' }}</div>
+            <div class="prod-kpi-desc">{{ $indicadores->dias_transcurridos }} días hábiles transcurridos · {{ number_format($indicadores->ot_dia,0,',','.') }} registros</div>
         </div></div>
         <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
             <div class="prod-kpi-label">Promedio diario de prendas</div>
-            <div class="prod-kpi-value">{{ number_format($indicadores->promedio,1,',','.') }}</div>
-            <div class="prod-kpi-desc">{{ number_format($indicadores->prendas,0,',','.') }} prendas acumuladas del período</div>
+            <div class="prod-kpi-value">{{ $indicadores->promedio !== null ? number_format($indicadores->promedio,1,',','.') : '-' }}</div>
+            <div class="prod-kpi-desc">{{ number_format($indicadores->prendas,0,',','.') }} prendas acumuladas · {{ $indicadores->dias_habiles_mes }} días hábiles del mes</div>
         </div></div>
         <div class="col-lg-3 col-sm-6"><div class="prod-kpi">
             <div class="prod-kpi-label">Con pedido P</div>
@@ -109,36 +109,39 @@
         <p class="small text-muted mb-0 mt-2">Las prendas con pedido P más las prendas sin pedido P equivalen al total ingresado. Una OT puede vincularse a un pedido de fecha posterior al movimiento.</p>
     </div>
 </div>
-{{-- Evolución histórica: el promedio se reconstruye día por día sin usar datos posteriores. --}}
+{{-- Proyección histórica: jamás usa datos posteriores a la fecha de cada fila. --}}
 <div class="prod-average-wrap">
     <div class="prod-average-heading">
-        <h3 class="prod-section-title mb-1"><i class="fas fa-chart-line text-primary mr-2"></i>Evolución del promedio diario de Producción</h3>
-        <div class="small text-muted">Promedio hasta cada fecha = prendas acumuladas desde el 1 del mes ÷ días calendario transcurridos, incluidos los días sin movimiento. Cada fila compara el promedio de esa fecha con el del día anterior.</div>
+        <h3 class="prod-section-title mb-1"><i class="fas fa-chart-line text-primary mr-2"></i>Proyección mensual de Producción · Evolución diaria</h3>
+        <div class="small text-muted">
+            Proyección al cierre = (prendas acumuladas hasta ese día ÷ días hábiles transcurridos) × {{ $indicadores->dias_habiles_mes }} días hábiles del mes.
+            Se cuentan lunes a viernes, sin excluir feriados. La cifra es una estimación, no una producción confirmada.
+        </div>
     </div>
     <div class="p-3">
         <div class="row">
             <div class="col-lg-3 col-sm-6 mb-3"><div class="prod-average-kpi">
-                <small>Promedio al cierre del período</small>
-                <div class="value">{{ $indicadores->dias_transcurridos > 0 ? number_format($indicadores->promedio,1,',','.') : '-' }}</div>
-                <small>prendas por día calendario</small>
+                <small>Proyección de cierre del mes</small>
+                <div class="value">{{ $indicadores->proyeccion_cierre !== null ? number_format($indicadores->proyeccion_cierre,0,',','.') : '-' }}</div>
+                <small>prendas estimadas al cierre</small>
             </div></div>
             <div class="col-lg-3 col-sm-6 mb-3"><div class="prod-average-kpi">
-                <small>Promedio del día anterior</small>
-                <div class="value">{{ $indicadores->promedio_ayer !== null ? number_format($indicadores->promedio_ayer,1,',','.') : '-' }}</div>
-                <small>mismo cálculo hasta ayer</small>
+                <small>Proyección del día anterior</small>
+                <div class="value">{{ $indicadores->proyeccion_ayer !== null ? number_format($indicadores->proyeccion_ayer,0,',','.') : '-' }}</div>
+                <small>estimación calculada hasta ayer</small>
             </div></div>
             <div class="col-lg-3 col-sm-6 mb-3"><div class="prod-average-kpi">
-                <small>Cambio respecto a ayer</small>
-                @php $cambioPromedio = $indicadores->variacion_promedio; @endphp
-                <div class="value {{ $cambioPromedio === null ? '' : ($cambioPromedio > 0 ? 'prod-delta-up' : ($cambioPromedio < 0 ? 'prod-delta-down' : 'prod-delta-even')) }}">
-                    {{ $cambioPromedio === null ? '-' : ($cambioPromedio > 0 ? '+' : '') . number_format($cambioPromedio,1,',','.') }}
+                <small>Cambio frente a ayer</small>
+                @php $cambioProyeccion = $indicadores->variacion_proyeccion; @endphp
+                <div class="value {{ $cambioProyeccion === null ? '' : ($cambioProyeccion > 0 ? 'prod-delta-up' : ($cambioProyeccion < 0 ? 'prod-delta-down' : 'prod-delta-even')) }}">
+                    {{ $cambioProyeccion === null ? '-' : ($cambioProyeccion > 0 ? '+' : '') . number_format($cambioProyeccion,0,',','.') }}
                 </div>
-                <small>{{ $indicadores->variacion_promedio_pct !== null ? ($indicadores->variacion_promedio_pct > 0 ? '+' : '') . number_format($indicadores->variacion_promedio_pct,1,',','.') . '% frente a ayer' : 'sin comparación porcentual disponible' }}</small>
+                <small>{{ $indicadores->variacion_proyeccion_pct !== null ? ($indicadores->variacion_proyeccion_pct > 0 ? '+' : '') . number_format($indicadores->variacion_proyeccion_pct,1,',','.') . '%' : 'Sin comparación porcentual' }}</small>
             </div></div>
             <div class="col-lg-3 col-sm-6 mb-3"><div class="prod-average-kpi">
-                <small>Días transcurridos / total</small>
-                <div class="value">{{ $indicadores->dias_transcurridos }} / {{ $dias->count() }}</div>
-                <small>Los días futuros no se incluyen</small>
+                <small>Promedio por día hábil</small>
+                <div class="value">{{ $indicadores->promedio !== null ? number_format($indicadores->promedio,1,',','.') : '-' }}</div>
+                <small>{{ $indicadores->dias_transcurridos }} de {{ $indicadores->dias_habiles_mes }} días hábiles del mes</small>
             </div></div>
         </div>
         <div class="table-responsive" style="max-height:580px;overflow:auto">
@@ -147,48 +150,56 @@
                     <th>Fecha</th>
                     <th class="text-right">OT del día</th>
                     <th class="text-right">Prendas del día</th>
+                    <th class="text-right">Acumulado</th>
+                    <th class="text-right">Días hábiles</th>
+                    <th class="text-right">Promedio por día</th>
+                    <th class="text-right">Proyección mensual</th>
+                    <th class="text-right">Proyección ayer</th>
                     <th class="text-right">Diferencia vs ayer</th>
-                    <th class="text-right">Promedio al día</th>
-                    <th class="text-right">Promedio ayer</th>
-                    <th class="text-right">Variación promedio</th>
                     <th>Tendencia</th>
                 </tr></thead>
                 <tbody>
                 @foreach($dias as $diaEvolucion)
                 <tr class="{{ $diaEvolucion->registrado ? '' : 'prod-date-future' }}">
-                    <td><strong>{{ date('d/m/Y', strtotime($diaEvolucion->fecha)) }}</strong> <span class="small text-muted">{{ ucfirst(\Carbon\Carbon::parse($diaEvolucion->fecha)->locale('es')->translatedFormat('D')) }}</span></td>
+                    <td><strong>{{ date('d/m/Y', strtotime($diaEvolucion->fecha)) }}</strong><small class="d-block text-muted">{{ ucfirst(\Carbon\Carbon::parse($diaEvolucion->fecha)->locale('es')->translatedFormat('D')) }}</small></td>
                     @if($diaEvolucion->registrado)
                     <td class="text-right">{{ number_format($diaEvolucion->total,0,',','.') }}</td>
                     <td class="text-right font-weight-bold">{{ number_format($diaEvolucion->prendas,0,',','.') }}</td>
+                    <td class="text-right">{{ number_format($diaEvolucion->acumulado,0,',','.') }}</td>
+                    <td class="text-right">{{ $diaEvolucion->dias_transcurridos }}/{{ $indicadores->dias_habiles_mes }}</td>
+                    <td class="text-right">{{ $diaEvolucion->promedio !== null ? number_format($diaEvolucion->promedio,1,',','.') : '-' }}</td>
+                    <td class="text-right font-weight-bold text-primary">{{ $diaEvolucion->proyeccion !== null ? number_format($diaEvolucion->proyeccion,0,',','.') : '-' }}</td>
+                    <td class="text-right">{{ $diaEvolucion->proyeccion_anterior !== null ? number_format($diaEvolucion->proyeccion_anterior,0,',','.') : '-' }}</td>
                     <td class="text-right">
-                        @if($diaEvolucion->variacion_prendas !== null)
-                            <span class="{{ $diaEvolucion->variacion_prendas > 0 ? 'prod-delta-up' : ($diaEvolucion->variacion_prendas < 0 ? 'prod-delta-down' : 'prod-delta-even') }}">
-                                {{ $diaEvolucion->variacion_prendas > 0 ? '+' : '' }}{{ number_format($diaEvolucion->variacion_prendas,0,',','.') }}
+                        @if($diaEvolucion->variacion_proyeccion !== null)
+                            <span class="{{ $diaEvolucion->variacion_proyeccion > 0 ? 'prod-delta-up' : ($diaEvolucion->variacion_proyeccion < 0 ? 'prod-delta-down' : 'prod-delta-even') }}">
+                                {{ $diaEvolucion->variacion_proyeccion > 0 ? '+' : '' }}{{ number_format($diaEvolucion->variacion_proyeccion,0,',','.') }}
                             </span>
-                        @else - @endif
-                    </td>
-                    <td class="text-right font-weight-bold">{{ number_format($diaEvolucion->promedio,1,',','.') }}</td>
-                    <td class="text-right">{{ $diaEvolucion->promedio_anterior !== null ? number_format($diaEvolucion->promedio_anterior,1,',','.') : '-' }}</td>
-                    <td class="text-right">
-                        @if($diaEvolucion->variacion !== null)
-                            <span class="{{ $diaEvolucion->variacion > 0 ? 'prod-delta-up' : ($diaEvolucion->variacion < 0 ? 'prod-delta-down' : 'prod-delta-even') }}">
-                                {{ $diaEvolucion->variacion > 0 ? '+' : '' }}{{ number_format($diaEvolucion->variacion,1,',','.') }}
-                            </span>
-                            @if($diaEvolucion->variacion_porcentaje !== null)
-                                <small class="d-block text-muted">{{ $diaEvolucion->variacion_porcentaje > 0 ? '+' : '' }}{{ number_format($diaEvolucion->variacion_porcentaje,1,',','.') }}%</small>
+                            @if($diaEvolucion->variacion_proyeccion_porcentaje !== null)
+                                <small class="d-block text-muted">{{ $diaEvolucion->variacion_proyeccion_porcentaje > 0 ? '+' : '' }}{{ number_format($diaEvolucion->variacion_proyeccion_porcentaje,1,',','.') }}%</small>
                             @endif
                         @else - @endif
                     </td>
-                    <td><div class="prod-average-trend" title="Promedio: {{ number_format($diaEvolucion->promedio,1,',','.') }}"><span style="width:{{ max(0, min(100, round(100 * $diaEvolucion->promedio / $escalaPromedios,1))) }}%"></span></div></td>
+                    <td>
+                        @if($diaEvolucion->proyeccion !== null)
+                        <div class="prod-average-trend" title="Proyección: {{ number_format($diaEvolucion->proyeccion,0,',','.') }}">
+                            <span style="width:{{ max(0, min(100, round(100 * $diaEvolucion->proyeccion / $escalaProyecciones,1))) }}%"></span>
+                        </div>
+                        @else - @endif
+                    </td>
                     @else
-                        <td colspan="7" class="text-center text-muted">Pendiente · fecha posterior al corte</td>
+                    <td colspan="9" class="text-center text-muted">Pendiente · fecha posterior al corte</td>
                     @endif
                 </tr>
                 @endforeach
                 </tbody>
             </table>
         </div>
-        <p class="small text-muted mt-2 mb-0">El promedio es acumulado a la fecha: no representa el promedio por OT. «Prendas del día» es la producción real de esa jornada y «Diferencia vs ayer» compara ambos días. Los totales históricos se conservan para auditoría y el seguimiento de pedidos P.</p>
+        <p class="small text-muted mt-2 mb-0">
+            Los días sin producción aportan cero; los fines de semana no incrementan el divisor.
+            Si hay producción sábado o domingo, sí se suma al acumulado. Los días futuros no se utilizan para proyectar.
+            La tabla conserva todos los días del mes, con su proyección histórica de esa fecha.
+        </p>
     </div>
 </div>
 
@@ -224,13 +235,16 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 @else
 <div class="small text-muted">Pendiente</div>
 @endif
-@if($dia->registrado)
-<div class="prod-day-average mt-2">Prom.: {{ number_format($dia->promedio,1,',','.') }}/día</div>
-@if($dia->variacion !== null)
-<div class="small {{ $dia->variacion > 0 ? 'prod-delta-up' : ($dia->variacion < 0 ? 'prod-delta-down' : 'prod-delta-even') }}">
-    {{ $dia->variacion > 0 ? '+' : '' }}{{ number_format($dia->variacion,1,',','.') }} vs ayer
+@if($dia->registrado && $dia->proyeccion !== null)
+<div class="prod-day-average mt-2">Prom.: {{ number_format($dia->promedio,1,',','.') }}/hábil</div>
+<div class="prod-day-average">Cierre: {{ number_format($dia->proyeccion,0,',','.') }}</div>
+@if($dia->variacion_proyeccion !== null)
+<div class="small {{ $dia->variacion_proyeccion > 0 ? 'prod-delta-up' : ($dia->variacion_proyeccion < 0 ? 'prod-delta-down' : 'prod-delta-even') }}">
+    {{ $dia->variacion_proyeccion > 0 ? '+' : '' }}{{ number_format($dia->variacion_proyeccion,0,',','.') }} vs ayer
 </div>
 @endif
+@elseif($dia->registrado)
+<div class="small text-muted mt-2">Sin día hábil transcurrido</div>
 @endif
 @endif
 </td>
@@ -279,24 +293,24 @@ while(count($casillas)%7 !== 0) $casillas[]=null;
 @endif
 @endforeach
 
-<div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-chart-area text-primary mr-2"></i>Análisis y proyección según promedio diario</strong></div>
+<div class="card prod-section-card"><div class="card-header"><strong><i class="fas fa-chart-area text-primary mr-2"></i>Análisis y proyección según días hábiles</strong></div>
 <div class="card-body">
 <div class="row">
 @foreach([
 ['Prendas acumuladas',$indicadores->prendas],
-['Promedio diario acumulado',$indicadores->promedio],
-['Adicional proyectado',$indicadores->proyeccion_adicional],
-['Total proyectado al cierre',$indicadores->proyeccion_cierre]
+['Promedio por día hábil',$indicadores->promedio],
+['Diferencia estimada vs producido',$indicadores->proyeccion_adicional],
+['Proyección de cierre del mes',$indicadores->proyeccion_cierre]
 ] as $elemento)
 <div class="col-xl-3 col-md-6 mb-3"><div class="prod-stat">
 <small class="d-block text-muted">{{ $elemento[0] }}</small>
-<h3 class="mb-0">{{ number_format($elemento[1],is_float($elemento[1])?1:0,',','.') }}</h3>
+<h3 class="mb-0">{{ $elemento[1] !== null ? number_format($elemento[1],is_float($elemento[1])?1:0,',','.') : '-' }}</h3>
 </div></div>
 @endforeach</div>
 <p class="small text-muted mb-0">
-{{ $indicadores->dias_transcurridos }} días calendario transcurridos;
-{{ $indicadores->dias_restantes }} restantes. Se incluyen sábados y domingos, incluso sin movimientos.
-En un mes cerrado, el resultado es real y no suma días futuros. La proyección es una referencia estadística, no garantiza capacidad ni disponibilidad de OT.
+{{ $indicadores->dias_transcurridos }} de {{ $indicadores->dias_habiles_mes }} días hábiles transcurridos;
+{{ $indicadores->dias_restantes }} días hábiles restantes. Se cuentan lunes a viernes, sin descontar feriados.
+En un mes cerrado, la proyección coincide con el total real. Para un mes abierto es una estimación, no garantiza capacidad ni disponibilidad de OT.
 </p></div></div>
 
 <div class="row">
