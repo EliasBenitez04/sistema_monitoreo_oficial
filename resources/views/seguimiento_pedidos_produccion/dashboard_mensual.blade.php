@@ -530,9 +530,10 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         }
 
         // Evita usar una jornada sin movimientos como referencia de cierre.
-        const primero = registros.find(function (fila) {
+        const indiceInicial = Math.max(0, registros.findIndex(function (fila) {
             return Number(fila.proyeccion) > 0;
-        }) || registros[0];
+        }));
+        const primero = registros[indiceInicial];
         const ultimo = registros[registros.length - 1];
         const inicial = Number(primero.proyeccion);
         const ayer = ultimo.prendas_ayer !== null ? Number(ultimo.prendas_ayer) : null;
@@ -566,10 +567,10 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         const azul = registros.map(function (fila) {
             return esDiario ? Math.max(0, Number(fila.prendas)) : Math.max(0, Number(fila.proyeccion));
         });
-        const gris = registros.map(function (fila) {
+        const gris = registros.map(function (fila, indice) {
             return esDiario
                 ? (fila.promedio === null ? null : Math.max(0, Number(fila.promedio)))
-                : inicial;
+                : (indice >= indiceInicial ? inicial : null);
         });
 
         const izquierda = 88;
