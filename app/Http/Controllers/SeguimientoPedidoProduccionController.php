@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
+use App\Support\PromedioDiarioProduccion;
 
 class SeguimientoPedidoProduccionController extends Controller
 {
@@ -204,6 +205,33 @@ class SeguimientoPedidoProduccionController extends Controller
         $con = (int) $salidas->where('justificada', true)->sum('prendas');
         $sin = (int) $salidas->where('justificada', false)->sum('prendas');
 
+        /*
+         * El promedio de cada fecha utiliza SOLO los datos disponibles
+         * hasta ese día: prendas acumuladas / días calendario transcurridos
+         * desde el día 1. Incluye días sin movimientos (cero), pero no
+         * presenta los días posteriores al corte como producción en cero.
+         */
+        $promediosPorFecha = PromedioDiarioProduccion::calcular(
+            $dias->map(function ($dia) {
+                return [
+                    'fecha' => $dia->fecha,
+                    'prendas' => $dia->prendas,
+                ];
+            })->all(),
+            $corteMes ? $corteMes->format('Y-m-d') : null
+        );
+
+        $dias = $dias->map(function ($dia) use ($promediosPorFecha) {
+            $medidas = $promediosPorFecha[$dia->fecha];
+            foreach ($medidas as $campo => $valor) {
+                $dia->{$campo} = $valor;
+            }
+            return $dia;
+        });
+        $diasProcesados = $dias->where('registrado', true);
+        $ultimoDia = $diasProcesados->last();
+        $escalaPromedios = max(1, (float) $diasProcesados->max('promedio'));
+
         // Pedidos P activos y trazabilidad de su etapa actual.
         $vinculos = DB::table('seguimiento_pedido_detalle as d')
             ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
@@ -218,14 +246,16 @@ class SeguimientoPedidoProduccionController extends Controller
             $vinculos = collect();
         }
         // Aplicar anulaciones únicamente si ya existían en la fecha de corte.
-        $cambiosAnulados = DB::table('pedido_ot_cambios')
-            ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
-            ->where('created_at', '<=', $fechaLimite->format('Y-m-d H:i:s'))
-            ->select('pedido_id', 'ot_anterior')
-            ->get()
-            ->mapWithKeys(function ($c) {
-                return [$c->pedido_id . ':' . $c->ot_anterior => true];
-            });
+        $cambiosAnulados = $fechaLimite
+            ? DB::table('pedido_ot_cambios')
+                ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
+                ->where('created_at', '<=', $fechaLimite->format('Y-m-d H:i:s'))
+                ->select('pedido_id', 'ot_anterior')
+                ->get()
+                ->mapWithKeys(function ($c) {
+                    return [$c->pedido_id . ':' . $c->ot_anterior => true];
+                })
+            : collect();
         $vinculos = $vinculos->reject(function ($v) use ($cambiosAnulados) {
             return $cambiosAnulados->has($v->pedido_id . ':' . $v->nro_ot);
         })->values();
@@ -299,29 +329,32 @@ class SeguimientoPedidoProduccionController extends Controller
             return (object) ['etapa' => $etapa, 'ots' => $items->count(), 'prendas' => (int) $items->sum('cantidad_pendiente')];
         })->sortByDesc('ots')->values();
 
-        $habilesTranscurridos = $dias->filter(function ($d) use ($corteMes) {
-            return $corteMes && $d->fecha <= $corteMes->format('Y-m-d') && $d->habil;
-        })->count();
-        $habilesRestantes = $dias->filter(function ($d) use ($corteMes) {
-            return $corteMes && $d->fecha > $corteMes->format('Y-m-d') && $d->habil;
-        })->count();
-        $promedio = $habilesTranscurridos > 0 ? $total / $habilesTranscurridos : 0;
+        $diasTranscurridos = $diasProcesados->count();
+        $diasRestantes = max(0, $dias->count() - $diasTranscurridos);
+        $promedio = $diasTranscurridos > 0 ? $total / $diasTranscurridos : 0;
 
         $indicadores = (object) [
-            'fecha_corte' => $corteMes, 'ot_dia' => $salidas->count(),
+            'fecha_corte' => $corteMes,
+            'ot_dia' => $salidas->count(),
             'prendas' => $total, 'con' => $con, 'sin' => $sin,
             'efectividad' => $total > 0 ? round($con * 100 / $total, 1) : 0,
             'pendientes' => $pendientes->count(),
             'prendas_pendientes' => (int) $pendientes->sum('cantidad_pendiente'),
             'urgentes' => $pendientes->where('prioridad', 'URGENTE')->count(),
             'promedio' => round($promedio, 1),
-            'habiles_transcurridos' => $habilesTranscurridos,
-            'habiles_restantes' => $habilesRestantes,
-            'proyeccion_adicional' => (int) round($promedio * $habilesRestantes),
-            'proyeccion_cierre' => (int) round($total + $promedio * $habilesRestantes),
+            'promedio_ot' => $diasTranscurridos > 0
+                ? round($salidas->count() / $diasTranscurridos, 1) : 0,
+            'promedio_ayer' => $ultimoDia->promedio_anterior ?? null,
+            'variacion_promedio' => $ultimoDia->variacion ?? null,
+            'variacion_promedio_pct' => $ultimoDia->variacion_porcentaje ?? null,
+            'dias_transcurridos' => $diasTranscurridos,
+            'dias_restantes' => $diasRestantes,
+            'proyeccion_adicional' => (int) round($promedio * $diasRestantes),
+            'proyeccion_cierre' => (int) round($total + $promedio * $diasRestantes),
         ];
         return view('seguimiento_pedidos_produccion.dashboard_mensual', compact(
-            'mes', 'dias', 'salidas', 'pendientes', 'porEtapa', 'indicadores'
+            'mes', 'dias', 'salidas', 'pendientes', 'porEtapa', 'indicadores',
+            'escalaPromedios'
         ));
     }
 
