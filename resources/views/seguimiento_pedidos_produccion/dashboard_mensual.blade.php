@@ -740,9 +740,11 @@
                             aria-label="Distribución real de prendas registradas con pedido P y sin pedido P"></svg>
                         <div class="prod-chart-donut-legend">
                             <span><span class="prod-chart-key" style="background:#3d91c2"></span>Con pedido P:
-                                <strong>{{ number_format($indicadores->con, 0, ',', '.') }}</strong></span>
+                                <strong>{{ number_format($indicadores->con, 0, ',', '.') }} prendas</strong>
+                                · {{ number_format($indicadores->ots_con_pedido, 0, ',', '.') }} OT distintas</span>
                             <span><span class="prod-chart-key" style="background:#c8ced8"></span>Sin pedido P:
-                                <strong>{{ number_format($indicadores->sin, 0, ',', '.') }}</strong></span>
+                                <strong>{{ number_format($indicadores->sin, 0, ',', '.') }} prendas</strong>
+                                · {{ number_format($indicadores->ots_sin_pedido, 0, ',', '.') }} OT distintas</span>
                         </div>
                         <p class="small text-muted text-center mb-0">El donut muestra prendas realmente registradas hasta
                             el corte; no representa producción proyectada.</p>
