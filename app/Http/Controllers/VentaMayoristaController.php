@@ -263,6 +263,47 @@ class VentaMayoristaController extends Controller
             $ventasMay = $query->selectRaw("COALESCE(SUM(v.cantidad),0) as prendas_netas, COALESCE(SUM(v.p_venta),0) as importe_neto, COUNT(DISTINCT COALESCE(v.local,'') || '|' || COALESCE(v.comprobante,'')) as comprobantes")->first();
         }
 
+        // Exporta el mismo universo filtrado que aparece en el resumen,
+        // no solamente la página visible. Texto protegido contra fórmulas CSV.
+        if ($request->query('exportar') === 'csv') {
+            return response()->streamDownload(function () use ($filas) {
+                $salida = fopen('php://output', 'w');
+                fwrite($salida, "\xEF\xBB\xBF");
+                fputcsv($salida, [
+                    'OT', 'Código', 'Descripción', 'Canal',
+                    'Asignado histórico', 'Remitido período', 'Recibido',
+                    'En tránsito', 'Reserva fotos estimada',
+                    'Destinado comercialización estimado',
+                    'Recibido para comercialización estimado',
+                    'Salida Central', 'Redistribuido', 'Documentos',
+                    'Última remisión', 'Valor referencial Gs', 'Costo referencial Gs',
+                    'Alerta vínculo',
+                ], ';');
+
+                $texto = function ($valor) {
+                    $valor = (string) $valor;
+                    return preg_match('/^[\s]*[=+\-@]/u', $valor) ? "'" . $valor : $valor;
+                };
+                foreach ($filas as $fila) {
+                    fputcsv($salida, [
+                        $texto($fila->nro_ot ?: 'SIN OT'), $texto($fila->codigo),
+                        $texto($fila->descripcion), $texto($fila->canal),
+                        $fila->asignado, $fila->remitido, $fila->recibido,
+                        $fila->en_transito, $fila->sin_vinculo ? '' : $fila->muestra_estimada,
+                        $fila->sin_vinculo ? '' : $fila->potencial_enviado,
+                        $fila->sin_vinculo ? '' : $fila->potencial_venta,
+                        $fila->salida_central, $fila->traslado, $fila->documentos,
+                        $fila->ultima_remision ?: '', round($fila->valor_referencial, 2),
+                        round($fila->costo_referencial, 2),
+                        $fila->sin_vinculo ? 'REVISAR OT' : '',
+                    ], ';');
+                }
+                fclose($salida);
+            }, 'mayoristas_' . $desde . '_' . $hasta . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
+
         $pagina = max(1, (int) $request->query('page', 1));
         $porPagina = 35;
         $ordenes = new LengthAwarePaginator(
