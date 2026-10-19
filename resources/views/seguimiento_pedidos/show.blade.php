@@ -323,7 +323,7 @@
                 <div class="card-body pt-2">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover text-center align-middle bg-white mb-0">
-                            <thead><tr><th>Fecha</th><th>Origen</th><th></th><th>Destino</th><th>Cantidad</th><th>Tipo</th><th>Recepción</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Origen</th><th></th><th>Destino</th><th>Cantidad</th><th>Tipo</th><th>Recepción / confirmación</th></tr></thead>
                             <tbody>
                             @foreach($ot->movimientos_detalle as $mov)
                                 <tr>
@@ -333,7 +333,17 @@
                                     <td><strong>{{ $mov->destino_mostrar }}</strong></td>
                                     <td><span class="badge badge-primary px-2">{{ number_format($mov->cantidad,0,',','.') }}</span></td>
                                     <td><span class="badge {{ $mov->tipo_movimiento === 'DESPACHO CENTRAL' ? 'badge-info' : 'badge-warning' }}">{{ $mov->tipo_movimiento }}</span></td>
-                                    <td>{{ $mov->fecha_recepcion ? date('d/m/Y', strtotime($mov->fecha_recepcion)) : 'Pendiente' }}</td>
+                                    <td>
+                                        @if(strtoupper(trim((string) $mov->destino_mostrar)) === 'TUPI' && $mov->fecha_remision)
+                                            {{-- TUPI se confirma operativamente con la fecha de emisión, sin alterar la recepción física. --}}
+                                            <span class="badge badge-success">CONFIRMADO</span>
+                                            <small class="d-block text-muted">Emisión: {{ date('d/m/Y', strtotime($mov->fecha_remision)) }}</small>
+                                        @elseif($mov->fecha_recepcion)
+                                            {{ date('d/m/Y', strtotime($mov->fecha_recepcion)) }}
+                                        @else
+                                            Pendiente
+                                        @endif
+                                    </td>
                                 </tr>
                             @endforeach
                             </tbody>
