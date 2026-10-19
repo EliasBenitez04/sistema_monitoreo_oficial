@@ -103,42 +103,9 @@ class LogisticaConciliacionService
 
         $remisionesPorOt = $this->remisionesOriginalesPorOt($idsOt);
 
-        /*
-         * TUPI puede recibir desde Comercial Matriz (redistribución).
-         * La emisión confirma ese destino, pero NO constituye una nueva
-         * salida original de la OT. Solo cierra unidades remitidas
-         * que permanecían sin confirmar.
-         */
-        $tupiPorOt = collect();
-        if (Schema::hasTable('ot_logistica_remisiones')) {
-            $tupiPorOt = DB::table('ot_logistica_remisiones as r')
-            ->whereIn('r.id_ot', $idsOt)
-            ->whereNotNull('r.fecha_remision')
-            ->where(function ($q) {
-                $q->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, ''))) = 'TUPI'")
-                  ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) = 'TUPI'");
-            })
-            ->where(function ($q) {
-                $q->whereNull('r.cod_sucursal_salida')
-                    ->orWhere('r.cod_sucursal_salida', '<>', 1);
-            })
-            ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
-            ->groupBy('r.id_ot')
-            ->select('r.id_ot', DB::raw('SUM(r.cantidad) as cantidad'))
-            ->get()
-            ->keyBy('id_ot');
-        }
-
         // Retornos físicos LOCAL -> CASA CENTRAL importados desde ENVIOS.
         // No se acredita stock hasta existir fecha_recepcion en Casa Central.
         $devolucionesPorOt = $this->devolucionesPorOt($idsOt);
-
-        /*
-         * Complementos/reenvíos que cierran saldos reales del plan.
-         * Se calculan por detalle logístico y se capan por la cantidad
-         * planificada para no convertir redistribuciones en prendas nuevas.
-         */
-        $coberturaPlanPorOt = $this->coberturaPlanPorOt($idsOt);
 
         return collect($idsOt)
             ->mapWithKeys(function (int $idOt) use (
@@ -146,9 +113,7 @@ class LogisticaConciliacionService
                 $trazabilidad,
                 $planPorOt,
                 $remisionesPorOt,
-                $tupiPorOt,
-                $devolucionesPorOt,
-                $coberturaPlanPorOt
+                $devolucionesPorOt
             ) {
                 $ot = $ots->get($idOt);
 
@@ -187,9 +152,7 @@ class LogisticaConciliacionService
 
                 $plan = $planPorOt->get($idOt);
                 $remision = $remisionesPorOt->get($idOt);
-                $tupi = $tupiPorOt->get($idOt);
                 $devolucion = $devolucionesPorOt->get($idOt);
-                $coberturaPlan = $coberturaPlanPorOt->get($idOt);
 
                 $objetivo = max(0, (int) $ot->cantidad_orden);
 
@@ -299,44 +262,20 @@ class LogisticaConciliacionService
                 );
 
                 /*
-                 * Un movimiento local->local puede completar un detalle
-                 * histórico, pero un retorno hacia Central NUNCA cuenta
-                 * como una nueva salida ni como cierre del plan.
+                 * Una OT tiene una única salida neta:
+                 * remisiones originales de CENTRAL/MATRIZ menos devoluciones
+                 * efectivamente recibidas en Central. Las redistribuciones
+                 * entre locales (incluida TUPI) NO constituyen prendas nuevas.
+                 *
+                 * La confirmación TUPI por fecha de emisión ya se reconoce
+                 * en cada documento original con destino TUPI. Si TUPI recibe
+                 * una redistribución, esa confirmación corresponde al movimiento
+                 * interno, pero no se vuelve a sumar al total de prendas de la OT.
                  */
-                $saldoDespachoCentral = max(
-                    0, $ptEfectivo - $remitidoCentralNeto
-                );
-
-                $remitidoCierre = $remitidoCentralNeto > 0
-                    ? min(
-                        $saldoDespachoCentral,
-                        max(
-                            0,
-                            (int) ($coberturaPlan->remitido_cierre ?? 0)
-                        )
-                    )
-                    : 0;
-
-                $recibidoCierre = min(
-                    $remitidoCierre,
-                    max(
-                        0,
-                        (int) ($coberturaPlan->recibido_cierre ?? 0)
-                    )
-                );
-
-                $remitidoRaw =
-                    $remitidoCentralNeto + $remitidoCierre;
-
-                $recibidoRaw =
-                    $recibidoCentralNeto + $recibidoCierre;
-
-                // TUPI suma como confirmación solamente dentro del saldo
-                // emitido aún sin confirmar; no incrementa el remitido ni PT.
-                $recibidoRaw += min(
-                    max(0, (int) ($tupi->cantidad ?? 0)),
-                    max(0, $remitidoRaw - $recibidoRaw)
-                );
+                $remitidoCierre = 0;
+                $recibidoCierre = 0;
+                $remitidoRaw = $remitidoCentralNeto;
+                $recibidoRaw = $recibidoCentralNeto;
 
                 $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
                 $recibidoEfectivo = min(
@@ -485,6 +424,8 @@ class LogisticaConciliacionService
                             0, $ptEfectivo - $remitidoEfectivo
                         ),
                         'remitido_efectivo_raw' => $remitidoRaw,
+                        // Se mantienen los campos para compatibilidad con vistas.
+                        // Ninguna redistribución puede incrementar estos valores.
                         'remitido_cierre' => $remitidoCierre,
                         'remitido_original' => $remitidoEfectivo,
                         // Remisiones emitidas recuperadas sin FK id_ot,
@@ -954,112 +895,6 @@ class LogisticaConciliacionService
     {
         $devolucion = $this->devolucionesPorOt([$idOt])->get($idOt);
         return $devolucion ? $devolucion->documentos : collect();
-    }
-
-    /**
-     * Devuelve solamente el complemento que una remisión vinculada aporta
-     * por encima del despacho central ya contado.
-     *
-     * Ejemplo:
-     *   plan SL = 30
-     *   Central -> SL = 29
-     *   Comercial Matriz -> SL = 1
-     *   cobertura efectiva = 30
-     *
-     * Si luego existe otra redistribución de 5 hacia SL, el detalle sigue
-     * cubierto en 30 porque cada id_logistica_detalle se limita a d.cantidad.
-     */
-    private function coberturaPlanPorOt(array $idsOt): Collection
-    {
-        if (
-            empty($idsOt)
-            || !Schema::hasTable('ot_logistica_detalle')
-            || !Schema::hasTable('ot_logistica_remisiones')
-        ) {
-            return collect();
-        }
-
-        return DB::table('ot_logistica_detalle as d')
-            ->leftJoin('ot_logistica_remisiones as r', function ($join) {
-                $join->on('r.id_logistica_detalle', '=', 'd.id')
-                    ->on('r.id_ot', '=', 'd.id_ot')
-                    // Las devoluciones a Casa Central son entradas de stock.
-                    // Nunca se usan como "remitido_cierre".
-                    ->where(function ($q) {
-                        $q->whereNull('r.cod_sucursal_destino')
-                          ->orWhere('r.cod_sucursal_destino', '<>', 1);
-                    })
-                    ->whereRaw(
-                        "UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')"
-                    );
-            })
-            ->whereIn('d.id_ot', $idsOt)
-            ->groupBy('d.id_ot', 'd.id', 'd.cantidad')
-            ->select(
-                'd.id_ot',
-                'd.id',
-                'd.cantidad as plan',
-                DB::raw(
-                    'COALESCE(SUM(r.cantidad), 0) as movido_total'
-                ),
-                DB::raw(
-                    "COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ') THEN r.cantidad ELSE 0 END), 0) as movido_central"
-                ),
-                DB::raw(
-                    'COALESCE(SUM(CASE WHEN ' . ConfirmacionTupi::sql('r') . ' IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
-                ),
-                DB::raw(
-                    "COALESCE(SUM(CASE WHEN " . ConfirmacionTupi::sql('r') . " IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
-                )
-            )
-            ->get()
-            ->groupBy('id_ot')
-            ->map(function ($filas) {
-                $coberturaTotal = 0;
-                $coberturaCentral = 0;
-                $recibidoTotal = 0;
-                $recibidoCentral = 0;
-
-                foreach ($filas as $fila) {
-                    $plan = max(0, (int) $fila->plan);
-
-                    $cubierto = min(
-                        $plan,
-                        max(0, (int) $fila->movido_total)
-                    );
-
-                    $cubiertoCentral = min(
-                        $plan,
-                        max(0, (int) $fila->movido_central)
-                    );
-
-                    $confirmado = min(
-                        $cubierto,
-                        max(0, (int) $fila->recibido_total)
-                    );
-
-                    $confirmadoCentral = min(
-                        $cubiertoCentral,
-                        max(0, (int) $fila->recibido_central)
-                    );
-
-                    $coberturaTotal += $cubierto;
-                    $coberturaCentral += $cubiertoCentral;
-                    $recibidoTotal += $confirmado;
-                    $recibidoCentral += $confirmadoCentral;
-                }
-
-                return (object) [
-                    'remitido_cierre' => max(
-                        0,
-                        $coberturaTotal - $coberturaCentral
-                    ),
-                    'recibido_cierre' => max(
-                        0,
-                        $recibidoTotal - $recibidoCentral
-                    ),
-                ];
-            });
     }
 
     private function resolverEstado(
