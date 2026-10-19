@@ -198,7 +198,13 @@
             <h3 class="card-title float-none font-weight-bold mb-0">
                 <i class="fas fa-list text-primary mr-1"></i>Control por orden de trabajo
             </h3>
-            <small class="text-muted">{{ number_format($ordenes->total(),0,',','.') }} combinaciones OT/canal · fecha aplicada solo a remisiones</small>
+            <div class="d-flex align-items-center flex-wrap">
+                <small class="text-muted mr-3">{{ number_format($ordenes->total(),0,',','.') }} combinaciones OT/canal · fecha aplicada solo a remisiones</small>
+                <a href="{{ route('ventas.mayoristas.index', array_merge(request()->query(), ['exportar' => 'csv'])) }}"
+                   class="btn btn-sm btn-outline-success">
+                    <i class="fas fa-file-csv mr-1"></i>Exportar CSV
+                </a>
+            </div>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 may-table">
