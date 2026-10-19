@@ -56,6 +56,11 @@
     .prod-chart-card>.card-header{background:#fff!important;padding:14px 19px;gap:12px}
     .prod-chart-card .prod-chart-switch .btn{min-width:75px;font-size:.86rem;font-weight:600}
     .prod-chart-card .prod-chart-switch .btn.active{box-shadow:none}
+    .prod-day-filter{gap:7px}
+    .prod-day-filter-label{font-size:.76rem;color:#64748b;font-weight:600;margin-right:3px}
+    .prod-day-filter .btn{font-size:.79rem;font-weight:700}
+    .prod-day-filter .btn.active{box-shadow:none}
+    @media(max-width:575px){.prod-day-filter{width:100%;justify-content:flex-end}}
     .prod-chart-card .prod-chart-caption{font-size:.8rem;color:#64748b}
     .prod-chart-legend{display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;font-size:.82rem;color:#536579;margin:1px 0 10px}
     .prod-chart-key{display:inline-block;vertical-align:middle;width:13px;height:13px;border-radius:3px;margin-right:6px}
@@ -140,6 +145,7 @@
     })->map(function ($dia) {
         return [
             'fecha' => $dia->fecha,
+            'habil' => (bool) $dia->habil,
             'proyeccion' => (int) $dia->proyeccion,
             'anterior' => $dia->proyeccion_anterior !== null
                 ? (int) $dia->proyeccion_anterior : null,
@@ -156,6 +162,13 @@
         <div>
             <strong><i class="fas fa-chart-pie text-primary mr-2"></i>Gráficos de Producción</strong>
             <div class="prod-chart-caption font-weight-normal mt-1">Comparación de producción real contra el promedio diario y seguimiento de la proyección del mes.</div>
+        </div>
+        <div id="prodFiltroTipoDia" class="d-flex align-items-center flex-wrap prod-day-filter ml-auto mr-2" role="group" aria-label="Filtrar fechas del gráfico">
+            <span class="prod-day-filter-label">Días:</span>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de día">
+                <button type="button" class="btn btn-primary active prod-day-filter-button" data-filtro-dia="habil" aria-pressed="true" title="Mostrar solo lunes a viernes">Hábil</button>
+                <button type="button" class="btn btn-outline-primary prod-day-filter-button" data-filtro-dia="no-habil" aria-pressed="false" title="Mostrar solo sábados y domingos">No hábil</button>
+            </div>
         </div>
         <div class="btn-group btn-group-sm prod-chart-switch" role="group" aria-label="Cambiar tipo de gráfico">
             <button type="button" class="btn btn-primary active prod-chart-switch-button" data-grafico="diario" aria-pressed="true">Ritmo diario</button>
@@ -442,7 +455,9 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
     const raiz = document.getElementById('produccionGraficos');
     if (!raiz) return;
 
-    const registros = @json($serieGraficaProduccion);
+    const registrosBase = @json($serieGraficaProduccion);
+    let filtroDia = 'habil';
+    let registros = registrosBase.filter(function (fila) { return fila.habil === true; });
     const cantidadConP = Number(@json($indicadores->con)) || 0;
     const cantidadSinP = Number(@json($indicadores->sin)) || 0;
     const namespaceSVG = 'http://www.w3.org/2000/svg';
@@ -510,8 +525,8 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         document.getElementById('prodLeyendaGris').textContent = grisTitulo;
         document.getElementById('prodNotaEscala').classList.toggle('d-none', esDiario);
         document.getElementById('prodDescripcionGrafico').textContent = esDiario
-            ? 'Comparación en prendas/día: azul representa las prendas ingresadas al hito IT y gris el promedio acumulado por día hábil. Pasá el cursor para ver los números exactos y la diferencia frente a ayer.'
-            : 'Proyección al cierre del mes: azul muestra la estimación de cada día y la línea gris punteada mantiene como referencia la primera proyección. El eje vertical está ampliado para mostrar las diferencias.';
+            ? 'Azul: ingreso diario al hito IT. Gris: promedio acumulado por día hábil. El selector Hábil / No hábil filtra las fechas visibles, sin modificar los cálculos.'
+            : 'La línea azul indica la estimación de cada fecha visible y la gris la primera proyección con movimientos de ese tipo de día. La escala vertical ampliada está identificada.';
 
         svg.setAttribute('aria-label', esDiario
             ? 'Prendas ingresadas al hito de Producción por fecha comparadas con el promedio acumulado diario'
@@ -525,7 +540,7 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
             svg.appendChild(elementoSvg('text', {
                 x: 480, y: 170, 'text-anchor': 'middle',
                 fill: '#64748b', 'font-size': 19
-            }, 'Aún no hay días hábiles con movimientos para comparar.'));
+            }, 'No hay fechas de este tipo disponibles para graficar.'));
             return;
         }
 
@@ -536,18 +551,20 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         const primero = registros[indiceInicial];
         const ultimo = registros[registros.length - 1];
         const inicial = Number(primero.proyeccion);
-        const ayer = ultimo.prendas_ayer !== null ? Number(ultimo.prendas_ayer) : null;
+        // Comparar con la fecha anterior visible, no contra un fin de semana
+        // oculto. No cambia los promedios ni las proyecciones calculadas.
+        const ayer = registros.length > 1 ? Number(registros[registros.length - 2].prendas) : null;
         const produccion = Number(ultimo.prendas);
         const diferenciaDia = ayer === null ? null : produccion - ayer;
-        const proyeccionAnterior = ultimo.anterior === null
-            ? null : Number(ultimo.anterior);
+        const proyeccionAnterior = registros.length > 1
+            ? Number(registros[registros.length - 2].proyeccion) : null;
         const diferenciaProyeccion = proyeccionAnterior === null
             ? null : Number(ultimo.proyeccion) - proyeccionAnterior;
 
         if (esDiario) {
             resumen([
                 ['Ingreso a IT · ' + fechaCorta(ultimo.fecha), formato.format(produccion)],
-                ['Día anterior', ayer === null ? '—' : formato.format(ayer)],
+                ['Fecha anterior visible', ayer === null ? '—' : formato.format(ayer)],
                 ['Diferencia vs ayer', numeroSignado(diferenciaDia),
                     diferenciaDia === null ? '' : (diferenciaDia > 0 ? 'positivo' : (diferenciaDia < 0 ? 'negativo' : ''))],
                 ['Promedio por día hábil', ultimo.promedio === null ? '—' : formato.format(ultimo.promedio)]
@@ -559,7 +576,7 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
                 ['Proyección inicial', formato.format(inicial)],
                 ['Variación desde el inicio', numeroSignado(deltaInicio),
                     deltaInicio > 0 ? 'positivo' : (deltaInicio < 0 ? 'negativo' : '')],
-                ['Cambio vs ayer', numeroSignado(diferenciaProyeccion),
+                ['Cambio vs fecha anterior', numeroSignado(diferenciaProyeccion),
                     diferenciaProyeccion === null ? '' : (diferenciaProyeccion > 0 ? 'positivo' : (diferenciaProyeccion < 0 ? 'negativo' : ''))]
             ]);
         }
@@ -703,21 +720,22 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         function mostrarPunto(indice, px) {
             const fila = registros[indice];
             const proyeccionHoy = Number(fila.proyeccion);
-            const diferenciaHoy = fila.anterior === null ? null
-                : proyeccionHoy - Number(fila.anterior);
-            const cambioPrendas = fila.prendas_ayer === null ? null
-                : Number(fila.prendas) - Number(fila.prendas_ayer);
+            const anteriorVisible = indice > 0 ? registros[indice - 1] : null;
+            const diferenciaHoy = anteriorVisible === null ? null
+                : proyeccionHoy - Number(anteriorVisible.proyeccion);
+            const cambioPrendas = anteriorVisible === null ? null
+                : Number(fila.prendas) - Number(anteriorVisible.prendas);
             const texto = esDiario
                 ? fechaCorta(fila.fecha) + ' · Ingreso diario a IT'
                     + '\nPrendas ingresadas: ' + formato.format(fila.prendas)
                     + '\nPromedio día hábil: ' + (fila.promedio === null ? '—' : formato.format(fila.promedio))
-                    + '\nDía anterior: ' + (fila.prendas_ayer === null ? '—' : formato.format(fila.prendas_ayer))
-                    + '\nDiferencia vs ayer: ' + numeroSignado(cambioPrendas)
+                    + '\nFecha anterior visible: ' + (anteriorVisible === null ? '—' : formato.format(anteriorVisible.prendas))
+                    + '\nDiferencia vs anterior: ' + numeroSignado(cambioPrendas)
                 : fechaCorta(fila.fecha) + ' · Proyección mensual'
                     + '\nEstimación de cierre: ' + formato.format(fila.proyeccion)
                     + '\nProyección inicial: ' + formato.format(inicial)
-                    + '\nProyección ayer: ' + (fila.anterior === null ? '—' : formato.format(fila.anterior))
-                    + '\nVariación vs ayer: ' + numeroSignado(diferenciaHoy)
+                    + '\nProyección anterior visible: ' + (anteriorVisible === null ? '—' : formato.format(anteriorVisible.proyeccion))
+                    + '\nVariación vs anterior: ' + numeroSignado(diferenciaHoy)
                     + '\nProducción acumulada: ' + formato.format(fila.acumulado);
             tooltip.textContent = texto;
             tooltip.hidden = false;
@@ -808,11 +826,30 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
     dibujarArea('diario');
     dibujarDonut();
 
+    const botonesFiltro = raiz.querySelectorAll('.prod-day-filter-button');
+    botonesFiltro.forEach(function (boton) {
+        boton.addEventListener('click', function () {
+            filtroDia = boton.getAttribute('data-filtro-dia');
+            registros = registrosBase.filter(function (fila) {
+                return filtroDia === 'habil' ? fila.habil === true : fila.habil === false;
+            });
+            botonesFiltro.forEach(function (otro) {
+                const seleccionado = otro.getAttribute('data-filtro-dia') === filtroDia;
+                otro.classList.toggle('active', seleccionado);
+                otro.classList.toggle('btn-primary', seleccionado);
+                otro.classList.toggle('btn-outline-primary', !seleccionado);
+                otro.setAttribute('aria-pressed', seleccionado ? 'true' : 'false');
+            });
+            dibujarArea(modoArea);
+        });
+    });
+
     const botones = raiz.querySelectorAll('.prod-chart-switch-button');
     botones.forEach(function (boton) {
         boton.addEventListener('click', function () {
             const modo = boton.getAttribute('data-grafico');
             const esDonut = modo === 'donut';
+            raiz.querySelector('#prodFiltroTipoDia').classList.toggle('d-none', esDonut);
             raiz.querySelector('#prodGraficoArea').classList.toggle('d-none', esDonut);
             raiz.querySelector('#prodGraficoDonut').classList.toggle('d-none', !esDonut);
 
