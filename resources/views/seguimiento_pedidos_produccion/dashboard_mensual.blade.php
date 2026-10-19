@@ -167,7 +167,7 @@
             <span class="prod-day-filter-label">Días:</span>
             <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de día">
                 <button type="button" class="btn btn-primary active prod-day-filter-button" data-filtro-dia="habil" aria-pressed="true" title="Mostrar solo lunes a viernes">Hábil</button>
-                <button type="button" class="btn btn-outline-primary prod-day-filter-button" data-filtro-dia="no-habil" aria-pressed="false" title="Mostrar solo sábados y domingos">No hábil</button>
+                <button type="button" class="btn btn-outline-primary prod-day-filter-button" data-filtro-dia="no-habil" aria-pressed="false" title="Incluir sábados y domingos junto con los días hábiles">No hábil</button>
             </div>
         </div>
         <div class="btn-group btn-group-sm prod-chart-switch" role="group" aria-label="Cambiar tipo de gráfico">
@@ -525,7 +525,7 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         document.getElementById('prodLeyendaGris').textContent = grisTitulo;
         document.getElementById('prodNotaEscala').classList.toggle('d-none', esDiario);
         document.getElementById('prodDescripcionGrafico').textContent = esDiario
-            ? 'Azul: ingreso diario al hito IT. Gris: promedio acumulado por día hábil. El selector Hábil / No hábil filtra las fechas visibles, sin modificar los cálculos.'
+            ? 'Azul: ingreso diario al hito IT. Gris: promedio acumulado por día hábil. Hábil muestra lunes a viernes; No hábil incluye también sábados y domingos. No cambia los cálculos.'
             : 'La línea azul indica la estimación de cada fecha visible y la gris la primera proyección con movimientos de ese tipo de día. La escala vertical ampliada está identificada.';
 
         svg.setAttribute('aria-label', esDiario
@@ -831,7 +831,7 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         boton.addEventListener('click', function () {
             filtroDia = boton.getAttribute('data-filtro-dia');
             registros = registrosBase.filter(function (fila) {
-                return filtroDia === 'habil' ? fila.habil === true : fila.habil === false;
+                return filtroDia === 'no-habil' || fila.habil === true;
             });
             botonesFiltro.forEach(function (otro) {
                 const seleccionado = otro.getAttribute('data-filtro-dia') === filtroDia;
