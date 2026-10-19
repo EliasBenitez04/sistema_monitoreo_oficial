@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Ot;
+use App\Support\ConfirmacionTupi;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -621,11 +622,11 @@ class LogisticaConciliacionService
                 'id_ot',
                 DB::raw('SUM(cantidad) as remitido_original'),
                 DB::raw(
-                    'SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as recibido_original'
+                    'SUM(CASE WHEN ' . ConfirmacionTupi::sql('ot_logistica_remisiones') . ' IS NOT NULL THEN cantidad ELSE 0 END) as recibido_original'
                 ),
                 DB::raw('MIN(fecha_remision) as primera_remision'),
                 DB::raw('MAX(fecha_remision) as ultima_remision'),
-                DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
+                DB::raw('MAX(' . ConfirmacionTupi::sql('ot_logistica_remisiones') . ') as ultima_recepcion')
             )
             ->get()
             ->keyBy('id_ot');
@@ -774,7 +775,7 @@ class LogisticaConciliacionService
             ->whereRaw(
                 "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
             )
-            ->select('codigo', 'cantidad', 'fecha_remision', 'fecha_recepcion')
+            ->select('codigo', 'cantidad', 'fecha_remision', 'fecha_recepcion', 'sucursal_logistica', 'sucursal_destino')
             ->get();
 
         return $filas->groupBy(function ($fila) use ($otPorBaseUnica) {
@@ -787,11 +788,13 @@ class LogisticaConciliacionService
                 'remitido_original' => (int) $grupo->sum('cantidad'),
                 'recibido_original' => (int) $grupo
                     ->filter(function ($fila) {
-                        return !empty($fila->fecha_recepcion);
+                        return !empty(ConfirmacionTupi::fecha($fila));
                     })->sum('cantidad'),
                 'primera_remision' => $grupo->min('fecha_remision'),
                 'ultima_remision' => $grupo->max('fecha_remision'),
-                'ultima_recepcion' => $grupo->max('fecha_recepcion'),
+                'ultima_recepcion' => $grupo->map(function ($fila) {
+                    return ConfirmacionTupi::fecha($fila);
+                })->filter()->max(),
             ];
         });
     }
@@ -968,10 +971,10 @@ class LogisticaConciliacionService
                     "COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ') THEN r.cantidad ELSE 0 END), 0) as movido_central"
                 ),
                 DB::raw(
-                    'COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
+                    'COALESCE(SUM(CASE WHEN ' . ConfirmacionTupi::sql('r') . ' IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
                 ),
                 DB::raw(
-                    "COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
+                    "COALESCE(SUM(CASE WHEN " . ConfirmacionTupi::sql('r') . " IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
                 )
             )
             ->get()
