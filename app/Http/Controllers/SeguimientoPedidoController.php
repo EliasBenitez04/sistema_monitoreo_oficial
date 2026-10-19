@@ -915,18 +915,6 @@ class SeguimientoPedidoController extends Controller
             })->values();
             $ot->cantidad_movimientos = $ot->movimientos_detalle->count();
 
-            // Una redistribución es un traslado ya emitido desde Central.
-            // Tampoco se confunde con las devoluciones hacia Casa Central.
-            $ot->redistribuciones = (int) $movsOt->filter(function ($mov) {
-                $origen = strtoupper(trim((string) ($mov->sucursal_salida ?? '')));
-                $destino = strtoupper(trim((string) ($mov->sucursal_destino ?? '')));
-                $origenCentral = (int) ($mov->cod_sucursal_salida ?? 0) === 1
-                    || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true);
-                $retornoCentral = (int) ($mov->cod_sucursal_destino ?? 0) === 1
-                    || $destino === 'CASA CENTRAL';
-                return !$origenCentral && !$retornoCentral;
-            })->sum('cantidad');
-
             // Los 12 locales comerciales se controlan separados del canal Mayorista/Depósito.
             // CASA CENTRAL y MATRIZ son nodos del canal mayorista y no deben inflar el contador de locales.
             $esMayorista = function ($local) {
@@ -950,7 +938,7 @@ class SeguimientoPedidoController extends Controller
             $topeOt = max(0, (int) $ot->cantidad_orden);
             $ot->enviado = min($topeOt, $ot->movimientos_fisicos);
             $ot->recibido = min($topeOt, $ot->movimientos_confirmados);
-            $ot->movimientos_adicionales = $ot->redistribuciones;
+            $ot->movimientos_adicionales = max(0, $ot->movimientos_fisicos - $topeOt);
             $ot->movimientos_confirmados_adicionales = max(0, $ot->movimientos_confirmados - $topeOt);
 
             $ot->locales_enviados = $ot->locales_comerciales->count();
@@ -1007,21 +995,12 @@ class SeguimientoPedidoController extends Controller
                     (int) $conciliacion->ingreso_terminacion;
                 $ot->producto_terminado =
                     (int) $conciliacion->producto_terminado;
-                // El indicador de asignación usa el detalle logístico real;
-                // planificado equivale al objetivo PT y no prueba destino asignado.
                 $ot->distribuido =
-                    (int) $conciliacion->plan_detallado;
+                    (int) $conciliacion->planificado;
                 $ot->enviado =
                     (int) $conciliacion->remitido_original;
                 $ot->recibido =
                     (int) $conciliacion->recibido_original;
-
-                $ot->remitido_central_bruto =
-                    (int) ($conciliacion->remitido_central_bruto ?? 0);
-                $ot->devoluciones_recibidas =
-                    (int) ($conciliacion->devoluciones_recibidas ?? 0);
-                $ot->pendiente_remitir =
-                    (int) ($conciliacion->pendiente_remitir ?? 0);
 
                 $ot->cierre_remitido_reconocido =
                     (int) ($conciliacion->remitido_cierre ?? 0);
@@ -1069,31 +1048,37 @@ class SeguimientoPedidoController extends Controller
             }
 
             /*
-             * La OT alcanza físicamente RECEPCIÓN LOCAL con la primera
-             * confirmación, pero solo se etiqueta como RECIBIDA cuando
-             * la conciliación cubre TODA su cantidad sin saldos.
+             * ESTADO VISUAL OPERATIVO
+             *
+             * Para Seguimiento Terminación, una vez que existe cualquier
+             * recepción física confirmada la OT ya alcanzó RECEPCIÓN LOCAL.
+             * Los faltantes cuantitativos siguen en estado_conciliacion y en
+             * los KPI de cantidades, pero no degradan el estado/color visual.
              */
-            $ot->tiene_recepcion_confirmada = (int) $ot->recibido > 0;
-            $ot->ot_completa = ($ot->estado_conciliacion ?? null) === 'CONFIRMADO';
+            $ot->tiene_recepcion_confirmada =
+                (int) $ot->movimientos_confirmados > 0;
 
-            $ot->estado_seguimiento_visual = $ot->ot_completa
-                ? 'RECIBIDO'
-                : ($ot->estado_conciliacion ?? $ot->estado_seguimiento);
+            $ot->estado_seguimiento_visual =
+                $ot->tiene_recepcion_confirmada
+                    ? 'RECIBIDO'
+                    : $ot->estado_seguimiento;
 
-            $ot->etapa_actual_visual = $ot->tiene_recepcion_confirmada
-                ? 'RECEPCION LOCAL'
-                : $ot->etapa_actual;
+            $ot->etapa_actual_visual =
+                $ot->tiene_recepcion_confirmada
+                    ? 'RECEPCION LOCAL'
+                    : $ot->etapa_actual;
 
-            $ot->etapa_numero_visual = $ot->tiene_recepcion_confirmada
-                ? 5
-                : $ot->etapa_numero;
+            $ot->etapa_numero_visual =
+                $ot->tiene_recepcion_confirmada
+                    ? 5
+                    : $ot->etapa_numero;
 
-            // Este porcentaje representa prendas confirmadas, no etapas
-            // visitadas. Nunca marca 100% por una recepción parcial.
-            $baseKpi = max(0, (int) $ot->cantidad_orden);
-            $ot->porcentaje_seguimiento = $baseKpi > 0
-                ? round(min(100, 100 * $ot->recibido / $baseKpi), 1)
-                : 0;
+            $ot->porcentaje_seguimiento =
+                $ot->etapa_numero_visual > 0
+                    ? (int) round(
+                        ($ot->etapa_numero_visual / 5) * 100
+                    )
+                    : 0;
         }
 
         /*
