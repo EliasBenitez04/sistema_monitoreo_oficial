@@ -841,6 +841,14 @@ class SeguimientoPedidoController extends Controller
                                             return !empty($r->fecha_recepcion);
                                         })
                                         ->sum('cantidad'),
+                                    // Solo para la vista TUPI: cada línea emitida equivale
+                                    // a confirmación operativa, aunque no tenga recepción física.
+                                    'confirmado_por_emision' => (int) $grupo
+                                        ->filter(function ($r) {
+                                            return !empty($r->fecha_remision)
+                                                || !empty($r->fecha_recepcion);
+                                        })
+                                        ->sum('cantidad'),
                                     'primera_remision' => $fechasRemision->isNotEmpty()
                                         ? $fechasRemision->min()
                                         : null,
@@ -886,6 +894,23 @@ class SeguimientoPedidoController extends Controller
                 $r->estado_local = $r->enviado > 0 && $r->recibido >= $r->enviado
                     ? 'RECIBIDO'
                     : ($r->recibido > 0 ? 'PARCIAL' : 'EN TRANSITO');
+
+                // TUPI se confirma por fecha de emisión, solo para esta tabla.
+                // No se cambia "recibido" ni "fecha_recepcion": los KPI físicos
+                // y el resto de los destinos conservan sus valores originales.
+                $r->es_tupi = strtoupper(trim((string) $r->local)) === 'TUPI';
+                $r->recibido_visual = $r->es_tupi
+                    ? min($r->enviado, (int) ($r->confirmado_por_emision ?? 0))
+                    : $r->recibido;
+                $r->pendiente_visual = max(0, $r->enviado - $r->recibido_visual);
+                $r->estado_local_visual = $r->es_tupi && $r->ultima_remision
+                    && $r->enviado > 0 && $r->pendiente_visual === 0
+                    ? 'CONFIRMADO'
+                    : ($r->es_tupi && $r->recibido_visual > 0
+                        ? 'PARCIAL' : $r->estado_local);
+                $r->fecha_confirmacion_visual = $r->es_tupi && $r->ultima_remision
+                    ? $r->ultima_remision
+                    : $r->ultima_recepcion;
                 return $r;
             })->values();
 
@@ -936,6 +961,10 @@ class SeguimientoPedidoController extends Controller
 
             $ot->locales_enviados = $ot->locales_comerciales->count();
             $ot->locales_confirmados = $ot->locales_comerciales->where('estado_local', 'RECIBIDO')->count();
+            $ot->locales_confirmados_visuales = $ot->locales_comerciales
+                ->filter(function ($local) {
+                    return in_array($local->estado_local_visual, ['RECIBIDO', 'CONFIRMADO'], true);
+                })->count();
             $ot->pendiente_recepcion = max(0, $topeOt - $ot->recibido);
 
             // Etapa real de punta a punta. No se infiere por una etiqueta manual:
