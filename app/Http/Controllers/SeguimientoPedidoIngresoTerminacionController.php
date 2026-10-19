@@ -591,7 +591,6 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
          * con pedidos IT que ya alimentan el calendario. No consultar
          * nuevamente ni mezclar con TERMINACION - INGRESO TERMINACION.
          */
-        $salidasMesPorFecha = $salidasMes->groupBy('fecha_salida');
         $diasGraficoIt = collect();
         $cursorGrafico = $inicioMes->copy();
         while ($cursorGrafico->lte($finMes)) {
