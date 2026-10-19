@@ -22,7 +22,7 @@
         <strong>Remitido</strong> significa que existe una remisión emitida;
         <strong>Recibido</strong> requiere fecha de recepción;
         <strong>reservado para fotos</strong> es una estimación según la regla elegida,
-        y <strong>potencial para venta</strong> NO significa que esas prendas ya se vendieron.
+        y <strong>destinado a venta</strong> NO significa que esas prendas ya se vendieron.
         No se clasifican automáticamente como mayoristas las operaciones de COMERCIAL MATRIZ.
     </div>
 
@@ -100,9 +100,9 @@
             <span>remitidas sin recepción confirmada</span>
         </div></div>
         <div class="col-xl-3 col-md-6 mb-3"><div class="may-stat">
-            <small>Órdenes vinculadas</small>
+            <small>OT con remisión del período</small>
             <strong>{{ number_format($resumen->ot,0,',','.') }}</strong>
-            <span>OT distintas; no movimientos repetidos</span>
+            <span>{{ number_format($resumen->ot_asignadas,0,',','.') }} OT con asignación histórica</span>
         </div></div>
     </div>
 
@@ -118,13 +118,18 @@
             <span>hasta {{ $muestrasPorOt }} por OT vinculada de MODELO MUESTRA</span>
         </div></div>
         <div class="col-xl-4 col-md-6 mb-3"><div class="may-stat is-success">
-            <small>Potencial para comercialización</small>
-            <strong>{{ number_format($resumen->potencial_venta,0,',','.') }}</strong>
-            <span>enviado vinculado menos reserva estimada; NO vendido</span>
+            <small>Destinado a comercialización (estimado)</small>
+            <strong>{{ number_format($resumen->potencial_enviado,0,',','.') }}</strong>
+            <span>remitido vinculado menos reserva foto; incluye tránsito; NO vendido</span>
         </div></div>
     </div>
 
     <div class="row">
+        <div class="col-xl-4 col-md-6 mb-3"><div class="may-info">
+            <small>Potencial recibido para venta</small>
+            <strong>{{ number_format($resumen->potencial_venta,0,',','.') }} prendas</strong>
+            <span>Solo recepción confirmada, descontando la reserva foto estimada. No representa ventas reales ni stock físico conciliado.</span>
+        </div></div>
         <div class="col-xl-4 col-md-6 mb-3"><div class="may-info">
             <small>Remisiones procedentes de redistribución</small>
             <strong>{{ number_format($resumen->traslados,0,',','.') }} prendas</strong>
@@ -159,7 +164,7 @@
             <div class="row align-items-center">
                 <div class="col-md-7">
                     <p class="mb-2">Por ejemplo, si una OT envía <strong>13 prendas</strong> a MODELO MUESTRA y la regla es reservar <strong>1 prenda</strong> para fotografías:</p>
-                    <div class="may-rule"><span>13 enviadas</span><i class="fas fa-minus"></i><span>1 foto (estimada)</span><i class="fas fa-equals"></i><strong>12 potenciales para venta</strong></div>
+                    <div class="may-rule"><span>13 enviadas</span><i class="fas fa-minus"></i><span>1 foto (estimada)</span><i class="fas fa-equals"></i><strong>12 destinadas a venta (estimadas)</strong></div>
                 </div>
                 <div class="col-md-5">
                     <div class="alert alert-light border mb-0 small">
@@ -205,7 +210,8 @@
                         <th class="text-right">Recibido</th>
                         <th class="text-right">En tránsito</th>
                         <th class="text-right">Reserva foto</th>
-                        <th class="text-right">Potencial venta</th>
+                        <th class="text-right">Destinado a venta</th>
+                        <th class="text-right">Recibido comercial estim.</th>
                         <th>Últ. remisión</th>
                         <th>Control</th>
                     </tr>
@@ -227,6 +233,7 @@
                         <td class="text-right text-success">{{ number_format($item->recibido,0,',','.') }}</td>
                         <td class="text-right {{ $item->en_transito > 0 ? 'text-warning font-weight-bold' : '' }}">{{ number_format($item->en_transito,0,',','.') }}</td>
                         <td class="text-right">{{ $item->sin_vinculo ? 'No clasificable' : number_format($item->muestra_estimada,0,',','.') }}</td>
+                        <td class="text-right">{{ $item->sin_vinculo ? 'No clasificable' : number_format($item->potencial_enviado,0,',','.') }}</td>
                         <td class="text-right">{{ $item->sin_vinculo ? 'No clasificable' : number_format($item->potencial_venta,0,',','.') }}</td>
                         <td>{{ $item->ultima_remision ? date('d/m/Y',strtotime($item->ultima_remision)) : 'Sin remisión' }}</td>
                         <td>
@@ -245,7 +252,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="10" class="text-center text-muted p-4">No se encontraron asignaciones ni remisiones mayoristas con estos filtros.</td></tr>
+                    <tr><td colspan="11" class="text-center text-muted p-4">No se encontraron asignaciones ni remisiones mayoristas con estos filtros.</td></tr>
                     @endforelse
                 </tbody>
             </table>
