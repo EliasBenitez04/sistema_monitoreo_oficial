@@ -60,7 +60,19 @@
     .prod-chart-legend{display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;font-size:.82rem;color:#536579;margin:1px 0 10px}
     .prod-chart-key{display:inline-block;vertical-align:middle;width:13px;height:13px;border-radius:3px;margin-right:6px}
     .prod-chart-svg{display:block;width:100%;max-height:350px}
-    .prod-chart-canvas{min-height:260px;background:#fff}
+    .prod-chart-canvas{min-height:260px;background:#fff;position:relative}
+    .prod-chart-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+    .prod-chart-summary-item{border:1px solid #e3ebf3;background:#f9fbfd;border-radius:9px;padding:11px 14px;min-width:0}
+    .prod-chart-summary-item small{display:block;color:#63758b;font-size:.72rem;margin-bottom:3px}
+    .prod-chart-summary-item strong{font-size:1.15rem;color:#23364b;font-weight:800}
+    .prod-chart-summary-item strong.is-positive{color:#15815c}
+    .prod-chart-summary-item strong.is-negative{color:#ba4141}
+    .prod-chart-tooltip{position:absolute;z-index:5;pointer-events:none;background:#183153;color:#fff;border-radius:8px;padding:11px 13px;font-size:.76rem;line-height:1.7;white-space:pre-line;box-shadow:0 6px 18px rgba(15,35,55,.22);max-width:260px}
+    .prod-chart-tooltip[hidden]{display:none}
+    .prod-chart-chartlabel{font-size:.83rem;font-weight:700;color:#28445f}
+    .prod-chart-zoom-note{font-size:.73rem;color:#64748b;text-align:center;margin-top:5px}
+    @media(max-width:767px){.prod-chart-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.prod-chart-summary-item{padding:9px}.prod-chart-summary-item strong{font-size:1rem}}
+    
     .prod-chart-donut-svg{display:block;margin:auto;max-width:280px;width:100%;height:auto}
     .prod-chart-donut-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:22px;margin:10px 0 8px;font-size:.88rem}
     .prod-chart-empty{color:#64748b;text-align:center;padding:110px 10px}
@@ -133,6 +145,9 @@
                 ? (int) $dia->proyeccion_anterior : null,
             'prendas' => (int) $dia->prendas,
             'acumulado' => (int) $dia->acumulado,
+            'promedio' => $dia->promedio !== null ? (float) $dia->promedio : null,
+            'prendas_ayer' => $dia->prendas_anterior !== null ? (int) $dia->prendas_anterior : null,
+            'dias_habiles' => (int) $dia->dias_transcurridos,
         ];
     })->values()->all();
 @endphp
@@ -140,25 +155,34 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
         <div>
             <strong><i class="fas fa-chart-pie text-primary mr-2"></i>Gráficos de Producción</strong>
-            <div class="prod-chart-caption font-weight-normal mt-1">Evolución de la proyección al cierre y distribución de prendas del mes seleccionado.</div>
+            <div class="prod-chart-caption font-weight-normal mt-1">Comparación de producción real contra el promedio diario y seguimiento de la proyección del mes.</div>
         </div>
         <div class="btn-group btn-group-sm prod-chart-switch" role="group" aria-label="Cambiar tipo de gráfico">
-            <button type="button" class="btn btn-primary active prod-chart-switch-button" data-grafico="area" aria-pressed="true">Área</button>
+            <button type="button" class="btn btn-primary active prod-chart-switch-button" data-grafico="diario" aria-pressed="true">Ritmo diario</button>
+            <button type="button" class="btn btn-outline-primary prod-chart-switch-button" data-grafico="proyeccion" aria-pressed="false">Proyección</button>
             <button type="button" class="btn btn-outline-primary prod-chart-switch-button" data-grafico="donut" aria-pressed="false">Donut</button>
         </div>
     </div>
     <div class="card-body">
         <div id="prodGraficoArea">
+            <div class="prod-chart-summary" aria-live="polite">
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta1">Prendas del último día</small><strong id="prodResumenValor1">—</strong></div>
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta2">Prendas del día anterior</small><strong id="prodResumenValor2">—</strong></div>
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta3">Diferencia con ayer</small><strong id="prodResumenValor3">—</strong></div>
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta4">Promedio diario acumulado</small><strong id="prodResumenValor4">—</strong></div>
+            </div>
             <div class="prod-chart-legend">
-                <span><span class="prod-chart-key" style="background:#3d91c2"></span>Proyección calculada ese día</span>
-                <span><span class="prod-chart-key" style="background:#c8ced8"></span>Proyección del día anterior</span>
+                <span><span class="prod-chart-key" style="background:#3d91c2"></span><span id="prodLeyendaAzul">Prendas producidas ese día</span></span>
+                <span><span class="prod-chart-key" style="background:#c8ced8"></span><span id="prodLeyendaGris">Promedio por día hábil hasta esa fecha</span></span>
             </div>
             <div class="prod-chart-scroll">
                 <div class="prod-chart-canvas">
-                    <svg id="prodGraficoAreaSvg" class="prod-chart-svg" viewBox="0 0 960 350" role="img" aria-label="Comparación de la proyección mensual de producción calculada cada día con la proyección del día anterior"></svg>
+                    <svg id="prodGraficoAreaSvg" class="prod-chart-svg" viewBox="0 0 960 350" role="img" aria-label="Prendas reales producidas cada fecha comparadas con el promedio de producción por día hábil a esa fecha"></svg>
+                    <div class="prod-chart-tooltip" id="prodGraficoTooltip" hidden></div>
                 </div>
             </div>
-            <p class="small text-muted text-center mb-0 mt-2">Valores proyectados en prendas para el cierre del mes. Pasá el cursor por cada punto para ver su fecha y resultado.</p>
+            <p id="prodDescripcionGrafico" class="small text-muted text-center mb-0 mt-2">Azul: producción registrada en esa fecha. Gris: promedio diario acumulado. Son dos cifras en prendas comparables; los fines de semana sin producción figuran en cero.</p>
+            <div id="prodNotaEscala" class="prod-chart-zoom-note d-none">Escala vertical ampliada para apreciar las variaciones de la proyección; el eje no comienza en cero.</div>
         </div>
         <div id="prodGraficoDonut" class="d-none">
             <svg id="prodGraficoDonutSvg" class="prod-chart-donut-svg" viewBox="0 0 280 280" role="img" aria-label="Distribución real de prendas registradas con pedido P y sin pedido P"></svg>
@@ -442,124 +466,290 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         return formato.format(numero);
     }
 
-    function dibujarArea() {
+    // Los dos modos comparten fechas; las magnitudes comparadas tienen
+    // siempre la misma unidad dentro de cada gráfico.
+    let modoArea = 'diario';
+
+    function resumen(entradas) {
+        entradas.forEach(function (entrada, indice) {
+            const numero = indice + 1;
+            document.getElementById('prodResumenEtiqueta' + numero).textContent = entrada[0];
+            const valor = document.getElementById('prodResumenValor' + numero);
+            valor.textContent = entrada[1];
+            valor.classList.remove('is-positive', 'is-negative');
+            if (entrada[2] === 'positivo') valor.classList.add('is-positive');
+            if (entrada[2] === 'negativo') valor.classList.add('is-negative');
+        });
+    }
+
+    function numeroSignado(valor) {
+        if (valor === null || valor === undefined) return '—';
+        return (valor > 0 ? '+' : '') + formato.format(valor);
+    }
+
+    function fechaCorta(fecha) {
+        return String(fecha).slice(8, 10) + '/' + String(fecha).slice(5, 7);
+    }
+
+    function dibujarArea(modo) {
+        modoArea = modo;
         const svg = document.getElementById('prodGraficoAreaSvg');
+        const tooltip = document.getElementById('prodGraficoTooltip');
         if (!svg) return;
         svg.replaceChildren();
+        tooltip.hidden = true;
+
+        const esDiario = modo === 'diario';
+        const azulTitulo = esDiario
+            ? 'Prendas ingresadas a IT cada día'
+            : 'Proyección al cierre calculada cada día';
+        const grisTitulo = esDiario
+            ? 'Promedio acumulado por día hábil'
+            : 'Primera proyección con movimiento';
+        document.getElementById('prodLeyendaAzul').textContent = azulTitulo;
+        document.getElementById('prodLeyendaGris').textContent = grisTitulo;
+        document.getElementById('prodNotaEscala').classList.toggle('d-none', esDiario);
+        document.getElementById('prodDescripcionGrafico').textContent = esDiario
+            ? 'Comparación en prendas/día: azul representa las prendas ingresadas al hito IT y gris el promedio acumulado por día hábil. Pasá el cursor para ver los números exactos y la diferencia frente a ayer.'
+            : 'Proyección al cierre del mes: azul muestra la estimación de cada día y la línea gris punteada mantiene como referencia la primera proyección. El eje vertical está ampliado para mostrar las diferencias.';
+
+        svg.setAttribute('aria-label', esDiario
+            ? 'Prendas ingresadas al hito de Producción por fecha comparadas con el promedio acumulado diario'
+            : 'Proyección mensual histórica comparada con la primera proyección con movimiento');
 
         if (!registros.length) {
-            const mensaje = elementoSvg('text', {
+            resumen([
+                ['Último día', '—'], ['Referencia', '—'],
+                ['Diferencia', '—'], ['Promedio', '—']
+            ]);
+            svg.appendChild(elementoSvg('text', {
                 x: 480, y: 170, 'text-anchor': 'middle',
-                fill: '#64748b', 'font-size': '19'
-            }, 'Todavía no hay días hábiles con datos para graficar.');
-            svg.appendChild(mensaje);
+                fill: '#64748b', 'font-size': 19
+            }, 'Aún no hay días hábiles con movimientos para comparar.'));
             return;
         }
 
-        const izquierda = 82;
-        const derecha = 925;
-        const arriba = 18;
-        const abajo = 305;
+        // Evita usar una jornada sin movimientos como referencia de cierre.
+        const indiceInicial = Math.max(0, registros.findIndex(function (fila) {
+            return Number(fila.proyeccion) > 0;
+        }));
+        const primero = registros[indiceInicial];
+        const ultimo = registros[registros.length - 1];
+        const inicial = Number(primero.proyeccion);
+        const ayer = ultimo.prendas_ayer !== null ? Number(ultimo.prendas_ayer) : null;
+        const produccion = Number(ultimo.prendas);
+        const diferenciaDia = ayer === null ? null : produccion - ayer;
+        const proyeccionAnterior = ultimo.anterior === null
+            ? null : Number(ultimo.anterior);
+        const diferenciaProyeccion = proyeccionAnterior === null
+            ? null : Number(ultimo.proyeccion) - proyeccionAnterior;
+
+        if (esDiario) {
+            resumen([
+                ['Ingreso a IT · ' + fechaCorta(ultimo.fecha), formato.format(produccion)],
+                ['Día anterior', ayer === null ? '—' : formato.format(ayer)],
+                ['Diferencia vs ayer', numeroSignado(diferenciaDia),
+                    diferenciaDia === null ? '' : (diferenciaDia > 0 ? 'positivo' : (diferenciaDia < 0 ? 'negativo' : ''))],
+                ['Promedio por día hábil', ultimo.promedio === null ? '—' : formato.format(ultimo.promedio)]
+            ]);
+        } else {
+            const deltaInicio = Number(ultimo.proyeccion) - inicial;
+            resumen([
+                ['Proyección actual', formato.format(ultimo.proyeccion)],
+                ['Proyección inicial', formato.format(inicial)],
+                ['Variación desde el inicio', numeroSignado(deltaInicio),
+                    deltaInicio > 0 ? 'positivo' : (deltaInicio < 0 ? 'negativo' : '')],
+                ['Cambio vs ayer', numeroSignado(diferenciaProyeccion),
+                    diferenciaProyeccion === null ? '' : (diferenciaProyeccion > 0 ? 'positivo' : (diferenciaProyeccion < 0 ? 'negativo' : ''))]
+            ]);
+        }
+
+        const azul = registros.map(function (fila) {
+            return esDiario ? Math.max(0, Number(fila.prendas)) : Math.max(0, Number(fila.proyeccion));
+        });
+        const gris = registros.map(function (fila, indice) {
+            return esDiario
+                ? (fila.promedio === null ? null : Math.max(0, Number(fila.promedio)))
+                : (indice >= indiceInicial ? inicial : null);
+        });
+
+        const izquierda = 88;
+        const derecha = 926;
+        const arriba = 25;
+        const abajo = 303;
         const ancho = derecha - izquierda;
         const alto = abajo - arriba;
-        const valores = registros.reduce(function (acumulado, fila) {
-            acumulado.push(Math.max(0, Number(fila.proyeccion) || 0));
-            if (fila.anterior !== null) acumulado.push(Math.max(0, Number(fila.anterior) || 0));
-            return acumulado;
-        }, []);
-        const maximo = Math.max(1, ...valores);
-        const tope = maximo * 1.10;
+        const valores = azul.concat(gris.filter(function (valor) { return valor !== null; }));
+        const minimoDato = Math.min.apply(null, valores);
+        const maximoDato = Math.max.apply(null, valores);
+        const escala = Math.max(1, maximoDato - minimoDato);
+        // Producción real siempre desde cero. La proyección usa escala
+        // ampliada y explícitamente rotulada para destacar los desvíos.
+        const inferior = esDiario ? 0 : Math.max(0, minimoDato - Math.max(500, escala * 0.35));
+        const superior = esDiario ? Math.max(1, maximoDato * 1.12)
+            : maximoDato + Math.max(500, escala * 0.35);
         const ejeY = function (valor) {
-            return abajo - Math.max(0, Number(valor) || 0) / tope * alto;
+            return abajo - (Math.max(inferior, Number(valor)) - inferior)
+                / (superior - inferior) * alto;
         };
         const ejeX = function (indice) {
-            return izquierda + (registros.length < 2
-                ? ancho / 2
-                : indice * ancho / (registros.length - 1));
+            return izquierda + (registros.length === 1
+                ? ancho / 2 : indice * ancho / (registros.length - 1));
         };
 
+        svg.appendChild(elementoSvg('text', {
+            x: izquierda, y: 14, fill: '#66788c', 'font-size': 12
+        }, esDiario ? 'Prendas por día' : 'Prendas proyectadas al cierre'));
+
         for (let paso = 0; paso <= 4; paso++) {
-            const nivel = paso / 4 * tope;
-            const y = ejeY(nivel);
+            const valor = inferior + (superior - inferior) * paso / 4;
+            const y = ejeY(valor);
             svg.appendChild(elementoSvg('line', {
                 x1: izquierda, x2: derecha, y1: y, y2: y,
-                stroke: '#e7edf4', 'stroke-width': 1
+                stroke: '#e4ebf2', 'stroke-width': 1
             }));
             svg.appendChild(elementoSvg('text', {
-                x: izquierda - 12, y: y + 5, 'text-anchor': 'end',
-                fill: '#738296', 'font-size': 13
-            }, etiquetaGrafico(nivel)));
+                x: izquierda - 12, y: y + 4, 'text-anchor': 'end',
+                fill: '#718298', 'font-size': 13
+            }, etiquetaGrafico(valor)));
         }
 
-        const pasoEtiquetas = Math.max(1, Math.ceil(registros.length / 8));
+        const pasoEtiquetas = Math.max(1, Math.ceil(registros.length / 9));
         registros.forEach(function (fila, indice) {
-            if (indice % pasoEtiquetas !== 0 && indice !== registros.length - 1) return;
-            const etiqueta = String(fila.fecha).slice(8, 10) + '/' + String(fila.fecha).slice(5, 7);
+            if (indice % pasoEtiquetas && indice !== registros.length - 1) return;
             svg.appendChild(elementoSvg('text', {
-                x: ejeX(indice), y: 332,
-                'text-anchor': 'middle', fill: '#718096', 'font-size': 13
-            }, etiqueta));
+                x: ejeX(indice), y: 334,
+                'text-anchor': 'middle', fill: '#718298', 'font-size': 13
+            }, fechaCorta(fila.fecha)));
         });
 
-        function dibujarSerie(clave, relleno, trazo, opacidad) {
-            const puntos = registros.map(function (fila, indice) {
-                const cantidad = fila[clave] === null ? null : Number(fila[clave]);
-                return cantidad === null ? null : { x: ejeX(indice), y: ejeY(cantidad) };
-            });
-            let tramo = [];
-
-            function finalizarTramo() {
-                if (!tramo.length) return;
-                let camino = 'M ' + tramo[0].x + ' ' + tramo[0].y;
-                for (let indice = 1; indice < tramo.length; indice++) {
-                    const previo = tramo[indice - 1];
-                    const actual = tramo[indice];
-                    const centro = (previo.x + actual.x) / 2;
-                    camino += ' C ' + centro + ' ' + previo.y
-                        + ' ' + centro + ' ' + actual.y
-                        + ' ' + actual.x + ' ' + actual.y;
+        function trayectoria(valoresSerie) {
+            let camino = '';
+            let activos = [];
+            const tramos = [];
+            valoresSerie.forEach(function (valor, i) {
+                if (valor === null) {
+                    if (activos.length) tramos.push(activos);
+                    activos = [];
+                } else {
+                    activos.push({ x: ejeX(i), y: ejeY(valor) });
                 }
-                if (tramo.length === 1) camino += ' L ' + tramo[0].x + ' ' + tramo[0].y;
-                const area = camino + ' L ' + tramo[tramo.length - 1].x + ' ' + abajo
-                    + ' L ' + tramo[0].x + ' ' + abajo + ' Z';
-                svg.appendChild(elementoSvg('path', {
-                    d: area, fill: relleno, 'fill-opacity': opacidad
-                }));
-                svg.appendChild(elementoSvg('path', {
-                    d: camino, fill: 'none', stroke: trazo,
-                    'stroke-width': 2.7, 'stroke-linecap': 'round'
-                }));
-                tramo = [];
-            }
-
-            puntos.forEach(function (punto) {
-                if (punto) tramo.push(punto);
-                else finalizarTramo();
             });
-            finalizarTramo();
+            if (activos.length) tramos.push(activos);
+
+            return tramos.map(function (puntos) {
+                camino = 'M ' + puntos[0].x + ' ' + puntos[0].y;
+                for (let i = 1; i < puntos.length; i++) {
+                    const previo = puntos[i - 1];
+                    const punto = puntos[i];
+                    const medio = (previo.x + punto.x) / 2;
+                    camino += ' C ' + medio + ' ' + previo.y + ' '
+                        + medio + ' ' + punto.y + ' '
+                        + punto.x + ' ' + punto.y;
+                }
+                if (puntos.length === 1) camino += ' L ' + puntos[0].x + ' ' + puntos[0].y;
+                return {
+                    linea: camino,
+                    area: camino + ' L ' + puntos[puntos.length - 1].x + ' ' + abajo
+                        + ' L ' + puntos[0].x + ' ' + abajo + ' Z'
+                };
+            });
         }
 
-        // Gris detrás y azul delante: equivalente al gráfico de área de referencia.
-        dibujarSerie('anterior', '#cbd1dc', '#c0c8d5', 0.78);
-        dibujarSerie('proyeccion', '#4599c9', '#3d91c2', 0.74);
+        const lineaGris = trayectoria(gris);
+        const lineaAzul = trayectoria(azul);
 
-        registros.forEach(function (fila, indice) {
-            const x = ejeX(indice);
-            const y = ejeY(fila.proyeccion);
-            const punto = elementoSvg('circle', {
-                cx: x, cy: y, r: 8, fill: '#3d91c2',
-                'fill-opacity': 0.01, stroke: 'none',
-                tabindex: 0, role: 'img',
-                'aria-label': fila.fecha + ': proyección ' + formato.format(fila.proyeccion) + ' prendas'
-            });
-            const detalle = 'Fecha: ' + fila.fecha.split('-').reverse().join('/')
-                + '\nProyección: ' + formato.format(fila.proyeccion)
-                + '\nAyer: ' + (fila.anterior === null ? '-' : formato.format(fila.anterior))
-                + '\nPrendas del día: ' + formato.format(fila.prendas)
-                + '\nPrendas acumuladas: ' + formato.format(fila.acumulado);
-            punto.appendChild(elementoSvg('title', {}, detalle));
-            svg.appendChild(punto);
+        // El gris se dibuja primero y su línea se mantiene visible
+        // por encima del relleno azul, evitando la superposición confusa.
+        lineaGris.forEach(function (tramo) {
+            if (esDiario) svg.appendChild(elementoSvg('path', {
+                d: tramo.area, fill: '#c8d1dc', 'fill-opacity': .30
+            }));
         });
+        lineaAzul.forEach(function (tramo) {
+            svg.appendChild(elementoSvg('path', {
+                d: tramo.area, fill: '#4799c7',
+                'fill-opacity': esDiario ? .33 : .25
+            }));
+        });
+        lineaGris.forEach(function (tramo) {
+            svg.appendChild(elementoSvg('path', {
+                d: tramo.linea, fill: 'none', stroke: '#9aa9bd',
+                'stroke-width': esDiario ? 3 : 2.7,
+                'stroke-dasharray': esDiario ? '7 5' : '9 6',
+                'stroke-linecap': 'round'
+            }));
+        });
+        lineaAzul.forEach(function (tramo) {
+            svg.appendChild(elementoSvg('path', {
+                d: tramo.linea, fill: 'none', stroke: '#2386bf',
+                'stroke-width': 3.3, 'stroke-linecap': 'round'
+            }));
+        });
+
+        const guia = elementoSvg('line', {
+            x1: 0, x2: 0, y1: arriba, y2: abajo, stroke: '#456d93',
+            'stroke-width': 1.3, 'stroke-dasharray': '4 5',
+            'pointer-events': 'none', visibility: 'hidden'
+        });
+        const marca = elementoSvg('circle', {
+            cx: 0, cy: 0, r: 5.5, fill: '#fff',
+            stroke: '#2386bf', 'stroke-width': 2.8,
+            'pointer-events': 'none', visibility: 'hidden'
+        });
+        svg.appendChild(guia);
+        svg.appendChild(marca);
+
+        function mostrarPunto(indice, px) {
+            const fila = registros[indice];
+            const proyeccionHoy = Number(fila.proyeccion);
+            const diferenciaHoy = fila.anterior === null ? null
+                : proyeccionHoy - Number(fila.anterior);
+            const cambioPrendas = fila.prendas_ayer === null ? null
+                : Number(fila.prendas) - Number(fila.prendas_ayer);
+            const texto = esDiario
+                ? fechaCorta(fila.fecha) + ' · Ingreso diario a IT'
+                    + '\nPrendas ingresadas: ' + formato.format(fila.prendas)
+                    + '\nPromedio día hábil: ' + (fila.promedio === null ? '—' : formato.format(fila.promedio))
+                    + '\nDía anterior: ' + (fila.prendas_ayer === null ? '—' : formato.format(fila.prendas_ayer))
+                    + '\nDiferencia vs ayer: ' + numeroSignado(cambioPrendas)
+                : fechaCorta(fila.fecha) + ' · Proyección mensual'
+                    + '\nEstimación de cierre: ' + formato.format(fila.proyeccion)
+                    + '\nProyección inicial: ' + formato.format(inicial)
+                    + '\nProyección ayer: ' + (fila.anterior === null ? '—' : formato.format(fila.anterior))
+                    + '\nVariación vs ayer: ' + numeroSignado(diferenciaHoy)
+                    + '\nProducción acumulada: ' + formato.format(fila.acumulado);
+            tooltip.textContent = texto;
+            tooltip.hidden = false;
+            const anchoTip = Math.min(260, tooltip.offsetWidth || 220);
+            tooltip.style.left = Math.max(5, Math.min(px + 10,
+                svg.getBoundingClientRect().width - anchoTip - 5)) + 'px';
+            tooltip.style.top = '50px';
+            const x = ejeX(indice);
+            guia.setAttribute('x1', x);
+            guia.setAttribute('x2', x);
+            guia.setAttribute('visibility', 'visible');
+            marca.setAttribute('cx', x);
+            marca.setAttribute('cy', ejeY(azul[indice]));
+            marca.setAttribute('visibility', 'visible');
+        }
+
+        svg.onpointermove = function (evento) {
+            const rect = svg.getBoundingClientRect();
+            if (!rect.width) return;
+            const px = evento.clientX - rect.left;
+            const x = px / rect.width * 960;
+            const indice = registros.length === 1 ? 0
+                : Math.max(0, Math.min(registros.length - 1, Math.round(
+                    (x - izquierda) / ancho * (registros.length - 1)
+                )));
+            mostrarPunto(indice, px);
+        };
+        svg.onpointerleave = function () {
+            tooltip.hidden = true;
+            guia.setAttribute('visibility', 'hidden');
+            marca.setAttribute('visibility', 'hidden');
+        };
     }
 
     function dibujarDonut() {
@@ -615,16 +805,20 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
         }, total > 0 ? 'Con pedido P' : 'Sin movimientos'));
     }
 
-    dibujarArea();
+    dibujarArea('diario');
     dibujarDonut();
 
     const botones = raiz.querySelectorAll('.prod-chart-switch-button');
     botones.forEach(function (boton) {
         boton.addEventListener('click', function () {
             const modo = boton.getAttribute('data-grafico');
-            raiz.querySelector('#prodGraficoArea').classList.toggle('d-none', modo !== 'area');
-            raiz.querySelector('#prodGraficoDonut').classList.toggle('d-none', modo !== 'donut');
+            const esDonut = modo === 'donut';
+            raiz.querySelector('#prodGraficoArea').classList.toggle('d-none', esDonut);
+            raiz.querySelector('#prodGraficoDonut').classList.toggle('d-none', !esDonut);
 
+            if (!esDonut && modoArea !== modo) {
+                dibujarArea(modo);
+            }
             botones.forEach(function (otro) {
                 const seleccionado = otro.getAttribute('data-grafico') === modo;
                 otro.classList.toggle('active', seleccionado);
