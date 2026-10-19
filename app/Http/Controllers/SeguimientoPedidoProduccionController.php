@@ -206,19 +206,25 @@ class SeguimientoPedidoProduccionController extends Controller
         $sin = (int) $salidas->where('justificada', false)->sum('prendas');
 
         /*
-         * El promedio de cada fecha utiliza SOLO los datos disponibles
-         * hasta ese día: prendas acumuladas / días calendario transcurridos
-         * desde el día 1. Incluye días sin movimientos (cero), pero no
-         * presenta los días posteriores al corte como producción en cero.
+         * Proyección día a día:
+         * (prendas acumuladas hasta la fecha / días hábiles transcurridos)
+         * * días hábiles totales del mes seleccionado.
+         *
+         * Los sábados y domingos no aumentan el divisor; los movimientos
+         * que eventualmente ocurran esos días sí se suman a la producción.
+         * Los días posteriores al corte no se consideran días en cero.
          */
+        $diasHabilesMes = $dias->where('habil', true)->count();
         $promediosPorFecha = PromedioDiarioProduccion::calcular(
             $dias->map(function ($dia) {
                 return [
                     'fecha' => $dia->fecha,
                     'prendas' => $dia->prendas,
+                    'habil' => $dia->habil,
                 ];
             })->all(),
-            $corteMes ? $corteMes->format('Y-m-d') : null
+            $corteMes ? $corteMes->format('Y-m-d') : null,
+            $diasHabilesMes
         );
 
         $dias = $dias->map(function ($dia) use ($promediosPorFecha) {
@@ -329,9 +335,10 @@ class SeguimientoPedidoProduccionController extends Controller
             return (object) ['etapa' => $etapa, 'ots' => $items->count(), 'prendas' => (int) $items->sum('cantidad_pendiente')];
         })->sortByDesc('ots')->values();
 
-        $diasTranscurridos = $diasProcesados->count();
-        $diasRestantes = max(0, $dias->count() - $diasTranscurridos);
-        $promedio = $diasTranscurridos > 0 ? $total / $diasTranscurridos : 0;
+        $habilesTranscurridos = $ultimoDia->dias_transcurridos ?? 0;
+        $habilesRestantes = max(0, $diasHabilesMes - $habilesTranscurridos);
+        $promedio = $ultimoDia->promedio ?? null;
+        $proyeccion = $ultimoDia->proyeccion ?? null;
 
         $indicadores = (object) [
             'fecha_corte' => $corteMes,
@@ -341,16 +348,21 @@ class SeguimientoPedidoProduccionController extends Controller
             'pendientes' => $pendientes->count(),
             'prendas_pendientes' => (int) $pendientes->sum('cantidad_pendiente'),
             'urgentes' => $pendientes->where('prioridad', 'URGENTE')->count(),
-            'promedio' => round($promedio, 1),
-            'promedio_ot' => $diasTranscurridos > 0
-                ? round($salidas->count() / $diasTranscurridos, 1) : 0,
+            'promedio' => $promedio,
+            'promedio_ot' => $habilesTranscurridos > 0
+                ? round($salidas->count() / $habilesTranscurridos, 1) : null,
             'promedio_ayer' => $ultimoDia->promedio_anterior ?? null,
             'variacion_promedio' => $ultimoDia->variacion ?? null,
             'variacion_promedio_pct' => $ultimoDia->variacion_porcentaje ?? null,
-            'dias_transcurridos' => $diasTranscurridos,
-            'dias_restantes' => $diasRestantes,
-            'proyeccion_adicional' => (int) round($promedio * $diasRestantes),
-            'proyeccion_cierre' => (int) round($total + $promedio * $diasRestantes),
+            'proyeccion_ayer' => $ultimoDia->proyeccion_anterior ?? null,
+            'variacion_proyeccion' => $ultimoDia->variacion_proyeccion ?? null,
+            'variacion_proyeccion_pct' => $ultimoDia->variacion_proyeccion_porcentaje ?? null,
+            'dias_transcurridos' => $habilesTranscurridos,
+            'dias_restantes' => $habilesRestantes,
+            'dias_habiles_mes' => $diasHabilesMes,
+            'proyeccion_adicional' => $proyeccion !== null
+                ? $proyeccion - $total : null,
+            'proyeccion_cierre' => $proyeccion,
         ];
         return view('seguimiento_pedidos_produccion.dashboard_mensual', compact(
             'mes', 'dias', 'salidas', 'pendientes', 'porEtapa', 'indicadores',
