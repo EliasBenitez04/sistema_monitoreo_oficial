@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use App\Services\LogisticaConciliacionService;
+use App\Support\ConfirmacionTupi;
 
 class SeguimientoPedidoController extends Controller
 {
@@ -59,7 +60,7 @@ class SeguimientoPedidoController extends Controller
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw(ConfirmacionTupi::sql('r') . ' IS NOT NULL')
                     ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
             }, 'confirmado')
             ->selectSub(function ($q) {
@@ -73,7 +74,7 @@ class SeguimientoPedidoController extends Controller
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw(ConfirmacionTupi::sql('r') . ' IS NOT NULL')
                     ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, r.sucursal_destino, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ', 'COMERCIAL MATRIZ')")
                     ->selectRaw('COALESCE(SUM(r.cantidad), 0)');
             }, 'confirmado_locales')
@@ -86,7 +87,7 @@ class SeguimientoPedidoController extends Controller
                             $r->select(DB::raw(1))
                                 ->from('ot_logistica_remisiones as rc')
                                 ->whereColumn('rc.id_ot', 'spd_conf.id_ot')
-                                ->whereNotNull('rc.fecha_recepcion')
+                                ->whereRaw(ConfirmacionTupi::sql('rc') . ' IS NOT NULL')
                                 ->where(function ($origen) {
                                     $origen->whereRaw("UPPER(TRIM(COALESCE(rc.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
                                         ->orWhere('rc.cod_sucursal_salida', 1);
@@ -98,7 +99,7 @@ class SeguimientoPedidoController extends Controller
                                 })
                                 ->where(function ($fecha) {
                                     $fecha->whereNull('seguimiento_pedido.fecha_pedido')
-                                        ->orWhereColumn('rc.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                                        ->orWhereRaw(ConfirmacionTupi::sql('rc') . ' >= seguimiento_pedido.fecha_pedido');
                                 });
                         })
                         // Caso histórico: la OT ya había sido despachada antes del pedido.
@@ -123,7 +124,7 @@ class SeguimientoPedidoController extends Controller
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw(ConfirmacionTupi::sql('r') . ' IS NOT NULL')
                     ->where(function ($origen) {
                         $origen->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
                             ->orWhere('r.cod_sucursal_salida', 1);
@@ -135,15 +136,15 @@ class SeguimientoPedidoController extends Controller
                     })
                     ->where(function ($fecha) {
                         $fecha->whereNull('seguimiento_pedido.fecha_pedido')
-                            ->orWhereColumn('r.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                            ->orWhereRaw(ConfirmacionTupi::sql('r') . ' >= seguimiento_pedido.fecha_pedido');
                     })
-                    ->selectRaw('MIN(r.fecha_recepcion)');
+                    ->selectRaw('MIN(' . ConfirmacionTupi::sql('r') . ')');
             }, 'primera_confirmacion')
             ->selectSub(function ($q) {
                 $q->from('seguimiento_pedido_detalle as spd')
                     ->join('ot_logistica_remisiones as r', 'r.id_ot', '=', 'spd.id_ot')
                     ->whereColumn('spd.seguimiento_pedido_id', 'seguimiento_pedido.id')
-                    ->whereNotNull('r.fecha_recepcion')
+                    ->whereRaw(ConfirmacionTupi::sql('r') . ' IS NOT NULL')
                     ->where(function ($origen) {
                         $origen->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')")
                             ->orWhere('r.cod_sucursal_salida', 1);
@@ -155,9 +156,9 @@ class SeguimientoPedidoController extends Controller
                     })
                     ->where(function ($fecha) {
                         $fecha->whereNull('seguimiento_pedido.fecha_pedido')
-                            ->orWhereColumn('r.fecha_recepcion', '>=', 'seguimiento_pedido.fecha_pedido');
+                            ->orWhereRaw(ConfirmacionTupi::sql('r') . ' >= seguimiento_pedido.fecha_pedido');
                     })
-                    ->selectRaw('MAX(r.fecha_recepcion)');
+                    ->selectRaw('MAX(' . ConfirmacionTupi::sql('r') . ')');
             }, 'ultima_confirmacion')
             ->orderByDesc('id');
 
@@ -393,8 +394,8 @@ class SeguimientoPedidoController extends Controller
 
             $remisiones = DB::table('ot_logistica_remisiones')
                 ->whereIn('id_ot', $idsOt)
-                ->whereNotNull('fecha_recepcion')
-                ->select('id_ot', DB::raw('MIN(fecha_recepcion) as primera_recepcion'))
+                ->whereRaw(ConfirmacionTupi::sql('ot_logistica_remisiones') . ' IS NOT NULL')
+                ->select('id_ot', DB::raw('MIN(' . ConfirmacionTupi::sql('ot_logistica_remisiones') . ') as primera_recepcion'))
                 ->groupBy('id_ot')
                 ->get()
                 ->keyBy('id_ot');
@@ -795,6 +796,11 @@ class SeguimientoPedidoController extends Controller
                 }
 
                 $movimientos = $movimientos
+                    ->map(function ($movimiento) {
+                        // Sin modificar PostgreSQL: para TUPI, emisión = confirmación.
+                        $movimiento->fecha_recepcion = ConfirmacionTupi::fecha($movimiento);
+                        return $movimiento;
+                    })
                     ->filter(function ($movimiento) use ($idsOt) {
                         return in_array((int) $movimiento->id_ot, array_map('intval', $idsOt), true);
                     })
@@ -839,14 +845,6 @@ class SeguimientoPedidoController extends Controller
                                     'recibido' => (int) $grupo
                                         ->filter(function ($r) {
                                             return !empty($r->fecha_recepcion);
-                                        })
-                                        ->sum('cantidad'),
-                                    // Solo para la vista TUPI: cada línea emitida equivale
-                                    // a confirmación operativa, aunque no tenga recepción física.
-                                    'confirmado_por_emision' => (int) $grupo
-                                        ->filter(function ($r) {
-                                            return !empty($r->fecha_remision)
-                                                || !empty($r->fecha_recepcion);
                                         })
                                         ->sum('cantidad'),
                                     'primera_remision' => $fechasRemision->isNotEmpty()
@@ -895,22 +893,6 @@ class SeguimientoPedidoController extends Controller
                     ? 'RECIBIDO'
                     : ($r->recibido > 0 ? 'PARCIAL' : 'EN TRANSITO');
 
-                // TUPI se confirma por fecha de emisión, solo para esta tabla.
-                // No se cambia "recibido" ni "fecha_recepcion": los KPI físicos
-                // y el resto de los destinos conservan sus valores originales.
-                $r->es_tupi = strtoupper(trim((string) $r->local)) === 'TUPI';
-                $r->recibido_visual = $r->es_tupi
-                    ? min($r->enviado, (int) ($r->confirmado_por_emision ?? 0))
-                    : $r->recibido;
-                $r->pendiente_visual = max(0, $r->enviado - $r->recibido_visual);
-                $r->estado_local_visual = $r->es_tupi && $r->ultima_remision
-                    ? ($r->enviado > 0 && $r->pendiente_visual === 0
-                        ? 'CONFIRMADO'
-                        : ($r->recibido_visual > 0 ? 'PARCIAL' : 'EN TRANSITO'))
-                    : $r->estado_local;
-                $r->fecha_confirmacion_visual = $r->es_tupi && $r->ultima_remision
-                    ? $r->ultima_remision
-                    : $r->ultima_recepcion;
                 return $r;
             })->values();
 
@@ -961,10 +943,6 @@ class SeguimientoPedidoController extends Controller
 
             $ot->locales_enviados = $ot->locales_comerciales->count();
             $ot->locales_confirmados = $ot->locales_comerciales->where('estado_local', 'RECIBIDO')->count();
-            $ot->locales_confirmados_visuales = $ot->locales_comerciales
-                ->filter(function ($local) {
-                    return in_array($local->estado_local_visual, ['RECIBIDO', 'CONFIRMADO'], true);
-                })->count();
             $ot->pendiente_recepcion = max(0, $topeOt - $ot->recibido);
 
             // Etapa real de punta a punta. No se infiere por una etiqueta manual:
@@ -1483,7 +1461,7 @@ class SeguimientoPedidoController extends Controller
                 'spd.seguimiento_pedido_id',
                 $idsPedido->all()
             )
-            ->whereNotNull('r.fecha_recepcion')
+            ->whereRaw(ConfirmacionTupi::sql('r') . ' IS NOT NULL')
             ->where(function ($origen) {
                 $origen->whereRaw(
                     "UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')"
@@ -1502,11 +1480,7 @@ class SeguimientoPedidoController extends Controller
             })
             ->where(function ($fecha) {
                 $fecha->whereNull('sp.fecha_pedido')
-                    ->orWhereColumn(
-                        'r.fecha_recepcion',
-                        '>=',
-                        'sp.fecha_pedido'
-                    );
+                    ->orWhereRaw(ConfirmacionTupi::sql('r') . ' >= sp.fecha_pedido');
             })
             ->groupBy(
                 'spd.seguimiento_pedido_id',
@@ -1516,7 +1490,7 @@ class SeguimientoPedidoController extends Controller
                 'spd.seguimiento_pedido_id',
                 'r.id_ot',
                 DB::raw(
-                    'MIN(r.fecha_recepcion) as primera_recepcion'
+                    'MIN(' . ConfirmacionTupi::sql('r') . ') as primera_recepcion'
                 )
             )
             ->get()

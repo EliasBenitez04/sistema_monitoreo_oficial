@@ -24,7 +24,7 @@
     if ($auditoriaPrivada) {
         $kpisCabecera = array_merge($kpisCabecera, [
             ['Remitido · con remisión', number_format($resumen->enviado,0,',','.'), 'truck'],
-            ['Confirmado · con recepción', number_format($resumen->recibido,0,',','.'), 'store'],
+            ['Confirmado', number_format($resumen->recibido,0,',','.'), 'store'],
             ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double'],
         ]);
     }
@@ -323,7 +323,7 @@
                 <div class="card-body pt-2">
                     <div class="table-responsive">
                         <table class="table table-sm table-hover text-center align-middle bg-white mb-0">
-                            <thead><tr><th>Fecha</th><th>Origen</th><th></th><th>Destino</th><th>Cantidad</th><th>Tipo</th><th>Recepción / confirmación</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Origen</th><th></th><th>Destino</th><th>Cantidad</th><th>Tipo</th><th>Recepción</th></tr></thead>
                             <tbody>
                             @foreach($ot->movimientos_detalle as $mov)
                                 <tr>
@@ -333,17 +333,7 @@
                                     <td><strong>{{ $mov->destino_mostrar }}</strong></td>
                                     <td><span class="badge badge-primary px-2">{{ number_format($mov->cantidad,0,',','.') }}</span></td>
                                     <td><span class="badge {{ $mov->tipo_movimiento === 'DESPACHO CENTRAL' ? 'badge-info' : 'badge-warning' }}">{{ $mov->tipo_movimiento }}</span></td>
-                                    <td>
-                                        @if(strtoupper(trim((string) $mov->destino_mostrar)) === 'TUPI' && $mov->fecha_remision)
-                                            {{-- TUPI se confirma operativamente con la fecha de emisión, sin alterar la recepción física. --}}
-                                            <span class="badge badge-success">CONFIRMADO</span>
-                                            <small class="d-block text-muted">Emisión: {{ date('d/m/Y', strtotime($mov->fecha_remision)) }}</small>
-                                        @elseif($mov->fecha_recepcion)
-                                            {{ date('d/m/Y', strtotime($mov->fecha_recepcion)) }}
-                                        @else
-                                            Pendiente
-                                        @endif
-                                    </td>
+                                    <td>{{ $mov->fecha_recepcion ? date('d/m/Y', strtotime($mov->fecha_recepcion)) : 'Pendiente' }}</td>
                                 </tr>
                             @endforeach
                             </tbody>
@@ -369,7 +359,7 @@
             @if($auditoriaPrivada)
                 <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen movido (auditoría)</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
                 <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen re-movido</small><strong>{{ number_format($ot->movimientos_adicionales,0,',','.') }}</strong></div></div>
-                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Locales confirmados (incluye TUPI por emisión)</small><strong>{{ $ot->locales_confirmados_visuales }}/{{ $ot->locales_enviados }}</strong></div></div>
+                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Locales comerciales confirmados</small><strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> <span class="text-muted">(máximo operativo: 12)</span></div></div>
             @else
                 <div class="col-12">
                     <div class="border rounded p-2 text-center">
@@ -385,31 +375,19 @@
         <h6 class="font-weight-bold mb-2"><i class="fas fa-store mr-1"></i> Locales comerciales</h6>
         <div class="table-responsive">
             <table class="table table-sm table-hover text-center align-middle">
-                <thead><tr><th>Local</th>@if($auditoriaPrivada)<th class="text-right">Enviado</th><th class="text-right">Recibido / confirmado</th><th class="text-right">Pendiente</th>@endif<th>Últ. remisión</th><th>Recepción / confirmación</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Local</th>@if($auditoriaPrivada)<th class="text-right">Enviado</th><th class="text-right">Recibido</th><th class="text-right">Pendiente</th>@endif<th>Últ. remisión</th><th>Recepción</th><th>Estado</th></tr></thead>
                 <tbody>
                 @forelse($ot->locales_comerciales as $local)
                     <tr>
                         <td>{{ $local->local }}</td>
                         @if($auditoriaPrivada)
                             <td class="text-right">{{ number_format($local->enviado,0,',','.') }}</td>
-                            <td class="text-right">{{ number_format($local->recibido_visual,0,',','.') }}</td>
-                            <td class="text-right">{{ number_format($local->pendiente_visual,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($local->recibido,0,',','.') }}</td>
+                            <td class="text-right">{{ number_format($local->pendiente,0,',','.') }}</td>
                         @endif
                         <td>{{ $local->ultima_remision ? date('d/m/Y', strtotime($local->ultima_remision)) : '-' }}</td>
-                        <td>
-                            {{ $local->fecha_confirmacion_visual ? date('d/m/Y', strtotime($local->fecha_confirmacion_visual)) : '-' }}
-                            @if($local->es_tupi && $local->ultima_remision)
-                                <small class="d-block text-muted">Emisión</small>
-                            @endif
-                        </td>
-                        <td>
-                            <span class="badge {{ in_array($local->estado_local_visual, ['RECIBIDO', 'CONFIRMADO'], true) ? 'badge-success' : ($local->estado_local_visual === 'PARCIAL' ? 'badge-warning' : 'badge-secondary') }}">
-                                {{ $local->estado_local_visual }}
-                            </span>
-                            @if($local->es_tupi && $local->ultima_remision)
-                                <small class="d-block text-muted">Por emisión</small>
-                            @endif
-                        </td>
+                        <td>{{ $local->ultima_recepcion ? date('d/m/Y', strtotime($local->ultima_recepcion)) : '-' }}</td>
+                        <td><span class="badge {{ $local->estado_local === 'RECIBIDO' ? 'badge-success' : ($local->estado_local === 'PARCIAL' ? 'badge-warning' : 'badge-secondary') }}">{{ $local->estado_local }}</span></td>
                     </tr>
                 @empty
                     <tr><td colspan="{{ $auditoriaPrivada ? 7 : 4 }}" class="text-center text-muted">Esta OT todavía no tiene remisiones vinculadas.</td></tr>
@@ -417,7 +395,6 @@
                 </tbody>
             </table>
         </div>
-        <div class="small text-muted mt-2">Para TUPI, las unidades emitidas se consideran confirmadas operativamente en esta tabla. La recepción física y los KPI siguen usando la fecha de recepción real.</div>
         <h6 class="font-weight-bold mt-4 mb-2"><i class="fas fa-warehouse mr-1"></i> Mayorista / Depósito</h6>
         <div class="table-responsive">
             <table class="table table-sm table-hover text-center align-middle mb-2">
@@ -442,7 +419,7 @@
         </div>
 
         @if($auditoriaPrivada)
-            <div class="small text-muted text-center mt-3">Locales confirmados (incluye TUPI por emisión): <strong>{{ $ot->locales_confirmados_visuales }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción física: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
+            <div class="small text-muted text-center mt-3">Locales comerciales confirmados: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
         @else
             <div class="small text-muted text-center mt-3">
                 Seguimiento operativo de remisiones y recepciones por local.

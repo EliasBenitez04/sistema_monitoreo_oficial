@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Ot;
+use App\Support\ConfirmacionTupi;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -102,6 +103,32 @@ class LogisticaConciliacionService
 
         $remisionesPorOt = $this->remisionesOriginalesPorOt($idsOt);
 
+        /*
+         * TUPI puede recibir desde Comercial Matriz (redistribución).
+         * La emisión confirma ese destino, pero NO constituye una nueva
+         * salida original de la OT. Solo cierra unidades remitidas
+         * que permanecían sin confirmar.
+         */
+        $tupiPorOt = collect();
+        if (Schema::hasTable('ot_logistica_remisiones')) {
+            $tupiPorOt = DB::table('ot_logistica_remisiones as r')
+            ->whereIn('r.id_ot', $idsOt)
+            ->whereNotNull('r.fecha_remision')
+            ->where(function ($q) {
+                $q->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, ''))) = 'TUPI'")
+                  ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) = 'TUPI'");
+            })
+            ->where(function ($q) {
+                $q->whereNull('r.cod_sucursal_salida')
+                    ->orWhere('r.cod_sucursal_salida', '<>', 1);
+            })
+            ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
+            ->groupBy('r.id_ot')
+            ->select('r.id_ot', DB::raw('SUM(r.cantidad) as cantidad'))
+            ->get()
+            ->keyBy('id_ot');
+        }
+
         // Retornos físicos LOCAL -> CASA CENTRAL importados desde ENVIOS.
         // No se acredita stock hasta existir fecha_recepcion en Casa Central.
         $devolucionesPorOt = $this->devolucionesPorOt($idsOt);
@@ -119,6 +146,7 @@ class LogisticaConciliacionService
                 $trazabilidad,
                 $planPorOt,
                 $remisionesPorOt,
+                $tupiPorOt,
                 $devolucionesPorOt,
                 $coberturaPlanPorOt
             ) {
@@ -159,6 +187,7 @@ class LogisticaConciliacionService
 
                 $plan = $planPorOt->get($idOt);
                 $remision = $remisionesPorOt->get($idOt);
+                $tupi = $tupiPorOt->get($idOt);
                 $devolucion = $devolucionesPorOt->get($idOt);
                 $coberturaPlan = $coberturaPlanPorOt->get($idOt);
 
@@ -301,6 +330,13 @@ class LogisticaConciliacionService
 
                 $recibidoRaw =
                     $recibidoCentralNeto + $recibidoCierre;
+
+                // TUPI suma como confirmación solamente dentro del saldo
+                // emitido aún sin confirmar; no incrementa el remitido ni PT.
+                $recibidoRaw += min(
+                    max(0, (int) ($tupi->cantidad ?? 0)),
+                    max(0, $remitidoRaw - $recibidoRaw)
+                );
 
                 $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
                 $recibidoEfectivo = min(
@@ -621,11 +657,11 @@ class LogisticaConciliacionService
                 'id_ot',
                 DB::raw('SUM(cantidad) as remitido_original'),
                 DB::raw(
-                    'SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) as recibido_original'
+                    'SUM(CASE WHEN ' . ConfirmacionTupi::sql('ot_logistica_remisiones') . ' IS NOT NULL THEN cantidad ELSE 0 END) as recibido_original'
                 ),
                 DB::raw('MIN(fecha_remision) as primera_remision'),
                 DB::raw('MAX(fecha_remision) as ultima_remision'),
-                DB::raw('MAX(fecha_recepcion) as ultima_recepcion')
+                DB::raw('MAX(' . ConfirmacionTupi::sql('ot_logistica_remisiones') . ') as ultima_recepcion')
             )
             ->get()
             ->keyBy('id_ot');
@@ -774,7 +810,7 @@ class LogisticaConciliacionService
             ->whereRaw(
                 "UPPER(COALESCE(NULLIF(TRIM(sucursal_destino), ''), NULLIF(TRIM(sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')"
             )
-            ->select('codigo', 'cantidad', 'fecha_remision', 'fecha_recepcion')
+            ->select('codigo', 'cantidad', 'fecha_remision', 'fecha_recepcion', 'sucursal_logistica', 'sucursal_destino')
             ->get();
 
         return $filas->groupBy(function ($fila) use ($otPorBaseUnica) {
@@ -787,11 +823,13 @@ class LogisticaConciliacionService
                 'remitido_original' => (int) $grupo->sum('cantidad'),
                 'recibido_original' => (int) $grupo
                     ->filter(function ($fila) {
-                        return !empty($fila->fecha_recepcion);
+                        return !empty(ConfirmacionTupi::fecha($fila));
                     })->sum('cantidad'),
                 'primera_remision' => $grupo->min('fecha_remision'),
                 'ultima_remision' => $grupo->max('fecha_remision'),
-                'ultima_recepcion' => $grupo->max('fecha_recepcion'),
+                'ultima_recepcion' => $grupo->map(function ($fila) {
+                    return ConfirmacionTupi::fecha($fila);
+                })->filter()->max(),
             ];
         });
     }
@@ -968,10 +1006,10 @@ class LogisticaConciliacionService
                     "COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ') THEN r.cantidad ELSE 0 END), 0) as movido_central"
                 ),
                 DB::raw(
-                    'COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
+                    'COALESCE(SUM(CASE WHEN ' . ConfirmacionTupi::sql('r') . ' IS NOT NULL THEN r.cantidad ELSE 0 END), 0) as recibido_total'
                 ),
                 DB::raw(
-                    "COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
+                    "COALESCE(SUM(CASE WHEN " . ConfirmacionTupi::sql('r') . " IS NOT NULL AND (r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')) THEN r.cantidad ELSE 0 END), 0) as recibido_central"
                 )
             )
             ->get()
