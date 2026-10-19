@@ -168,7 +168,7 @@
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
                                 <span class="badge badge-success">1ª RECEPCIÓN</span>
-                                <div class="small mt-1 text-success">
+                                <div class="small mt-1 {{ ($otKpi->ot_completa ?? false) ? 'text-success' : 'text-warning' }}">
                                     Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
                                 </div>
                                 @if($auditoriaPrivada && ($otKpi->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
@@ -180,7 +180,7 @@
                                 <span class="badge badge-info">
                                     <i class="fas fa-history mr-1"></i>DISPONIBLE PREVIAMENTE
                                 </span>
-                                <div class="small mt-1 text-success">
+                                <div class="small mt-1 {{ ($otKpi->ot_completa ?? false) ? 'text-success' : 'text-warning' }}">
                                     Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
                                 </div>
                             @elseif($otKpi->kpi_estado === 'REMISIONADO')
@@ -221,7 +221,7 @@
                 <span class="badge badge-pill {{ ($ot->ot_completa ?? false) ? 'badge-success' : 'badge-primary' }} px-3 py-2">{{ $ot->etapa_actual_visual ?? $ot->etapa_actual }}</span>
             </div>
             <div class="col-lg-2 mt-2 mt-lg-0">
-                <span class="badge {{ ($ot->ot_completa ?? false) ? 'badge-success' : ($ot->estado_seguimiento === 'COMPLETO' ? 'badge-success' : 'badge-warning') }} px-2 py-2">
+                <span class="badge {{ ($ot->ot_completa ?? false) ? 'badge-success' : 'badge-warning' }} px-2 py-2">
                     {{ $ot->estado_seguimiento_visual ?? $ot->estado_seguimiento }}
                 </span>
                 <button type="button" class="btn btn-sm btn-light border ml-2 seguimiento-toggle" aria-label="Desplegar detalle">
@@ -343,7 +343,7 @@
                 <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Remisiones originales</small><strong>{{ number_format($ot->remitido_central_bruto ?? 0,0,',','.') }}</strong></div></div>
                 <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Devoluciones recibidas</small><strong>{{ number_format($ot->devoluciones_recibidas ?? 0,0,',','.') }}</strong></div></div>
                 <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Redistribuciones</small><strong>{{ number_format($ot->redistribuciones ?? 0,0,',','.') }}</strong></div></div>
-                <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Movimientos registrados</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
+                <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Movimientos auditados</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
                 <div class="col-12 text-center small text-muted">Destinos con recepción: {{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</div>
             @else
                 <div class="col-12">
