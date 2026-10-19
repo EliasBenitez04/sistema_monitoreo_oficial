@@ -252,20 +252,41 @@
                     </h3>
                 </div>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 ventas-table">
+                    <table class="table table-sm table-hover mb-0 ventas-table" id="ventasResultadoLocalTable">
                         <thead>
                             <tr>
                                 <th>Local</th>
-                                <th class="text-right">Cantidad</th>
-                                <th class="text-right">PLISTA</th>
-                                <th class="text-right">DTO</th>
-                                <th class="text-right">PVTA</th>
+                                <th class="text-right" aria-sort="none">
+                                    <button type="button" class="resultado-local-sort" data-sort="cantidad" title="Ordenar por cantidad">
+                                        Cantidad <i class="fas fa-sort ml-1 sort-icon" aria-hidden="true"></i>
+                                    </button>
+                                </th>
+                                <th class="text-right" aria-sort="none">
+                                    <button type="button" class="resultado-local-sort" data-sort="plista" title="Ordenar por precio de lista">
+                                        PLISTA <i class="fas fa-sort ml-1 sort-icon" aria-hidden="true"></i>
+                                    </button>
+                                </th>
+                                <th class="text-right" aria-sort="none">
+                                    <button type="button" class="resultado-local-sort" data-sort="dto" title="Ordenar por descuento">
+                                        DTO <i class="fas fa-sort ml-1 sort-icon" aria-hidden="true"></i>
+                                    </button>
+                                </th>
+                                <th class="text-right" aria-sort="descending">
+                                    <button type="button" class="resultado-local-sort is-active" data-sort="pvta" title="Ordenar por precio de venta">
+                                        PVTA <i class="fas fa-sort-down ml-1 sort-icon" aria-hidden="true"></i>
+                                    </button>
+                                </th>
                                 <th class="text-right">Tickets</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="ventasResultadoLocalBody">
                             @forelse($porLocal as $item)
-                                <tr>
+                                <tr class="resultado-local-fila"
+                                    data-local="{{ $item->local }}"
+                                    data-cantidad="{{ (float) $item->unidades_netas }}"
+                                    data-plista="{{ (float) $item->venta_lista }}"
+                                    data-dto="{{ (float) $item->descuento }}"
+                                    data-pvta="{{ (float) $item->venta_neta }}">
                                     <td><strong>{{ $item->local }}</strong></td>
                                     <td class="text-right font-weight-bold">
                                         {{ number_format($item->unidades_netas,0,',','.') }}
@@ -889,6 +910,27 @@
 .resumen-dia-card .table-responsive{
     flex:1 1 auto;
 }
+.resultado-local-sort{
+    border:0;
+    padding:0;
+    margin:0;
+    background:transparent;
+    color:inherit;
+    font:inherit;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+}
+.resultado-local-sort:hover,
+.resultado-local-sort:focus,
+.resultado-local-sort.is-active{
+    color:#2563eb;
+}
+.resultado-local-sort:focus-visible{
+    outline:2px solid #2563eb;
+    outline-offset:3px;
+}
+.resultado-local-sort .sort-icon{font-size:.68rem}
 .venta-producto-row{cursor:pointer}
 .venta-producto-row:hover{background:#f8fbff}
 .venta-producto-detalle{text-decoration:none!important;line-height:1.2}
@@ -1459,6 +1501,79 @@
                 caja.classList.remove('d-none');
             });
     }
+
+    // Ordena únicamente las filas del resultado por local, respetando
+    // las sumas y los filtros que ya calculó el controlador (incluye NCR).
+    const resultadoLocalBody = document.getElementById('ventasResultadoLocalBody');
+    const resultadoLocalSortButtons = document.querySelectorAll(
+        '#ventasResultadoLocalTable .resultado-local-sort'
+    );
+    const resultadoLocalSortState = { campo: 'pvta', direccion: 'desc' };
+
+    function actualizarOrdenResultadoLocal() {
+        resultadoLocalSortButtons.forEach(function (button) {
+            const activo = button.dataset.sort === resultadoLocalSortState.campo;
+            const icono = button.querySelector('.sort-icon');
+            const cabecera = button.closest('th');
+
+            button.classList.toggle('is-active', activo);
+            cabecera.setAttribute(
+                'aria-sort',
+                activo ? (resultadoLocalSortState.direccion === 'desc' ? 'descending' : 'ascending') : 'none'
+            );
+
+            if (icono) {
+                icono.classList.remove('fa-sort', 'fa-sort-up', 'fa-sort-down');
+                icono.classList.add(
+                    activo
+                        ? (resultadoLocalSortState.direccion === 'desc' ? 'fa-sort-down' : 'fa-sort-up')
+                        : 'fa-sort'
+                );
+            }
+        });
+    }
+
+    function ordenarResultadoLocal(campo) {
+        if (!resultadoLocalBody || !['cantidad', 'plista', 'dto', 'pvta'].includes(campo)) {
+            return;
+        }
+
+        if (resultadoLocalSortState.campo === campo) {
+            resultadoLocalSortState.direccion =
+                resultadoLocalSortState.direccion === 'desc' ? 'asc' : 'desc';
+        } else {
+            resultadoLocalSortState.campo = campo;
+            resultadoLocalSortState.direccion = 'desc';
+        }
+
+        const direccion = resultadoLocalSortState.direccion === 'desc' ? -1 : 1;
+        const filas = Array.from(
+            resultadoLocalBody.querySelectorAll('.resultado-local-fila')
+        );
+
+        filas.sort(function (a, b) {
+            // Se comparan números originales, no el texto 'Gs -1.457.000'.
+            // También funcionan cantidades e importes negativos de NCR.
+            const diferencia = Number(a.dataset[campo]) - Number(b.dataset[campo]);
+            if (diferencia !== 0) {
+                return direccion * diferencia;
+            }
+            return (a.dataset.local || '').localeCompare(
+                b.dataset.local || '', 'es', { sensitivity: 'base' }
+            );
+        });
+
+        filas.forEach(function (fila) {
+            resultadoLocalBody.appendChild(fila);
+        });
+        actualizarOrdenResultadoLocal();
+    }
+
+    resultadoLocalSortButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+            ordenarResultadoLocal(button.dataset.sort);
+        });
+    });
 
     const topProductosBody = document.getElementById(
         'topProductosBody'
