@@ -1582,8 +1582,8 @@
                                                 @can('ot edit')
                                                     <button type="button"
                                                             class="btn btn-sm btn-outline-primary mr-2"
-                                                            data-toggle="modal"
-                                                            data-target="#editarDistribucion{{ $trazabilidad->id_trazabilidad }}">
+                                                            data-bs-toggle="modal"
+                                                            data-bs-target="#editarDistribucion{{ $trazabilidad->id_trazabilidad }}">
                                                         <i class="bi bi-pencil-square mr-1"></i>
                                                         Editar distribución
                                                     </button>
@@ -1748,10 +1748,9 @@
                                                                 </div>
 
                                                                 <button type="button"
-                                                                        class="close"
-                                                                        data-dismiss="modal"
+                                                                        class="btn-close"
+                                                                        data-bs-dismiss="modal"
                                                                         aria-label="Cerrar">
-                                                                    <span aria-hidden="true">&times;</span>
                                                                 </button>
                                                             </div>
 
@@ -1869,7 +1868,7 @@
                                                             <div class="modal-footer">
                                                                 <button type="button"
                                                                         class="btn btn-light border"
-                                                                        data-dismiss="modal">
+                                                                        data-bs-dismiss="modal">
                                                                     Cancelar
                                                                 </button>
 
@@ -2098,7 +2097,8 @@
     </div>
 
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {{-- Bootstrap 5: el bundle incluye el JavaScript necesario para abrir y cerrar los modales de edición. --}}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
 
