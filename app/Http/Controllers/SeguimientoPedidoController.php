@@ -1007,8 +1007,10 @@ class SeguimientoPedidoController extends Controller
                     (int) $conciliacion->ingreso_terminacion;
                 $ot->producto_terminado =
                     (int) $conciliacion->producto_terminado;
+                // El indicador de asignación usa el detalle logístico real;
+                // planificado equivale al objetivo PT y no prueba destino asignado.
                 $ot->distribuido =
-                    (int) $conciliacion->planificado;
+                    (int) $conciliacion->plan_detallado;
                 $ot->enviado =
                     (int) $conciliacion->remitido_original;
                 $ot->recibido =
