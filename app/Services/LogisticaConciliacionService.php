@@ -109,7 +109,9 @@ class LogisticaConciliacionService
          * salida original de la OT. Solo cierra unidades remitidas
          * que permanecían sin confirmar.
          */
-        $tupiPorOt = DB::table('ot_logistica_remisiones as r')
+        $tupiPorOt = collect();
+        if (Schema::hasTable('ot_logistica_remisiones')) {
+            $tupiPorOt = DB::table('ot_logistica_remisiones as r')
             ->whereIn('r.id_ot', $idsOt)
             ->whereNotNull('r.fecha_remision')
             ->where(function ($q) {
@@ -125,6 +127,7 @@ class LogisticaConciliacionService
             ->select('r.id_ot', DB::raw('SUM(r.cantidad) as cantidad'))
             ->get()
             ->keyBy('id_ot');
+        }
 
         // Retornos físicos LOCAL -> CASA CENTRAL importados desde ENVIOS.
         // No se acredita stock hasta existir fecha_recepcion en Casa Central.
