@@ -904,10 +904,10 @@ class SeguimientoPedidoController extends Controller
                     : $r->recibido;
                 $r->pendiente_visual = max(0, $r->enviado - $r->recibido_visual);
                 $r->estado_local_visual = $r->es_tupi && $r->ultima_remision
-                    && $r->enviado > 0 && $r->pendiente_visual === 0
-                    ? 'CONFIRMADO'
-                    : ($r->es_tupi && $r->recibido_visual > 0
-                        ? 'PARCIAL' : $r->estado_local);
+                    ? ($r->enviado > 0 && $r->pendiente_visual === 0
+                        ? 'CONFIRMADO'
+                        : ($r->recibido_visual > 0 ? 'PARCIAL' : 'EN TRANSITO'))
+                    : $r->estado_local;
                 $r->fecha_confirmacion_visual = $r->es_tupi && $r->ultima_remision
                     ? $r->ultima_remision
                     : $r->ultima_recepcion;
