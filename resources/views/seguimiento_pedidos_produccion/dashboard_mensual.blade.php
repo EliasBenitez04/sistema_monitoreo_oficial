@@ -60,7 +60,19 @@
     .prod-chart-legend{display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;font-size:.82rem;color:#536579;margin:1px 0 10px}
     .prod-chart-key{display:inline-block;vertical-align:middle;width:13px;height:13px;border-radius:3px;margin-right:6px}
     .prod-chart-svg{display:block;width:100%;max-height:350px}
-    .prod-chart-canvas{min-height:260px;background:#fff}
+    .prod-chart-canvas{min-height:260px;background:#fff;position:relative}
+    .prod-chart-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+    .prod-chart-summary-item{border:1px solid #e3ebf3;background:#f9fbfd;border-radius:9px;padding:11px 14px;min-width:0}
+    .prod-chart-summary-item small{display:block;color:#63758b;font-size:.72rem;margin-bottom:3px}
+    .prod-chart-summary-item strong{font-size:1.15rem;color:#23364b;font-weight:800}
+    .prod-chart-summary-item strong.is-positive{color:#15815c}
+    .prod-chart-summary-item strong.is-negative{color:#ba4141}
+    .prod-chart-tooltip{position:absolute;z-index:5;pointer-events:none;background:#183153;color:#fff;border-radius:8px;padding:11px 13px;font-size:.76rem;line-height:1.7;white-space:pre-line;box-shadow:0 6px 18px rgba(15,35,55,.22);max-width:260px}
+    .prod-chart-tooltip[hidden]{display:none}
+    .prod-chart-chartlabel{font-size:.83rem;font-weight:700;color:#28445f}
+    .prod-chart-zoom-note{font-size:.73rem;color:#64748b;text-align:center;margin-top:5px}
+    @media(max-width:767px){.prod-chart-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.prod-chart-summary-item{padding:9px}.prod-chart-summary-item strong{font-size:1rem}}
+    
     .prod-chart-donut-svg{display:block;margin:auto;max-width:280px;width:100%;height:auto}
     .prod-chart-donut-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:22px;margin:10px 0 8px;font-size:.88rem}
     .prod-chart-empty{color:#64748b;text-align:center;padding:110px 10px}
@@ -133,6 +145,9 @@
                 ? (int) $dia->proyeccion_anterior : null,
             'prendas' => (int) $dia->prendas,
             'acumulado' => (int) $dia->acumulado,
+            'promedio' => $dia->promedio !== null ? (float) $dia->promedio : null,
+            'prendas_ayer' => $dia->prendas_anterior !== null ? (int) $dia->prendas_anterior : null,
+            'dias_habiles' => (int) $dia->dias_transcurridos,
         ];
     })->values()->all();
 @endphp
@@ -140,25 +155,34 @@
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
         <div>
             <strong><i class="fas fa-chart-pie text-primary mr-2"></i>Gráficos de Producción</strong>
-            <div class="prod-chart-caption font-weight-normal mt-1">Evolución de la proyección al cierre y distribución de prendas del mes seleccionado.</div>
+            <div class="prod-chart-caption font-weight-normal mt-1">Comparación de producción real contra el promedio diario y seguimiento de la proyección del mes.</div>
         </div>
         <div class="btn-group btn-group-sm prod-chart-switch" role="group" aria-label="Cambiar tipo de gráfico">
-            <button type="button" class="btn btn-primary active prod-chart-switch-button" data-grafico="area" aria-pressed="true">Área</button>
+            <button type="button" class="btn btn-primary active prod-chart-switch-button" data-grafico="diario" aria-pressed="true">Ritmo diario</button>
+            <button type="button" class="btn btn-outline-primary prod-chart-switch-button" data-grafico="proyeccion" aria-pressed="false">Proyección</button>
             <button type="button" class="btn btn-outline-primary prod-chart-switch-button" data-grafico="donut" aria-pressed="false">Donut</button>
         </div>
     </div>
     <div class="card-body">
         <div id="prodGraficoArea">
+            <div class="prod-chart-summary" aria-live="polite">
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta1">Prendas del último día</small><strong id="prodResumenValor1">—</strong></div>
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta2">Prendas del día anterior</small><strong id="prodResumenValor2">—</strong></div>
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta3">Diferencia con ayer</small><strong id="prodResumenValor3">—</strong></div>
+                <div class="prod-chart-summary-item"><small id="prodResumenEtiqueta4">Promedio diario acumulado</small><strong id="prodResumenValor4">—</strong></div>
+            </div>
             <div class="prod-chart-legend">
-                <span><span class="prod-chart-key" style="background:#3d91c2"></span>Proyección calculada ese día</span>
-                <span><span class="prod-chart-key" style="background:#c8ced8"></span>Proyección del día anterior</span>
+                <span><span class="prod-chart-key" style="background:#3d91c2"></span><span id="prodLeyendaAzul">Prendas producidas ese día</span></span>
+                <span><span class="prod-chart-key" style="background:#c8ced8"></span><span id="prodLeyendaGris">Promedio por día hábil hasta esa fecha</span></span>
             </div>
             <div class="prod-chart-scroll">
                 <div class="prod-chart-canvas">
-                    <svg id="prodGraficoAreaSvg" class="prod-chart-svg" viewBox="0 0 960 350" role="img" aria-label="Comparación de la proyección mensual de producción calculada cada día con la proyección del día anterior"></svg>
+                    <svg id="prodGraficoAreaSvg" class="prod-chart-svg" viewBox="0 0 960 350" role="img" aria-label="Prendas reales producidas cada fecha comparadas con el promedio de producción por día hábil a esa fecha"></svg>
+                    <div class="prod-chart-tooltip" id="prodGraficoTooltip" hidden></div>
                 </div>
             </div>
-            <p class="small text-muted text-center mb-0 mt-2">Valores proyectados en prendas para el cierre del mes. Pasá el cursor por cada punto para ver su fecha y resultado.</p>
+            <p id="prodDescripcionGrafico" class="small text-muted text-center mb-0 mt-2">Azul: producción registrada en esa fecha. Gris: promedio diario acumulado. Son dos cifras en prendas comparables; los fines de semana sin producción figuran en cero.</p>
+            <div id="prodNotaEscala" class="prod-chart-zoom-note d-none">Escala vertical ampliada para apreciar las variaciones de la proyección; el eje no comienza en cero.</div>
         </div>
         <div id="prodGraficoDonut" class="d-none">
             <svg id="prodGraficoDonutSvg" class="prod-chart-donut-svg" viewBox="0 0 280 280" role="img" aria-label="Distribución real de prendas registradas con pedido P y sin pedido P"></svg>
