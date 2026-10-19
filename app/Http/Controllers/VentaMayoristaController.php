@@ -208,8 +208,14 @@ class VentaMayoristaController extends Controller
                 // Si falta el vínculo a la OT, no imputar reserva ni stock comercial.
                 $fila->muestra_estimada = $modelo && !$fila->sin_vinculo
                     ? min($muestrasPorOt, $fila->remitido) : 0;
-                $fila->potencial_venta = $fila->sin_vinculo ? 0
+                $fila->potencial_enviado = $fila->sin_vinculo ? 0
                     : max(0, $fila->remitido - $fila->muestra_estimada);
+                // Recibido es lo que tiene fecha de recepción. Una prenda
+                // todavía en tránsito no se presenta como disponible.
+                $muestrasRecibidas = $modelo && !$fila->sin_vinculo
+                    ? min($muestrasPorOt, $fila->recibido) : 0;
+                $fila->potencial_venta = $fila->sin_vinculo ? 0
+                    : max(0, $fila->recibido - $muestrasRecibidas);
                 $fila->muestra_asignada = $modelo && !$fila->sin_vinculo
                     ? min($muestrasPorOt, max(0, (int) $fila->asignado)) : 0;
                 $fila->sin_remision = max(0, (int) $fila->asignado - $fila->remitido);
@@ -220,13 +226,15 @@ class VentaMayoristaController extends Controller
 
         $vinculadas = $filas->where('sin_vinculo', false);
         $resumen = (object) [
-            'ot' => $vinculadas->pluck('id_ot')->unique()->count(),
+            'ot' => $vinculadas->where('remitido', '>', 0)->pluck('id_ot')->unique()->count(),
+            'ot_asignadas' => $vinculadas->where('asignado', '>', 0)->pluck('id_ot')->unique()->count(),
             'asignado_historico' => (int) $filas->sum('asignado'),
             'remitido' => (int) $filas->sum('remitido'),
             'recibido' => (int) $filas->sum('recibido'),
             'en_transito' => (int) $filas->sum('en_transito'),
             'modelo_remitido' => (int) $filas->where('canal', 'MODELO MUESTRA')->sum('remitido'),
             'muestra_estimada' => (int) $vinculadas->sum('muestra_estimada'),
+            'potencial_enviado' => (int) $vinculadas->sum('potencial_enviado'),
             'potencial_venta' => (int) $vinculadas->sum('potencial_venta'),
             'sin_vinculo' => (int) $filas->where('sin_vinculo', true)->sum('remitido'),
             'valor_referencial' => (float) $filas->sum('valor_referencial'),
