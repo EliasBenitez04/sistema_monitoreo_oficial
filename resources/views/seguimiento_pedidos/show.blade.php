@@ -23,8 +23,8 @@
 
     if ($auditoriaPrivada) {
         $kpisCabecera = array_merge($kpisCabecera, [
-            ['Remitido · con remisión', number_format($resumen->enviado,0,',','.'), 'truck'],
-            ['Confirmado', number_format($resumen->recibido,0,',','.'), 'store'],
+            ['Remitido neto', number_format($resumen->enviado,0,',','.'), 'truck'],
+            ['Confirmado neto', number_format($resumen->recibido,0,',','.'), 'store'],
             ['OT completas', $resumen->completas . '/' . $resumen->ots, 'check-double'],
         ]);
     }
@@ -97,9 +97,9 @@
 <div class="alert alert-light border py-2 mb-4">
     <i class="fas fa-info-circle text-info mr-1"></i>
     <strong>Importante:</strong>
-    el KPI de tiempo usa la <strong>primera recepción válida</strong> de cada OT.
-    En cambio, una <strong>OT completa</strong> exige que toda la cantidad efectiva
-    haya sido remitida y recibida. Son dos indicadores distintos.
+    el KPI de tiempo usa la <strong>primera confirmación válida</strong> de cada OT.
+    En cambio, una <strong>OT completa</strong> exige remisión neta y confirmación
+    de toda su cantidad. Son dos indicadores distintos.
 </div>
 @endif
 
@@ -168,7 +168,7 @@
                         <td>
                             @if($otKpi->kpi_estado === 'CONFIRMADO')
                                 <span class="badge badge-success">1ª RECEPCIÓN</span>
-                                <div class="small mt-1 text-success">
+                                <div class="small mt-1 {{ ($otKpi->ot_completa ?? false) ? 'text-success' : 'text-warning' }}">
                                     Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
                                 </div>
                                 @if($auditoriaPrivada && ($otKpi->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
@@ -180,7 +180,7 @@
                                 <span class="badge badge-info">
                                     <i class="fas fa-history mr-1"></i>DISPONIBLE PREVIAMENTE
                                 </span>
-                                <div class="small mt-1 text-success">
+                                <div class="small mt-1 {{ ($otKpi->ot_completa ?? false) ? 'text-success' : 'text-warning' }}">
                                     Estado: {{ $otKpi->estado_seguimiento_visual ?? $otKpi->estado_seguimiento }}
                                 </div>
                             @elseif($otKpi->kpi_estado === 'REMISIONADO')
@@ -200,7 +200,7 @@
 </div>
 
 @foreach($ots as $ot)
-<div class="card card-outline {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'card-success' : ($ot->estado_seguimiento === 'COMPLETO' ? 'card-success' : 'card-primary') }}">
+<div class="card card-outline {{ ($ot->ot_completa ?? false) ? 'card-success' : ($ot->estado_seguimiento === 'COMPLETO' ? 'card-success' : 'card-primary') }}">
     <div class="card-header seguimiento-card-header" data-toggle="collapse" data-target="#detalle-ot-{{ $ot->id_ot }}" aria-expanded="false" aria-controls="detalle-ot-{{ $ot->id_ot }}">
         <div class="row align-items-center text-center w-100 mx-0">
             <div class="col-lg-2 col-md-3 mb-2 mb-md-0">
@@ -218,10 +218,10 @@
             </div>
             <div class="col-lg-3 col-md-3 mb-2 mb-md-0">
                 <div class="text-muted small text-uppercase">Etapa actual</div>
-                <span class="badge badge-pill {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'badge-success' : 'badge-primary' }} px-3 py-2">{{ $ot->etapa_actual_visual ?? $ot->etapa_actual }}</span>
+                <span class="badge badge-pill {{ ($ot->ot_completa ?? false) ? 'badge-success' : 'badge-primary' }} px-3 py-2">{{ $ot->etapa_actual_visual ?? $ot->etapa_actual }}</span>
             </div>
             <div class="col-lg-2 mt-2 mt-lg-0">
-                <span class="badge {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'badge-success' : ($ot->estado_seguimiento === 'COMPLETO' ? 'badge-success' : 'badge-warning') }} px-2 py-2">
+                <span class="badge {{ ($ot->ot_completa ?? false) ? 'badge-success' : 'badge-warning' }} px-2 py-2">
                     {{ $ot->estado_seguimiento_visual ?? $ot->estado_seguimiento }}
                 </span>
                 <button type="button" class="btn btn-sm btn-light border ml-2 seguimiento-toggle" aria-label="Desplegar detalle">
@@ -232,28 +232,14 @@
     </div>
     <div id="detalle-ot-{{ $ot->id_ot }}" class="collapse seguimiento-detalle">
     <div class="card-body">
-        @if($auditoriaPrivada && ($ot->cierre_remitido_reconocido ?? 0) > 0)
-            <div class="alert alert-success py-2 mb-3">
-                <i class="fas fa-check-double mr-1"></i>
-                <strong>Complemento/cierre reconocido:</strong>
-                {{ number_format($ot->cierre_remitido_reconocido,0,',','.') }}
-                prenda(s) adicionales completaron saldo logístico pendiente.
-                @if(($ot->cierre_recibido_reconocido ?? 0) > 0)
-                    Confirmadas:
-                    {{ number_format($ot->cierre_recibido_reconocido,0,',','.') }}.
-                @endif
-                Los re-movimientos posteriores siguen visibles sólo como auditoría.
-            </div>
-        @endif
-
         <div class="row text-center mb-4">
             <div class="col-md"><small class="text-muted d-block">Orden</small><strong>{{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
             <div class="col-md"><small class="text-muted d-block">Ingreso Terminación</small><strong>{{ number_format($ot->ingreso_terminacion,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_ingreso ? date('d/m/Y', strtotime($ot->fecha_ingreso)) : '-' }}</div></div>
             <div class="col-md"><small class="text-muted d-block">Producto Terminado</small><strong>{{ number_format($ot->producto_terminado,0,',','.') }}</strong><div class="small text-muted">{{ $ot->fecha_pt ? date('d/m/Y', strtotime($ot->fecha_pt)) : '-' }}</div></div>
-            <div class="col-md"><small class="text-muted d-block">Logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª salida: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. movimiento: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
+            <div class="col-md"><small class="text-muted d-block">Asignado en logística</small><strong>{{ number_format($ot->distribuido,0,',','.') }}</strong><div class="small text-muted">1ª planificación: <strong>{{ $ot->fecha_logistica_primera ? date('d/m/Y', strtotime($ot->fecha_logistica_primera)) : '-' }}</strong></div>@if($ot->fecha_logistica_ultima && $ot->fecha_logistica_ultima != $ot->fecha_logistica_primera)<div class="small text-primary">Últ. planificación: <strong>{{ date('d/m/Y', strtotime($ot->fecha_logistica_ultima)) }}</strong></div>@endif</div>
             @if($auditoriaPrivada)
-                <div class="col-md"><small class="text-muted d-block">Remitido · con remisión</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
-                <div class="col-md"><small class="text-muted d-block">Confirmado · con recepción</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+                <div class="col-md"><small class="text-muted d-block">Remitido neto</small><strong>{{ number_format($ot->enviado,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
+                <div class="col-md"><small class="text-muted d-block">Confirmado neto</small><strong>{{ number_format($ot->recibido,0,',','.') }} / {{ number_format($ot->cantidad_orden,0,',','.') }}</strong></div>
             @endif
         </div>
 
@@ -277,7 +263,7 @@
                 </div>
                 <div class="text-right mt-2 mt-md-0">
                     <strong>{{ $ot->porcentaje_seguimiento }}%</strong>
-                    <div class="small text-muted">avance del flujo</div>
+                    <div class="small text-muted">prendas confirmadas</div>
                 </div>
             </div>
 
@@ -344,28 +330,27 @@
         </div>
         @endif
 
-        @if($auditoriaPrivada && ($ot->tiene_recepcion_confirmada ?? false) && ($ot->estado_conciliacion ?? 'CONFIRMADO') !== 'CONFIRMADO')
-            <div class="alert alert-light border py-2 mb-3">
-                <i class="fas fa-info-circle text-info mr-1"></i>
-                <strong>Estado operativo: RECIBIDO.</strong>
-                La OT ya tuvo recepción confirmada.
-                El saldo cuantitativo sigue visible como
-                <strong>{{ $ot->estado_conciliacion }}</strong>
-                y no modifica el estado visual.
+        @if($auditoriaPrivada && !($ot->ot_completa ?? false))
+            <div class="alert alert-warning py-2 mb-3">
+                <strong>OT pendiente:</strong>
+                {{ number_format($ot->pendiente_remitir ?? 0,0,',','.') }} por remitir
+                · {{ number_format($ot->pendiente_recepcion ?? 0,0,',','.') }} en tránsito.
             </div>
         @endif
 
         <div class="row mb-3">
             @if($auditoriaPrivada)
-                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen movido (auditoría)</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
-                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Volumen re-movido</small><strong>{{ number_format($ot->movimientos_adicionales,0,',','.') }}</strong></div></div>
-                <div class="col-md-4"><div class="border rounded p-2"><small class="text-muted d-block">Locales comerciales confirmados</small><strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> <span class="text-muted">(máximo operativo: 12)</span></div></div>
+                <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Remisiones originales</small><strong>{{ number_format($ot->remitido_central_bruto ?? 0,0,',','.') }}</strong></div></div>
+                <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Devoluciones recibidas</small><strong>{{ number_format($ot->devoluciones_recibidas ?? 0,0,',','.') }}</strong></div></div>
+                <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Redistribuciones</small><strong>{{ number_format($ot->redistribuciones ?? 0,0,',','.') }}</strong></div></div>
+                <div class="col-md-3 col-6 mb-2"><div class="border rounded p-2"><small class="text-muted d-block">Movimientos auditados</small><strong>{{ number_format($ot->movimientos_fisicos,0,',','.') }}</strong></div></div>
+                <div class="col-12 text-center small text-muted">Destinos con recepción: {{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</div>
             @else
                 <div class="col-12">
                     <div class="border rounded p-2 text-center">
-                        <small class="text-muted d-block">Estado de recepción</small>
-                        <strong class="{{ ($ot->tiene_recepcion_confirmada ?? false) ? 'text-success' : 'text-muted' }}">
-                            {{ ($ot->tiene_recepcion_confirmada ?? false) ? 'RECEPCIÓN REGISTRADA' : 'PENDIENTE' }}
+                        <small class="text-muted d-block">Estado de la OT</small>
+                        <strong class="{{ ($ot->ot_completa ?? false) ? 'text-success' : 'text-muted' }}">
+                            {{ $ot->estado_seguimiento_visual ?? $ot->estado_seguimiento }}
                         </strong>
                     </div>
                 </div>
@@ -419,7 +404,7 @@
         </div>
 
         @if($auditoriaPrivada)
-            <div class="small text-muted text-center mt-3">Locales comerciales confirmados: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente efectivo de recepción: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong> · Los movimientos adicionales se conservan para auditoría y no aumentan el avance por encima de la cantidad de la OT.</div>
+            <div class="small text-muted text-center mt-3">Destinos con recepción: <strong>{{ $ot->locales_confirmados }}/{{ $ot->locales_enviados }}</strong> · Pendiente por remitir: <strong>{{ number_format($ot->pendiente_remitir ?? 0,0,',','.') }}</strong> · En tránsito: <strong>{{ number_format($ot->pendiente_recepcion,0,',','.') }}</strong>. Los movimientos redistribuidos se muestran solo como auditoría.</div>
         @else
             <div class="small text-muted text-center mt-3">
                 Seguimiento operativo de remisiones y recepciones por local.
