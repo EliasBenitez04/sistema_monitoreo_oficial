@@ -501,21 +501,21 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
 
         const esDiario = modo === 'diario';
         const azulTitulo = esDiario
-            ? 'Prendas realmente producidas'
+            ? 'Prendas ingresadas a IT cada día'
             : 'Proyección al cierre calculada cada día';
         const grisTitulo = esDiario
             ? 'Promedio acumulado por día hábil'
-            : 'Proyección inicial del primer día hábil';
+            : 'Primera proyección con movimiento';
         document.getElementById('prodLeyendaAzul').textContent = azulTitulo;
         document.getElementById('prodLeyendaGris').textContent = grisTitulo;
         document.getElementById('prodNotaEscala').classList.toggle('d-none', esDiario);
         document.getElementById('prodDescripcionGrafico').textContent = esDiario
-            ? 'Comparación en prendas/día: azul es lo producido ese día y gris el promedio acumulado hasta esa fecha. Pasa el cursor para ver los números exactos y la diferencia frente a ayer.'
+            ? 'Comparación en prendas/día: azul representa las prendas ingresadas al hito IT y gris el promedio acumulado por día hábil. Pasá el cursor para ver los números exactos y la diferencia frente a ayer.'
             : 'Proyección al cierre del mes: azul muestra la estimación de cada día y la línea gris punteada mantiene como referencia la primera proyección. El eje vertical está ampliado para mostrar las diferencias.';
 
         svg.setAttribute('aria-label', esDiario
-            ? 'Producción real por día comparada con el promedio diario acumulado del mes'
-            : 'Proyección mensual histórica comparada con la proyección del primer día hábil');
+            ? 'Prendas ingresadas al hito de Producción por fecha comparadas con el promedio acumulado diario'
+            : 'Proyección mensual histórica comparada con la primera proyección con movimiento');
 
         if (!registros.length) {
             resumen([
@@ -529,7 +529,10 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
             return;
         }
 
-        const primero = registros[0];
+        // Evita usar una jornada sin movimientos como referencia de cierre.
+        const primero = registros.find(function (fila) {
+            return Number(fila.proyeccion) > 0;
+        }) || registros[0];
         const ultimo = registros[registros.length - 1];
         const inicial = Number(primero.proyeccion);
         const ayer = ultimo.prendas_ayer !== null ? Number(ultimo.prendas_ayer) : null;
@@ -542,7 +545,7 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
 
         if (esDiario) {
             resumen([
-                ['Producción · ' + fechaCorta(ultimo.fecha), formato.format(produccion)],
+                ['Ingreso a IT · ' + fechaCorta(ultimo.fecha), formato.format(produccion)],
                 ['Día anterior', ayer === null ? '—' : formato.format(ayer)],
                 ['Diferencia vs ayer', numeroSignado(diferenciaDia),
                     diferenciaDia === null ? '' : (diferenciaDia > 0 ? 'positivo' : (diferenciaDia < 0 ? 'negativo' : ''))],
@@ -704,8 +707,8 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
             const cambioPrendas = fila.prendas_ayer === null ? null
                 : Number(fila.prendas) - Number(fila.prendas_ayer);
             const texto = esDiario
-                ? fechaCorta(fila.fecha) + ' · Producción diaria'
-                    + '\nPrendas de ese día: ' + formato.format(fila.prendas)
+                ? fechaCorta(fila.fecha) + ' · Ingreso diario a IT'
+                    + '\nPrendas ingresadas: ' + formato.format(fila.prendas)
                     + '\nPromedio día hábil: ' + (fila.promedio === null ? '—' : formato.format(fila.promedio))
                     + '\nDía anterior: ' + (fila.prendas_ayer === null ? '—' : formato.format(fila.prendas_ayer))
                     + '\nDiferencia vs ayer: ' + numeroSignado(cambioPrendas)
