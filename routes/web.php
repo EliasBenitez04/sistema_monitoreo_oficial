@@ -22,6 +22,7 @@ use App\Http\Controllers\SeguimientoPedidoIngresoTerminacionController;
 use App\Http\Controllers\PedidosController;
 use App\Http\Controllers\MaestroCodigoController;
 use App\Http\Controllers\VentaController;
+use App\Http\Controllers\VentaMayoristaController;
 
 
 /*
@@ -331,6 +332,11 @@ Route::get(
     '/ventas',
     [VentaController::class, 'index']
 )->name('ventas.index');
+
+Route::get(
+    '/ventas/mayoristas',
+    [VentaMayoristaController::class, 'index']
+)->name('ventas.mayoristas.index');
 
 Route::get(
     '/ventas/vendedores/todos',
