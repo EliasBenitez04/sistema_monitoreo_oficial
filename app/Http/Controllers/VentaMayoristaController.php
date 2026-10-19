@@ -89,7 +89,7 @@ class VentaMayoristaController extends Controller
                         $q->orWhereRaw($mayoristaD);
                     }
                 });
-            $planQuery = $this->filtrarOt($planQuery, $buscar, 'o', 'd');
+            $planQuery = $this->filtrarOt($planQuery, $buscar, 'o');
 
             $clasePlan = "CASE WHEN $modeloD THEN 'MODELO MUESTRA' ELSE 'MAYORISTA' END";
             $planes = $planQuery
@@ -116,7 +116,7 @@ class VentaMayoristaController extends Controller
 
             if ($buscar !== '') {
                 $baseRemision->where(function ($q) use ($buscar) {
-                    $q->where('o.nro_ot', 'ILIKE', '%' . $buscar . '%')
+                    $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
                       ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
                       ->orWhere('r.codigo', 'ILIKE', '%' . $buscar . '%')
                       ->orWhere('r.descripcion', 'ILIKE', '%' . $buscar . '%')
@@ -272,14 +272,14 @@ class VentaMayoristaController extends Controller
         ));
     }
 
-    private function filtrarOt($query, string $buscar, string $aliasOt, string $aliasDetalle)
+    private function filtrarOt($query, string $buscar, string $aliasOt)
     {
         if ($buscar === '') {
             return $query;
         }
 
         return $query->where(function ($q) use ($buscar, $aliasOt) {
-            $q->where($aliasOt . '.nro_ot', 'ILIKE', '%' . $buscar . '%')
+            $q->whereRaw('CAST(' . $aliasOt . '.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
               ->orWhere($aliasOt . '.codigo', 'ILIKE', '%' . $buscar . '%')
               ->orWhere($aliasOt . '.descripcion', 'ILIKE', '%' . $buscar . '%');
         });
