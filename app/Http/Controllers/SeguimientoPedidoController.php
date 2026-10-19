@@ -394,8 +394,8 @@ class SeguimientoPedidoController extends Controller
 
             $remisiones = DB::table('ot_logistica_remisiones')
                 ->whereIn('id_ot', $idsOt)
-                ->whereNotNull('fecha_recepcion')
-                ->select('id_ot', DB::raw('MIN(fecha_recepcion) as primera_recepcion'))
+                ->whereRaw(ConfirmacionTupi::sql('ot_logistica_remisiones') . ' IS NOT NULL')
+                ->select('id_ot', DB::raw('MIN(' . ConfirmacionTupi::sql('ot_logistica_remisiones') . ') as primera_recepcion'))
                 ->groupBy('id_ot')
                 ->get()
                 ->keyBy('id_ot');
