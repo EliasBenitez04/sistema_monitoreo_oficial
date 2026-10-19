@@ -53,6 +53,18 @@
     .prod-delta-even,.prod-average-kpi .value.prod-delta-even{color:#64748b;font-weight:700}
     .prod-day-average{font-size:.73rem;font-weight:700;color:#285587;line-height:1.45}
     .prod-calendar td.prod-day-future{background:#f3f6f9;color:#94a3b8}
+    .prod-chart-card>.card-header{background:#fff!important;padding:14px 19px;gap:12px}
+    .prod-chart-card .prod-chart-switch .btn{min-width:75px;font-size:.86rem;font-weight:600}
+    .prod-chart-card .prod-chart-switch .btn.active{box-shadow:none}
+    .prod-chart-card .prod-chart-caption{font-size:.8rem;color:#64748b}
+    .prod-chart-legend{display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;font-size:.82rem;color:#536579;margin:1px 0 10px}
+    .prod-chart-key{display:inline-block;vertical-align:middle;width:13px;height:13px;border-radius:3px;margin-right:6px}
+    .prod-chart-svg{display:block;width:100%;max-height:350px}
+    .prod-chart-canvas{min-height:260px;background:#fff}
+    .prod-chart-donut-svg{display:block;margin:auto;max-width:280px;width:100%;height:auto}
+    .prod-chart-donut-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:22px;margin:10px 0 8px;font-size:.88rem}
+    .prod-chart-empty{color:#64748b;text-align:center;padding:110px 10px}
+    @media(max-width:575px){.prod-chart-card>.card-header{padding:12px}.prod-chart-svg{min-width:490px}.prod-chart-scroll{overflow-x:auto}.prod-chart-card .prod-chart-switch .btn{min-width:65px}}
     @media(max-width:768px){.prod-calendar td{height:120px;padding:6px!important}.prod-day-count{font-size:.91rem}.prod-calendar{border-spacing:2px}}
 </style>
 <section class="content"><div class="container-fluid">
@@ -109,6 +121,56 @@
         <p class="small text-muted mb-0 mt-2">Las prendas con pedido P más las prendas sin pedido P equivalen al total ingresado. Una OT puede vincularse a un pedido de fecha posterior al movimiento.</p>
     </div>
 </div>
+{{-- Gráfico interactivo del mismo período y los mismos indicadores usados en la tabla. --}}
+@php
+    $serieGraficaProduccion = $dias->filter(function ($dia) {
+        return $dia->registrado && $dia->proyeccion !== null;
+    })->map(function ($dia) {
+        return [
+            'fecha' => $dia->fecha,
+            'proyeccion' => (int) $dia->proyeccion,
+            'anterior' => $dia->proyeccion_anterior !== null
+                ? (int) $dia->proyeccion_anterior : null,
+            'prendas' => (int) $dia->prendas,
+            'acumulado' => (int) $dia->acumulado,
+        ];
+    })->values()->all();
+@endphp
+<div class="card prod-section-card prod-chart-card" id="produccionGraficos">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
+        <div>
+            <strong><i class="fas fa-chart-pie text-primary mr-2"></i>Gráficos de Producción</strong>
+            <div class="prod-chart-caption font-weight-normal mt-1">Evolución de la proyección al cierre y distribución de prendas del mes seleccionado.</div>
+        </div>
+        <div class="btn-group btn-group-sm prod-chart-switch" role="group" aria-label="Cambiar tipo de gráfico">
+            <button type="button" class="btn btn-primary active prod-chart-switch-button" data-grafico="area" aria-pressed="true">Área</button>
+            <button type="button" class="btn btn-outline-primary prod-chart-switch-button" data-grafico="donut" aria-pressed="false">Donut</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="prodGraficoArea">
+            <div class="prod-chart-legend">
+                <span><span class="prod-chart-key" style="background:#3d91c2"></span>Proyección calculada ese día</span>
+                <span><span class="prod-chart-key" style="background:#c8ced8"></span>Proyección del día anterior</span>
+            </div>
+            <div class="prod-chart-scroll">
+                <div class="prod-chart-canvas">
+                    <svg id="prodGraficoAreaSvg" class="prod-chart-svg" viewBox="0 0 960 350" role="img" aria-label="Comparación de la proyección mensual de producción calculada cada día con la proyección del día anterior"></svg>
+                </div>
+            </div>
+            <p class="small text-muted text-center mb-0 mt-2">Valores proyectados en prendas para el cierre del mes. Pasá el cursor por cada punto para ver su fecha y resultado.</p>
+        </div>
+        <div id="prodGraficoDonut" class="d-none">
+            <svg id="prodGraficoDonutSvg" class="prod-chart-donut-svg" viewBox="0 0 280 280" role="img" aria-label="Distribución real de prendas registradas con pedido P y sin pedido P"></svg>
+            <div class="prod-chart-donut-legend">
+                <span><span class="prod-chart-key" style="background:#3d91c2"></span>Con pedido P: <strong>{{ number_format($indicadores->con,0,',','.') }}</strong></span>
+                <span><span class="prod-chart-key" style="background:#c8ced8"></span>Sin pedido P: <strong>{{ number_format($indicadores->sin,0,',','.') }}</strong></span>
+            </div>
+            <p class="small text-muted text-center mb-0">El donut muestra prendas realmente registradas hasta el corte; no representa producción proyectada.</p>
+        </div>
+    </div>
+</div>
+
 {{-- Proyección histórica: jamás usa datos posteriores a la fecha de cada fila. --}}
 <div class="prod-average-wrap">
     <div class="prod-average-heading">
@@ -347,3 +409,231 @@ En un mes cerrado, la proyección coincide con el total real. Para un mes abiert
 </tbody></table></div></div>
 </div></section>
 @endsection
+
+
+@push('page_scripts')
+<script>
+(function () {
+    'use strict';
+    const raiz = document.getElementById('produccionGraficos');
+    if (!raiz) return;
+
+    const registros = @json($serieGraficaProduccion);
+    const cantidadConP = Number(@json($indicadores->con)) || 0;
+    const cantidadSinP = Number(@json($indicadores->sin)) || 0;
+    const namespaceSVG = 'http://www.w3.org/2000/svg';
+    const formato = new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 });
+
+    function elementoSvg(etiqueta, atributos, texto) {
+        const elemento = document.createElementNS(namespaceSVG, etiqueta);
+        Object.keys(atributos || {}).forEach(function (nombre) {
+            elemento.setAttribute(nombre, atributos[nombre]);
+        });
+        if (texto !== undefined && texto !== null) {
+            elemento.textContent = texto;
+        }
+        return elemento;
+    }
+
+    function etiquetaGrafico(numero) {
+        const magnitud = Math.abs(numero);
+        if (magnitud >= 1000000) return (numero / 1000000).toFixed(1) + ' M';
+        if (magnitud >= 1000) return (numero / 1000).toFixed(magnitud % 1000 === 0 ? 0 : 1) + ' mil';
+        return formato.format(numero);
+    }
+
+    function dibujarArea() {
+        const svg = document.getElementById('prodGraficoAreaSvg');
+        if (!svg) return;
+        svg.replaceChildren();
+
+        if (!registros.length) {
+            const mensaje = elementoSvg('text', {
+                x: 480, y: 170, 'text-anchor': 'middle',
+                fill: '#64748b', 'font-size': '19'
+            }, 'Todavía no hay días hábiles con datos para graficar.');
+            svg.appendChild(mensaje);
+            return;
+        }
+
+        const izquierda = 82;
+        const derecha = 925;
+        const arriba = 18;
+        const abajo = 305;
+        const ancho = derecha - izquierda;
+        const alto = abajo - arriba;
+        const valores = registros.reduce(function (acumulado, fila) {
+            acumulado.push(Math.max(0, Number(fila.proyeccion) || 0));
+            if (fila.anterior !== null) acumulado.push(Math.max(0, Number(fila.anterior) || 0));
+            return acumulado;
+        }, []);
+        const maximo = Math.max(1, ...valores);
+        const tope = maximo * 1.10;
+        const ejeY = function (valor) {
+            return abajo - Math.max(0, Number(valor) || 0) / tope * alto;
+        };
+        const ejeX = function (indice) {
+            return izquierda + (registros.length < 2
+                ? ancho / 2
+                : indice * ancho / (registros.length - 1));
+        };
+
+        for (let paso = 0; paso <= 4; paso++) {
+            const nivel = paso / 4 * tope;
+            const y = ejeY(nivel);
+            svg.appendChild(elementoSvg('line', {
+                x1: izquierda, x2: derecha, y1: y, y2: y,
+                stroke: '#e7edf4', 'stroke-width': 1
+            }));
+            svg.appendChild(elementoSvg('text', {
+                x: izquierda - 12, y: y + 5, 'text-anchor': 'end',
+                fill: '#738296', 'font-size': 13
+            }, etiquetaGrafico(nivel)));
+        }
+
+        const pasoEtiquetas = Math.max(1, Math.ceil(registros.length / 8));
+        registros.forEach(function (fila, indice) {
+            if (indice % pasoEtiquetas !== 0 && indice !== registros.length - 1) return;
+            const etiqueta = String(fila.fecha).slice(8, 10) + '/' + String(fila.fecha).slice(5, 7);
+            svg.appendChild(elementoSvg('text', {
+                x: ejeX(indice), y: 332,
+                'text-anchor': 'middle', fill: '#718096', 'font-size': 13
+            }, etiqueta));
+        });
+
+        function dibujarSerie(clave, relleno, trazo, opacidad) {
+            const puntos = registros.map(function (fila, indice) {
+                const cantidad = fila[clave] === null ? null : Number(fila[clave]);
+                return cantidad === null ? null : { x: ejeX(indice), y: ejeY(cantidad) };
+            });
+            let tramo = [];
+
+            function finalizarTramo() {
+                if (!tramo.length) return;
+                let camino = 'M ' + tramo[0].x + ' ' + tramo[0].y;
+                for (let indice = 1; indice < tramo.length; indice++) {
+                    const previo = tramo[indice - 1];
+                    const actual = tramo[indice];
+                    const centro = (previo.x + actual.x) / 2;
+                    camino += ' C ' + centro + ' ' + previo.y
+                        + ' ' + centro + ' ' + actual.y
+                        + ' ' + actual.x + ' ' + actual.y;
+                }
+                if (tramo.length === 1) camino += ' L ' + tramo[0].x + ' ' + tramo[0].y;
+                const area = camino + ' L ' + tramo[tramo.length - 1].x + ' ' + abajo
+                    + ' L ' + tramo[0].x + ' ' + abajo + ' Z';
+                svg.appendChild(elementoSvg('path', {
+                    d: area, fill: relleno, 'fill-opacity': opacidad
+                }));
+                svg.appendChild(elementoSvg('path', {
+                    d: camino, fill: 'none', stroke: trazo,
+                    'stroke-width': 2.7, 'stroke-linecap': 'round'
+                }));
+                tramo = [];
+            }
+
+            puntos.forEach(function (punto) {
+                if (punto) tramo.push(punto);
+                else finalizarTramo();
+            });
+            finalizarTramo();
+        }
+
+        // Gris detrás y azul delante: equivalente al gráfico de área de referencia.
+        dibujarSerie('anterior', '#cbd1dc', '#c0c8d5', 0.78);
+        dibujarSerie('proyeccion', '#4599c9', '#3d91c2', 0.74);
+
+        registros.forEach(function (fila, indice) {
+            const x = ejeX(indice);
+            const y = ejeY(fila.proyeccion);
+            const punto = elementoSvg('circle', {
+                cx: x, cy: y, r: 8, fill: '#3d91c2',
+                'fill-opacity': 0.01, stroke: 'none',
+                tabindex: 0, role: 'img',
+                'aria-label': fila.fecha + ': proyección ' + formato.format(fila.proyeccion) + ' prendas'
+            });
+            const detalle = 'Fecha: ' + fila.fecha.split('-').reverse().join('/')
+                + '\nProyección: ' + formato.format(fila.proyeccion)
+                + '\nAyer: ' + (fila.anterior === null ? '-' : formato.format(fila.anterior))
+                + '\nPrendas del día: ' + formato.format(fila.prendas)
+                + '\nPrendas acumuladas: ' + formato.format(fila.acumulado);
+            punto.appendChild(elementoSvg('title', {}, detalle));
+            svg.appendChild(punto);
+        });
+    }
+
+    function dibujarDonut() {
+        const svg = document.getElementById('prodGraficoDonutSvg');
+        if (!svg) return;
+        svg.replaceChildren();
+
+        const total = Math.max(0, cantidadConP) + Math.max(0, cantidadSinP);
+        const centro = 140;
+        const radio = 92;
+        const perimetro = 2 * Math.PI * radio;
+        const proporcion = total > 0 ? Math.max(0, cantidadConP) / total : 0;
+        const base = {
+            cx: centro, cy: centro, r: radio, fill: 'none',
+            'stroke-width': 45, transform: 'rotate(-90 140 140)'
+        };
+
+        svg.appendChild(elementoSvg('circle', Object.assign({}, base, {
+            stroke: '#ecf1f6'
+        })));
+
+        if (total > 0) {
+            const longitudCon = perimetro * proporcion;
+            const longitudSin = perimetro - longitudCon;
+
+            if (longitudCon > 0) {
+                const segmentoP = elementoSvg('circle', Object.assign({}, base, {
+                    stroke: '#3d91c2',
+                    'stroke-dasharray': longitudCon + ' ' + (perimetro - longitudCon)
+                }));
+                segmentoP.appendChild(elementoSvg('title', {},
+                    'Con pedido P: ' + formato.format(cantidadConP) + ' prendas'));
+                svg.appendChild(segmentoP);
+            }
+            if (longitudSin > 0) {
+                const segmentoSin = elementoSvg('circle', Object.assign({}, base, {
+                    stroke: '#c8ced8', 'stroke-dashoffset': -longitudCon,
+                    'stroke-dasharray': longitudSin + ' ' + (perimetro - longitudSin)
+                }));
+                segmentoSin.appendChild(elementoSvg('title', {},
+                    'Sin pedido P: ' + formato.format(cantidadSinP) + ' prendas'));
+                svg.appendChild(segmentoSin);
+            }
+        }
+
+        svg.appendChild(elementoSvg('text', {
+            x: centro, y: 134, 'text-anchor': 'middle',
+            fill: '#23364b', 'font-size': 30, 'font-weight': 800
+        }, total > 0 ? (proporcion * 100).toFixed(1).replace('.', ',') + '%' : 'Sin datos'));
+        svg.appendChild(elementoSvg('text', {
+            x: centro, y: 158, 'text-anchor': 'middle',
+            fill: '#718096', 'font-size': 14
+        }, total > 0 ? 'Con pedido P' : 'Sin movimientos'));
+    }
+
+    dibujarArea();
+    dibujarDonut();
+
+    const botones = raiz.querySelectorAll('.prod-chart-switch-button');
+    botones.forEach(function (boton) {
+        boton.addEventListener('click', function () {
+            const modo = boton.getAttribute('data-grafico');
+            raiz.querySelector('#prodGraficoArea').classList.toggle('d-none', modo !== 'area');
+            raiz.querySelector('#prodGraficoDonut').classList.toggle('d-none', modo !== 'donut');
+
+            botones.forEach(function (otro) {
+                const seleccionado = otro.getAttribute('data-grafico') === modo;
+                otro.classList.toggle('active', seleccionado);
+                otro.classList.toggle('btn-primary', seleccionado);
+                otro.classList.toggle('btn-outline-primary', !seleccionado);
+                otro.setAttribute('aria-pressed', seleccionado ? 'true' : 'false');
+            });
+        });
+    });
+})();
+</script>
+@endpush
