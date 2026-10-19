@@ -204,6 +204,12 @@ class SeguimientoPedidoProduccionController extends Controller
         $total = (int) $salidas->sum('prendas');
         $con = (int) $salidas->where('justificada', true)->sum('prendas');
         $sin = (int) $salidas->where('justificada', false)->sum('prendas');
+        // Prendas y OT distintas por asociación P del movimiento.
+        // Si una OT figura varios días, no inflar el número de OT.
+        $salidasConPedido = $salidas->where('justificada', true);
+        $salidasSinPedido = $salidas->where('justificada', false);
+        $otsConPedido = $salidasConPedido->pluck('id_ot')->unique()->count();
+        $otsSinPedido = $salidasSinPedido->pluck('id_ot')->unique()->count();
 
         /*
          * Proyección día a día:
@@ -344,6 +350,10 @@ class SeguimientoPedidoProduccionController extends Controller
             'fecha_corte' => $corteMes,
             'ot_dia' => $salidas->count(),
             'prendas' => $total, 'con' => $con, 'sin' => $sin,
+            'ots_con_pedido' => $otsConPedido,
+            'ots_sin_pedido' => $otsSinPedido,
+            'registros_con_pedido' => $salidasConPedido->count(),
+            'registros_sin_pedido' => $salidasSinPedido->count(),
             'efectividad' => $total > 0 ? round($con * 100 / $total, 1) : 0,
             'pendientes' => $pendientes->count(),
             'prendas_pendientes' => (int) $pendientes->sum('cantidad_pendiente'),
