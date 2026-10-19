@@ -175,111 +175,33 @@
 
                 <div class="col-xl-3 col-md-6 mb-2 mb-md-0">
                     <div class="it-month-kpi is-success">
-                        <small>CON PEDIDO</small>
-                        <strong>{{ number_format($resumenMensual->salidas_con_pedido,0,',','.') }}</strong>
-                        <span>{{ number_format($resumenMensual->porcentaje_justificado,1,',','.') }}% justificado</span>
-                        <span>{{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }} prendas con pedido</span>
+                        <small>CON PEDIDO IT · PRENDAS</small>
+                        <strong>{{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }}</strong>
+                        <span class="d-block font-weight-bold">{{ number_format($resumenMensual->ots_con_pedido,0,',','.') }} OT distintas</span>
+                        <span class="d-block">{{ number_format($resumenMensual->salidas_con_pedido,0,',','.') }} registros OT/día</span>
+                        <span class="d-block">{{ number_format($resumenMensual->efectividad_prendas,1,',','.') }}% de las prendas del mes</span>
                     </div>
                 </div>
 
                 <div class="col-xl-3 col-md-6">
                     <div class="it-month-kpi {{ $resumenMensual->salidas_sin_pedido > 0 ? 'is-danger' : 'is-success' }}">
-                        <small>SIN PEDIDO</small>
-                        <strong>{{ number_format($resumenMensual->salidas_sin_pedido,0,',','.') }}</strong>
-                        <span>{{ $resumenMensual->salidas_sin_pedido > 0 ? 'registros para revisar' : 'sin desvíos' }}</span>
-                        <span>{{ number_format($resumenMensual->prendas_sin_pedido,0,',','.') }} prendas sin pedido</span>
+                        <small>SIN PEDIDO IT · PRENDAS</small>
+                        <strong>{{ number_format($resumenMensual->prendas_sin_pedido,0,',','.') }}</strong>
+                        <span class="d-block font-weight-bold">{{ number_format($resumenMensual->ots_sin_pedido,0,',','.') }} OT distintas</span>
+                        <span class="d-block">{{ number_format($resumenMensual->salidas_sin_pedido,0,',','.') }} registros OT/día</span>
+                        <span class="d-block">{{ number_format(100 - $resumenMensual->efectividad_prendas,1,',','.') }}% de las prendas del mes</span>
                     </div>
                 </div>
             </div>
 
-            <div class="card border-success mb-3">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap">
-                        <div>
-                            <div class="text-success font-weight-bold small">EFECTIVIDAD DE SALIDA DEL MES</div>
-                            <h3 class="mb-1 font-weight-bold">{{ number_format($resumenMensual->efectividad_prendas,1,',','.') }}%</h3>
-                            <span class="text-muted small">
-                                {{ number_format($resumenMensual->prendas_con_pedido,0,',','.') }} prendas con pedido IT
-                                de {{ number_format($resumenMensual->prendas_salida,0,',','.') }} procesadas.
-                            </span>
-                        </div>
-                        <div class="text-muted small mt-2 mt-md-0">
-                            Efectividad = prendas con pedido / prendas procesadas × 100
-                        </div>
-                    </div>
-                    <div class="progress mt-3" style="height:14px">
-                        <div class="progress-bar bg-success" role="progressbar"
-                             style="width:{{ $resumenMensual->efectividad_prendas }}%"
-                             aria-valuenow="{{ $resumenMensual->efectividad_prendas }}"
-                             aria-valuemin="0" aria-valuemax="100"></div>
-                    </div>
-                    <small class="d-block mt-2 text-muted">
-                        Mide qué porcentaje de prendas T-T corresponde a pedidos IT vigentes.
-                        No representa el porcentaje de cumplimiento de todos los pedidos pendientes.
-                    </small>
-                </div>
-            </div>
+            <p class="small text-muted mb-3">
+                Los porcentajes corresponden al volumen de prendas realmente registrado en
+                <strong>TERMINACION - TERMINACION</strong>. «OT distintas» no duplica la misma
+                orden entre fechas; «registros OT/día» conserva cada movimiento para auditoría.
+                La asociación IT se evalúa respecto a la fecha de cada salida, no a pedidos futuros.
+            </p>
 
-            <div class="card border-primary mb-3">
-                <div class="card-header bg-light">
-                    <strong><i class="fas fa-calculator text-primary mr-1"></i>
-                        Análisis de prendas · proyección por días hábiles
-                    </strong>
-                </div>
-                <div class="card-body">
-                    @if($proyeccionDiasHabiles->disponible)
-                        <p class="small text-muted mb-3">
-                            Mes: {{ ucfirst($mesControl->locale('es')->translatedFormat('F Y')) }}
-                            · Corte de datos T-T: <strong>{{ $proyeccionDiasHabiles->fecha_corte->format('d/m/Y') }}</strong>
-                            · Solo se proyectan días de lunes a viernes.
-                        </p>
-                        <div class="row">
-                            <div class="col-xl-3 col-md-6 mb-3">
-                                <div class="it-month-kpi">
-                                    <small>PRENDAS INGRESADAS EN EL MES</small>
-                                    <strong>{{ number_format($proyeccionDiasHabiles->cantidad_real,0,',','.') }}</strong>
-                                    <span>cantidad real hasta la fecha de corte</span>
-                                </div>
-                            </div>
-                            <div class="col-xl-3 col-md-6 mb-3">
-                                <div class="it-month-kpi">
-                                    <small>PROMEDIO POR DÍA HÁBIL</small>
-                                    <strong>{{ number_format($proyeccionDiasHabiles->promedio_diario,1,',','.') }}</strong>
-                                    <span>{{ $proyeccionDiasHabiles->dias_transcurridos }} días hábiles transcurridos</span>
-                                </div>
-                            </div>
-                            <div class="col-xl-3 col-md-6 mb-3">
-                                <div class="it-month-kpi">
-                                    <small>PRENDAS ADICIONALES PROYECTADAS</small>
-                                    <strong>{{ number_format($proyeccionDiasHabiles->cantidad_restante,0,',','.') }}</strong>
-                                    <span>{{ $proyeccionDiasHabiles->dias_restantes }} días hábiles restantes</span>
-                                </div>
-                            </div>
-                            <div class="col-xl-3 col-md-6 mb-3">
-                                <div class="it-month-kpi is-success">
-                                    <small>TOTAL PROYECTADO AL CIERRE</small>
-                                    <strong>{{ number_format($proyeccionDiasHabiles->total_proyectado,0,',','.') }}</strong>
-                                    <span>real + prendas adicionales estimadas</span>
-                                </div>
-                            </div>
-                        </div>
-                        <small class="text-muted">
-                            Fórmula: prendas T-T del mes ÷ días hábiles desde el 1 hasta el último
-                            movimiento cargado × días hábiles que faltan.
-                            Los días hábiles sin movimientos cuentan para el promedio.
-                            Los movimientos ocurridos en fin de semana se incluyen en la cantidad real,
-                            pero sábados y domingos no se cuentan como días futuros de producción.
-                            No se excluyen feriados; es una estimación según el ritmo actual.
-                        </small>
-                    @else
-                        <p class="text-muted mb-0">
-                            La proyección se muestra para el mes actual cuando hay movimientos T-T
-                            y al menos un día hábil transcurrido. Para otros meses se conservan
-                            las cifras reales del calendario sin proyectar.
-                        </p>
-                    @endif
-                </div>
-            </div>
+            @include('seguimiento_pedidos_ingreso_terminacion._graficos_mensuales')
 
             <div class="card border-warning mb-3">
                 <div class="card-header bg-light">

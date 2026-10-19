@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
+use App\Support\PromedioDiarioProduccion;
 
 class SeguimientoPedidoIngresoTerminacionController extends Controller
 {
@@ -553,6 +554,12 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             'salidas_sin_pedido' => $salidasMes
                 ->where('tiene_pedido', false)
                 ->count(),
+            // Una misma OT con movimientos en varios días se cuenta una sola vez
+            // en cada categoría; registros OT/día siguen auditables por separado.
+            'ots_con_pedido' => $salidasMes->where('tiene_pedido', true)
+                ->pluck('id_ot')->unique()->count(),
+            'ots_sin_pedido' => $salidasMes->where('tiene_pedido', false)
+                ->pluck('id_ot')->unique()->count(),
             'prendas_salida' => (int) $salidasMes->sum('resultado_dia'),
             'prendas_con_pedido' => (int) $salidasMes
                 ->where('tiene_pedido', true)
@@ -579,55 +586,55 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             : 0;
 
         /*
-         * Proyección de prendas T-T para el mes seleccionado.
-         * Promedio por días hábiles (lunes-viernes) transcurridos hasta
-         * la última fecha importada del mes; días sin salida cuentan como 0.
-         * Los movimientos del fin de semana sí se incluyen en el volumen
-         * registrado, pero los días futuros proyectados son solo L-V.
+         * Serie diaria del gráfico de Ingreso Terminación (T-T).
+         * Se usan las MISMAS remisiones del hito y la misma relación
+         * con pedidos IT que ya alimentan el calendario. No consultar
+         * nuevamente ni mezclar con TERMINACION - INGRESO TERMINACION.
          */
-        $ultimaSalidaMes = $salidasMes->max('fecha_salida');
-        $fechaCorteMes = $ultimaSalidaMes
-            ? Carbon::parse($ultimaSalidaMes)->startOfDay()
-            : null;
-        $esMesActual = $mesControl->format('Y-m') === Carbon::today()->format('Y-m');
-        $diasHabilesTranscurridos = 0;
-        $diasHabilesRestantes = 0;
-
-        if ($fechaCorteMes) {
-            $cursorHabil = $inicioMes->copy()->startOfDay();
-            while ($cursorHabil->lte($fechaCorteMes)) {
-                if ($cursorHabil->isWeekday()) {
-                    $diasHabilesTranscurridos++;
-                }
-                $cursorHabil->addDay();
-            }
-
-            $cursorHabil = $fechaCorteMes->copy()->addDay();
-            while ($cursorHabil->lte($finMes)) {
-                if ($cursorHabil->isWeekday()) {
-                    $diasHabilesRestantes++;
-                }
-                $cursorHabil->addDay();
-            }
+        $diasGraficoIt = collect();
+        $cursorGrafico = $inicioMes->copy();
+        while ($cursorGrafico->lte($finMes)) {
+            $diaFecha = $cursorGrafico->format('Y-m-d');
+            $movimientosFecha = collect($salidasMesPorFecha->get($diaFecha, collect()));
+            $diasGraficoIt->push((object) [
+                'fecha' => $diaFecha,
+                'habil' => $cursorGrafico->isWeekday(),
+                'prendas' => (int) $movimientosFecha->sum('resultado_dia'),
+            ]);
+            $cursorGrafico->addDay();
         }
 
-        $promedioHabil = $diasHabilesTranscurridos > 0
-            ? $resumenMensual->prendas_salida / $diasHabilesTranscurridos
-            : 0;
+        $totalHabilesIt = $diasGraficoIt->where('habil', true)->count();
+        $ultimaSalidaMes = $salidasMes->max('fecha_salida');
+        $corteGraficoIt = $ultimaSalidaMes
+            ? Carbon::parse($ultimaSalidaMes)->startOfDay()
+            : null;
 
-        $proyeccionDiasHabiles = (object) [
-            'disponible' => $esMesActual && $fechaCorteMes !== null
-                && $diasHabilesTranscurridos > 0,
-            'fecha_corte' => $fechaCorteMes,
-            'cantidad_real' => $resumenMensual->prendas_salida,
-            'dias_transcurridos' => $diasHabilesTranscurridos,
-            'dias_restantes' => $diasHabilesRestantes,
-            'promedio_diario' => round($promedioHabil, 1),
-            'cantidad_restante' => (int) round($promedioHabil * $diasHabilesRestantes),
-            'total_proyectado' => (int) round(
-                $resumenMensual->prendas_salida + $promedioHabil * $diasHabilesRestantes
-            ),
-        ];
+        // Un mes histórico cerrado incluye también los días hábiles en
+        // cero posteriores a la última salida; un mes actual solo llega
+        // hasta el último dato importado.
+        if ($corteGraficoIt && $finMes->lt(Carbon::today()->startOfMonth())) {
+            $corteGraficoIt = $finMes->copy()->startOfDay();
+        }
+
+        $historicoGrafico = PromedioDiarioProduccion::calcular(
+            $diasGraficoIt->map(function ($dia) {
+                return [
+                    'fecha' => $dia->fecha,
+                    'prendas' => $dia->prendas,
+                    'habil' => $dia->habil,
+                ];
+            })->all(),
+            $corteGraficoIt ? $corteGraficoIt->format('Y-m-d') : null,
+            $totalHabilesIt
+        );
+
+        $diasGraficoIt = $diasGraficoIt->map(function ($dia) use ($historicoGrafico) {
+            foreach ($historicoGrafico[$dia->fecha] as $campo => $valor) {
+                $dia->{$campo} = $valor;
+            }
+            return $dia;
+        });
 
         /*
          * Oportunidad de atención de pedidos IT.
@@ -795,7 +802,8 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 'resumen',
                 'mesControl',
                 'resumenMensual',
-                'proyeccionDiasHabiles',
+                'diasGraficoIt',
+                'totalHabilesIt',
                 'analisisPendientes',
                 'otsPendientesIt',
                 'semanasCalendario',
