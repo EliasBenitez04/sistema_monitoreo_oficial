@@ -256,19 +256,17 @@
                         <div class="prod-chart-scroll">
                             <div class="prod-chart-canvas">
                                 <svg id="prodGraficoAreaSvg" class="prod-chart-svg" viewBox="0 0 960 350" role="img"
-                                    aria-label="Prendas reales producidas cada fecha comparadas con el promedio de producción por día hábil a esa fecha"></svg>
+                                    aria-label="Prendas enviadas a TERMINACION - TERMINACION por día comparadas con el promedio por día hábil"></svg>
                                 <div class="prod-chart-tooltip" id="prodGraficoTooltip" hidden></div>
                             </div>
                         </div>
-                        <p id="prodDescripcionGrafico" class="small text-muted text-center mb-0 mt-2">Azul: producción
-                            registrada en esa fecha. Gris: promedio diario acumulado. Son dos cifras en prendas comparables;
-                            los fines de semana sin producción figuran en cero.</p>
+                        <p id="prodDescripcionGrafico" class="small text-muted text-center mb-0 mt-2">Azul: prendas que salieron a TERMINACION - TERMINACION. Gris: promedio acumulado por día hábil. Hábil muestra lunes a viernes; No hábil incluye sábados y domingos.</p>
                         <div id="prodNotaEscala" class="prod-chart-zoom-note d-none">Escala vertical ampliada para
                             apreciar las variaciones de la proyección; el eje no comienza en cero.</div>
                     </div>
                     <div id="prodGraficoDonut" class="d-none">
                         <svg id="prodGraficoDonutSvg" class="prod-chart-donut-svg" viewBox="0 0 280 280" role="img"
-                            aria-label="Distribución real de prendas registradas con pedido P y sin pedido P"></svg>
+                            aria-label="Prendas enviadas a TERMINACION - TERMINACION con pedido IT y sin pedido IT"></svg>
                         <div class="prod-chart-donut-legend">
                             <span><span class="prod-chart-key" style="background:#3d91c2"></span>Con pedido IT:
                                 <strong>{{ number_format($resumenMensual->prendas_con_pedido, 0, ',', '.') }}</strong></span>
@@ -276,7 +274,7 @@
                                 <strong>{{ number_format($resumenMensual->prendas_sin_pedido, 0, ',', '.') }}</strong></span>
                         </div>
                         <p class="small text-muted text-center mb-0">El donut muestra prendas realmente registradas hasta
-                            el corte; no representa producción proyectada.</p>
+                            el corte; no representa una proyección de prendas.</p>
                     </div>
                 </div>
             </div>
