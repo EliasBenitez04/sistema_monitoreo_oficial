@@ -61,6 +61,14 @@
             </li>
 
             <li class="nav-item">
+                <a href="{{ route('ventas.mayoristas.index') }}"
+                   class="nav-link {{ request()->routeIs('ventas.mayoristas.*') ? 'active' : '' }}">
+                    <i class="fas fa-truck-loading nav-icon"></i>
+                    <p>Mayoristas</p>
+                </a>
+            </li>
+
+            <li class="nav-item">
                 <a href="{{ route('ventas.clientes.index') }}"
                    class="nav-link {{ request()->routeIs('ventas.clientes.*') ? 'active' : '' }}">
                     <i class="fas fa-users nav-icon"></i>
