@@ -276,9 +276,11 @@
                             aria-label="Prendas enviadas a TERMINACION - TERMINACION con pedido IT y sin pedido IT"></svg>
                         <div class="prod-chart-donut-legend">
                             <span><span class="prod-chart-key" style="background:#3d91c2"></span>Con pedido IT:
-                                <strong>{{ number_format($resumenMensual->prendas_con_pedido, 0, ',', '.') }}</strong></span>
+                                <strong>{{ number_format($resumenMensual->prendas_con_pedido, 0, ',', '.') }} prendas</strong>
+                                · {{ number_format($resumenMensual->ots_con_pedido, 0, ',', '.') }} OT distintas</span>
                             <span><span class="prod-chart-key" style="background:#c8ced8"></span>Sin pedido IT:
-                                <strong>{{ number_format($resumenMensual->prendas_sin_pedido, 0, ',', '.') }}</strong></span>
+                                <strong>{{ number_format($resumenMensual->prendas_sin_pedido, 0, ',', '.') }} prendas</strong>
+                                · {{ number_format($resumenMensual->ots_sin_pedido, 0, ',', '.') }} OT distintas</span>
                         </div>
                         <p class="small text-muted text-center mb-0">El donut muestra prendas realmente registradas hasta
                             el corte; no representa una proyección de prendas.</p>
