@@ -48,9 +48,9 @@
     .prod-average-trend span{height:100%;display:block;background:#5484b4;border-radius:20px}
     .prod-average-table tbody tr:last-child td{border-bottom:1px solid #edf1f5}
     .prod-average-table tr.prod-date-future{color:#94a3b8;background:#f8fafc}
-    .prod-delta-up{color:#12845d;font-weight:700}
-    .prod-delta-down{color:#c2413a;font-weight:700}
-    .prod-delta-even{color:#64748b;font-weight:700}
+    .prod-delta-up,.prod-average-kpi .value.prod-delta-up{color:#12845d;font-weight:700}
+    .prod-delta-down,.prod-average-kpi .value.prod-delta-down{color:#c2413a;font-weight:700}
+    .prod-delta-even,.prod-average-kpi .value.prod-delta-even{color:#64748b;font-weight:700}
     .prod-day-average{font-size:.73rem;font-weight:700;color:#285587;line-height:1.45}
     .prod-calendar td.prod-day-future{background:#f3f6f9;color:#94a3b8}
     @media(max-width:768px){.prod-calendar td{height:120px;padding:6px!important}.prod-day-count{font-size:.91rem}.prod-calendar{border-spacing:2px}}
@@ -179,7 +179,7 @@
                             @endif
                         @else - @endif
                     </td>
-                    <td><div class="prod-average-trend" title="Promedio: {{ number_format($diaEvolucion->promedio,1,',','.') }}"><span style="width:{{ round(100 * $diaEvolucion->promedio / $escalaPromedios,1) }}%"></span></div></td>
+                    <td><div class="prod-average-trend" title="Promedio: {{ number_format($diaEvolucion->promedio,1,',','.') }}"><span style="width:{{ max(0, min(100, round(100 * $diaEvolucion->promedio / $escalaPromedios,1))) }}%"></span></div></td>
                     @else
                         <td colspan="7" class="text-center text-muted">Pendiente · fecha posterior al corte</td>
                     @endif
