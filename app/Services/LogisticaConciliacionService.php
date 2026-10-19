@@ -103,6 +103,29 @@ class LogisticaConciliacionService
 
         $remisionesPorOt = $this->remisionesOriginalesPorOt($idsOt);
 
+        /*
+         * TUPI puede recibir desde Comercial Matriz (redistribución).
+         * La emisión confirma ese destino, pero NO constituye una nueva
+         * salida original de la OT. Solo cierra unidades remitidas
+         * que permanecían sin confirmar.
+         */
+        $tupiPorOt = DB::table('ot_logistica_remisiones as r')
+            ->whereIn('r.id_ot', $idsOt)
+            ->whereNotNull('r.fecha_remision')
+            ->where(function ($q) {
+                $q->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_logistica, ''))) = 'TUPI'")
+                  ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) = 'TUPI'");
+            })
+            ->where(function ($q) {
+                $q->whereNull('r.cod_sucursal_salida')
+                    ->orWhere('r.cod_sucursal_salida', '<>', 1);
+            })
+            ->whereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) NOT IN ('CASA CENTRAL', 'MATRIZ')")
+            ->groupBy('r.id_ot')
+            ->select('r.id_ot', DB::raw('SUM(r.cantidad) as cantidad'))
+            ->get()
+            ->keyBy('id_ot');
+
         // Retornos físicos LOCAL -> CASA CENTRAL importados desde ENVIOS.
         // No se acredita stock hasta existir fecha_recepcion en Casa Central.
         $devolucionesPorOt = $this->devolucionesPorOt($idsOt);
@@ -120,6 +143,7 @@ class LogisticaConciliacionService
                 $trazabilidad,
                 $planPorOt,
                 $remisionesPorOt,
+                $tupiPorOt,
                 $devolucionesPorOt,
                 $coberturaPlanPorOt
             ) {
@@ -160,6 +184,7 @@ class LogisticaConciliacionService
 
                 $plan = $planPorOt->get($idOt);
                 $remision = $remisionesPorOt->get($idOt);
+                $tupi = $tupiPorOt->get($idOt);
                 $devolucion = $devolucionesPorOt->get($idOt);
                 $coberturaPlan = $coberturaPlanPorOt->get($idOt);
 
@@ -302,6 +327,13 @@ class LogisticaConciliacionService
 
                 $recibidoRaw =
                     $recibidoCentralNeto + $recibidoCierre;
+
+                // TUPI suma como confirmación solamente dentro del saldo
+                // emitido aún sin confirmar; no incrementa el remitido ni PT.
+                $recibidoRaw += min(
+                    max(0, (int) ($tupi->cantidad ?? 0)),
+                    max(0, $remitidoRaw - $recibidoRaw)
+                );
 
                 $remitidoEfectivo = min($ptEfectivo, $remitidoRaw);
                 $recibidoEfectivo = min(
