@@ -12,9 +12,6 @@
                 <a href="{{ route('pedidos.index') }}" class="btn btn-dark shadow-sm mr-1">
                     <i class="fas fa-th-large mr-1"></i> PEDIDOS
                 </a>
-                <a href="{{ route('pedidos.importar') }}" class="btn btn-outline-primary shadow-sm mr-1">
-                    <i class="fas fa-file-import mr-1"></i> Importar datos
-                </a>
                 @if($auditoriaPrivada)
                     <a href="{{ route('seguimiento-terminacion.informe-gerencial') }}" class="btn btn-danger shadow-sm">
                         <i class="fas fa-briefcase mr-1"></i> Informe gerencial

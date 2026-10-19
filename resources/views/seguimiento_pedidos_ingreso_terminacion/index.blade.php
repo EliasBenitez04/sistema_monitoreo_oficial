@@ -17,20 +17,11 @@
             <a href="{{ route('pedidos.index') }}" class="btn btn-dark shadow-sm mr-1">
                 <i class="fas fa-th-large mr-1"></i> PEDIDOS
             </a>
-            <a href="{{ route('seguimiento-ingreso-terminacion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
-                <i class="fas fa-chart-line mr-1"></i> Informe gerencial
-            </a>
             <a href="{{ route('seguimiento-ingreso-terminacion.seguimiento-diario') }}" class="btn btn-info shadow-sm mr-1">
                 <i class="fas fa-search-location mr-1"></i> Seguimiento
             </a>
-            <a href="{{ route('pedidos.importar') }}" class="btn btn-primary shadow-sm mr-1">
-                <i class="fas fa-file-import mr-1"></i> Importar datos
-            </a>
-            <a href="{{ route('seguimiento-produccion.index') }}" class="btn btn-outline-primary mr-1">
-                <i class="fas fa-industry mr-1"></i> Producción
-            </a>
-            <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary">
-                <i class="fas fa-route mr-1"></i> Locales
+            <a href="{{ route('seguimiento-ingreso-terminacion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
+                <i class="fas fa-chart-line mr-1"></i> Informe gerencial
             </a>
         </div>
     </div>

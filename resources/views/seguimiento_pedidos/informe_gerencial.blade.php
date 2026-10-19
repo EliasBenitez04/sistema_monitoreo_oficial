@@ -24,7 +24,7 @@
                 </a>
 
                 <a href="{{ route('seguimiento-terminacion.index') }}"
-                   class="btn btn-outline-secondary">
+                   class="btn btn-outline-primary">
                     <i class="fas fa-arrow-left mr-1"></i>
                     Terminación
                 </a>

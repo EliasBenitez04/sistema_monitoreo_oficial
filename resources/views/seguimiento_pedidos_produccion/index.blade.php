@@ -19,16 +19,7 @@
             <a href="{{ route('seguimiento-produccion.informe-gerencial') }}" class="btn btn-danger shadow-sm mr-1">
                 <i class="fas fa-chart-line mr-1"></i> Informe gerencial
             </a>
-            <a href="{{ route('pedidos.importar') }}" class="btn btn-primary shadow-sm mr-1">
-                <i class="fas fa-file-import mr-1"></i> Importar datos
-            </a>
-            <a href="{{ route('seguimiento-ingreso-terminacion.index') }}" class="btn btn-outline-info mr-1">
-                <i class="fas fa-sign-in-alt mr-1"></i> Ingreso Terminación
-            </a>
-            <a href="{{ route('seguimiento-pedidos.index') }}" class="btn btn-outline-secondary">
-                <i class="fas fa-route mr-1"></i> Locales
-            </a>
-        </div>
+            </div>
     </div>
 </div>
 </section>
