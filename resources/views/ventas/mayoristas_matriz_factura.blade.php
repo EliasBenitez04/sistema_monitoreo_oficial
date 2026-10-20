@@ -38,7 +38,7 @@
   <div class="card mb-3 maym-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
       <div><strong>2. Remisiones por documento · Modelo Muestra / Matriz</strong>
-        <small class="d-block text-muted">Los talles coincidentes deben verse en una misma remisión; otras remisiones no se suman como si fueran una sola.</small></div>
+        <small class="d-block text-muted">Verificá los códigos y talles de una misma OT dentro del documento; nunca se juntan distintas remisiones para simular una coincidencia completa.</small></div>
       <div class="btn-group btn-group-sm mt-2">
         <a class="btn btn-{{ $diasHistorial==='90'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'90']) }}">90 días</a>
         <a class="btn btn-{{ $diasHistorial==='365'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'365']) }}">1 año</a>
@@ -59,7 +59,10 @@
                 <small class="d-block text-muted">{{ $doc->origen ?: 'Origen no informado' }} → {{ $doc->destino ?: 'Destino no informado' }}</small>
               </div>
               <div class="small">
-                <span class="badge badge-{{ $doc->completo ? 'success':'secondary' }}">{{ $doc->coincidencias }}/{{ $totales->codigos }} talles de la factura</span>
+                <span class="badge badge-{{ $doc->completo ? 'success':'secondary' }}">{{ $doc->coincidencias }} de {{ $totales->codigos }} códigos de la factura</span>
+                @foreach($doc->grupos_de_ot as $grupoOt)
+                  <span class="badge badge-info">OT {{ $grupoOt->id_ot }} · {{ $grupoOt->codigos }} códigos en esta remisión</span>
+                @endforeach
                 <span class="badge badge-light">Remitido {{ number_format($doc->remitidas,0,',','.') }}</span>
                 <span class="badge badge-light">Ya vinculado {{ number_format($doc->usadas,0,',','.') }}</span>
                 <span class="badge badge-primary">Saldo {{ number_format($doc->disponibles,0,',','.') }}</span>
