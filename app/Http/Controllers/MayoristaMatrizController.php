@@ -318,6 +318,10 @@ class MayoristaMatrizController extends Controller
                 ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc');
 
             if ($filtroOrigen === 'locales') {
+                // Esta pestaña es específicamente transferencia LOCAL
+                // con DESTINO MATRIZ. Las remisiones a MODELO MUESTRA
+                // fuera de Matriz siguen visibles en "Todas".
+                $consulta->whereRaw(OrigenRemision::expresionDestinoMatriz('r'));
                 $consulta->where(function ($q) {
                     $q->whereRaw('r.cod_sucursal_salida NOT IN (1,25)')
                       ->orWhere(function ($sinCodigo) {
