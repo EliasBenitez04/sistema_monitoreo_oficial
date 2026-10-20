@@ -182,9 +182,15 @@ class VentaMayoristaController extends Controller
         })->count();
         $cierre=$saldos->isNotEmpty() && $sinSaldo===0?$saldos->sum('cierre'):null;
 
-        $arrastres=self::entradas()->where('r.fecha_remision','<',$desde)
+        $arrastres=self::entradas()
+            ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
+            ->leftJoin('ot as o',function($join) {
+                $join->on('o.id_ot','=',DB::raw('COALESCE(r.id_ot,d.id_ot)'));
+            })
+            ->where('r.fecha_remision','<',$desde)
             ->whereNotNull('r.fecha_recepcion')->where('r.fecha_recepcion','<',$desde)
-            ->select('r.id','r.fecha_remision','r.codigo','r.cantidad','r.serie','r.numero_remision')
+            ->select('r.id','r.fecha_remision','r.codigo','r.cantidad','r.serie',
+                'r.numero_remision','r.sucursal_salida','o.nro_ot')
             ->orderBy('r.fecha_remision','desc')->limit(100)->get();
         $ids=$arrastres->pluck('id')->all();
         $usos=$ids?DB::table('mayorista_vinculos')->whereIn('remision_id',$ids)
@@ -195,14 +201,22 @@ class VentaMayoristaController extends Controller
             return $r;
         })->where('sin_vincular','>',0)->take(30)->values();
 
+        $planBuscar=trim((string)$request->query('ot_plan',''));
         $planes=collect();
         if(Schema::hasTable('ot_logistica_detalle') && Schema::hasTable('ot')) {
-            $planes=DB::table('ot_logistica_detalle as d')
+            $planesQuery=DB::table('ot_logistica_detalle as d')
                 ->join('ot as o','o.id_ot','=','d.id_ot')
                 ->where(function($q) {
                     $q->whereRaw("UPPER(BTRIM(d.sucursal)) LIKE '%MODELO%MUESTRA%'")
                         ->orWhereRaw("UPPER(BTRIM(d.sucursal)) LIKE '%MAYORISTA%'");
-                })->select('d.id','d.id_ot','d.sucursal','d.cantidad','o.nro_ot','o.codigo')
+                });
+            if($planBuscar!=='') {
+                $planesQuery->where(function($q)use($planBuscar) {
+                    $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?',['%'.$planBuscar.'%'])
+                      ->orWhere('o.codigo','ILIKE','%'.$planBuscar.'%');
+                });
+            }
+            $planes=$planesQuery->select('d.id','d.id_ot','d.sucursal','d.cantidad','o.nro_ot','o.codigo')
                 ->orderBy('d.id','desc')->limit(60)->get();
             $planIds=$planes->pluck('id')->all();
             $declaradas=$planIds?DB::table('mayorista_separaciones')
@@ -235,7 +249,7 @@ class VentaMayoristaController extends Controller
             'mes','desde','hasta','resumen','emitidas','recibidas',
             'separaciones','separacionesDetalle','saldos','sinSaldo','cierre',
             'arrastres','planes','buscar','facturasPaginadas',
-            'muestrasPorOt','reservaFotoEstimada'
+            'muestrasPorOt','reservaFotoEstimada','planBuscar'
         ));
     }
 
