@@ -106,7 +106,7 @@ class MayoristaAuditoriaController extends Controller
     public function registrarSeparacion(Request $request)
     {
         $datos=$request->validate([
-            'logistica_detalle_id'=>'required|integer|min:1','fecha_separacion'=>'required|date',
+            'logistica_detalle_id'=>'required|integer|min:1','fecha_separacion'=>'required|date|before_or_equal:today',
             'cantidad'=>'required|integer|min:1','referencia'=>'required|string|min:5|max:255'
         ]);
         DB::transaction(function()use($request,$datos) {
@@ -114,7 +114,8 @@ class MayoristaAuditoriaController extends Controller
                 ->lockForUpdate()->first();
             abort_unless($plan,404);
             $destino=strtoupper(trim((string)$plan->sucursal));
-            if(strpos($destino,'MODELO MUESTRA')===false && strpos($destino,'MAYORISTA')===false) {
+            if(!(strpos($destino,'MODELO')!==false && strpos($destino,'MUESTRA')!==false)
+                && strpos($destino,'MAYORISTA')===false) {
                 throw ValidationException::withMessages(['logistica_detalle_id'=>'El plan no corresponde a MODELO MUESTRA ni a MAYORISTA.']);
             }
             $usado=(int)DB::table('mayorista_separaciones')
