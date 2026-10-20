@@ -351,6 +351,8 @@ Route::get('/ventas/mayoristas/facturas/{clave}',
     [MayoristaMatrizController::class, 'factura'])->name('ventas.mayoristas.factura');
 Route::post('/ventas/mayoristas/facturas/{clave}/vincular',
     [MayoristaAuditoriaController::class, 'vincular'])->name('ventas.mayoristas.vincular');
+Route::post('/ventas/mayoristas/facturas/{clave}/vincular-propuesta',
+    [MayoristaAuditoriaController::class, 'vincularPropuesta'])->name('ventas.mayoristas.vincular-propuesta');
 Route::post('/ventas/mayoristas/facturas/{clave}/vinculos/{id}/desvincular',
     [MayoristaAuditoriaController::class, 'desvincular'])->name('ventas.mayoristas.desvincular');
 Route::post('/ventas/mayoristas/separaciones',
