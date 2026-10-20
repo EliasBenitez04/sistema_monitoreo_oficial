@@ -643,10 +643,10 @@
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Participación de pedidos P</div>
-                            <div class="prod-kpi-value">{{ number_format($indicadores->efectividad,1,',','.') }}%</div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->con,0,',','.') }} prendas vinculadas a P</div>
-                            <div class="prod-kpi-desc">Indicador de participación; no mide pedidos cumplidos</div>
+                            <div class="prod-kpi-label">OT vinculadas a P con hito IT</div>
+                            <div class="prod-kpi-value">{{ $resumenGerencial->porcentaje_p_en_it !== null ? number_format($resumenGerencial->porcentaje_p_en_it,1,',','.').'%' : '—' }}</div>
+                            <div class="prod-kpi-desc">{{ number_format($resumenGerencial->ot_p_con_hito,0,',','.') }} de {{ number_format($resumenGerencial->ot_p_asociadas,0,',','.') }} OT vinculadas ya registran el hito</div>
+                            <div class="prod-kpi-desc">Avance documental, no entrega en plazo ni cantidad completa</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
@@ -660,7 +660,7 @@
                 </div>
                 <div class="px-4 pt-2 pb-3">
                     <div class="d-flex justify-content-between mb-2">
-                        <small class="font-weight-bold text-success">Con pedido P</small>
+                        <small class="font-weight-bold text-success">Prendas con pedido P: {{ number_format($indicadores->efectividad,1,',','.') }}%</small>
                         <small class="font-weight-bold text-danger">Sin vinculación a P</small>
                     </div>
                     <div class="prod-progress">
