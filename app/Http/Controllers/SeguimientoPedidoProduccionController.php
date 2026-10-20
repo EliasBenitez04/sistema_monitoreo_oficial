@@ -258,11 +258,9 @@ class SeguimientoPedidoProduccionController extends Controller
          *   se haya importado hace varios días. Para meses anteriores
          *   es el cierre de aquel mes y para meses futuros no hay corte.
          */
-        $mesVigente = $mes->format('Y-m') === Carbon::today()->format('Y-m');
-        $mesFuturo = $mes->gt(Carbon::today()->startOfMonth());
-        $cortePendientes = $mesFuturo
-            ? null
-            : ($mesVigente ? Carbon::now() : $fin->copy()->endOfDay());
+        $ahoraPendientes = Carbon::now();
+        $mesVigente = $mes->format('Y-m') === $ahoraPendientes->format('Y-m');
+        $cortePendientes = AntiguedadOt::cortePendientesDelMes($mes, $ahoraPendientes);
 
         // Pedidos P activos y trazabilidad de su etapa actual.
         $vinculos = DB::table('seguimiento_pedido_detalle as d')
