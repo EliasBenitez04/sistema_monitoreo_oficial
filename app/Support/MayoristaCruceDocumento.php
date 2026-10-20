@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  */
 class MayoristaCruceDocumento
 {
-    public static function agrupar(Collection $candidatas, array $requeridas, Collection $porCodigo): Collection
+    public static function agrupar(Collection $candidatas, array $requeridas, Collection $porCodigo, ?string $fechaFactura = null): Collection
     {
         $documentos = [];
         foreach ($candidatas as $r) {
@@ -27,6 +27,18 @@ class MayoristaCruceDocumento
             $r->origen_real = MayoristaOrigenRemision::nombreOrigen($r);
             $r->tipo_origen = MayoristaOrigenRemision::tipoOrigen($r);
             $r->canal = MayoristaOrigenRemision::clasificar($r);
+            $r->posterior = $fechaFactura !== null
+                && $r->fecha_remision > $fechaFactura;
+            $r->recepcion_posterior = $fechaFactura !== null
+                && !empty($r->fecha_recepcion)
+                && $r->fecha_recepcion > $fechaFactura;
+            // Documento posterior a factura: sólo consulta. Para traslados
+            // a Matriz sin Modelo Muestra, recepción tardía tampoco habilita
+            // asignación; el backend valida nuevamente la misma regla.
+            if ($r->posterior || ($r->recepcion_posterior && !$r->modelo)) {
+                $r->maximo = 0;
+            }
+
             $r->es_destino_matriz = (int) ($r->cod_sucursal_destino ?? 0) === 25
                 || in_array(strtoupper(trim((string) $r->sucursal_destino)), ['MATRIZ','COMERCIAL MATRIZ'], true)
                 || in_array(strtoupper(trim((string) ($r->sucursal_logistica ?? ''))), ['MATRIZ','COMERCIAL MATRIZ'], true);
