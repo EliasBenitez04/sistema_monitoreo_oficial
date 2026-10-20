@@ -23,6 +23,7 @@ use App\Http\Controllers\PedidosController;
 use App\Http\Controllers\MaestroCodigoController;
 use App\Http\Controllers\VentaController;
 use App\Http\Controllers\VentaMayoristaController;
+use App\Http\Controllers\MayoristaMatrizController;
 use App\Http\Controllers\MayoristaAuditoriaController;
 
 
@@ -336,12 +337,12 @@ Route::get(
 
 Route::get(
     '/ventas/mayoristas',
-    [VentaMayoristaController::class, 'index']
+    [MayoristaMatrizController::class, 'index']
 )->name('ventas.mayoristas.index');
 
 // Conciliación factura-remisión: cada vínculo registra responsable y evidencia.
 Route::get('/ventas/mayoristas/facturas/{clave}',
-    [VentaMayoristaController::class, 'factura'])->name('ventas.mayoristas.factura');
+    [MayoristaMatrizController::class, 'factura'])->name('ventas.mayoristas.factura');
 Route::post('/ventas/mayoristas/facturas/{clave}/vincular',
     [MayoristaAuditoriaController::class, 'vincular'])->name('ventas.mayoristas.vincular');
 Route::post('/ventas/mayoristas/facturas/{clave}/vinculos/{id}/desvincular',
