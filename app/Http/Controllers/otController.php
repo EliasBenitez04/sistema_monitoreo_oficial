@@ -361,11 +361,9 @@ class OtController extends Controller
      * Catálogo de procesos del flujo de producción y el % de avance que
      * representa cada uno cuando es el ÚLTIMO proceso registrado en la OT.
      *
-     * ⚠️ El ORDEN en que están declaradas las claves aquí es también el
-     * orden en que se mostrarán los procesos en el dashboard (no el orden
-     * por fecha). Esto es clave porque algunas OT pueden tener procesos
-     * registrados con fechas "desordenadas" o simplemente no tener todos
-     * los procesos del flujo.
+     * El orden del catálogo sirve para identificar avances y señalar
+     * retrocesos/reprocesos. El historial y los tiempos del dashboard
+     * se ordenan siempre por FECHA e ID, no por este catálogo.
      */
     private const FLUJO_PROCESOS = [
         'PEDIDO A PRODUCCION'  => 5,
@@ -737,8 +735,8 @@ class OtController extends Controller
     }
 
     /**
-     * Arma el resumen ejecutivo (KPIs) a partir de la lista de procesos
-     * ya ordenada por flujo.
+     * Arma el resumen ejecutivo (KPIs) a partir de los movimientos
+     * ordenados cronológicamente.
      */
     private function construirResumen(Collection $procesos, float $horasAcumuladas): array
     {
@@ -750,7 +748,7 @@ class OtController extends Controller
 
         $estaSuspendida = $ultimoProceso['es_suspendido'];
 
-        // Si el último proceso del flujo presente es "PEDIDO SUSPENDIDO",
+        // Si el último movimiento cronológico es "PEDIDO SUSPENDIDO",
         // el avance real de la OT es el del último proceso NO suspendido
         // (para no perder de vista en qué etapa quedó antes de suspenderse).
         if ($estaSuspendida) {
