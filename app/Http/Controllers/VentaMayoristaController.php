@@ -73,6 +73,7 @@ class VentaMayoristaController extends Controller
         $baseVentasQuery = null;
         $ventasPorCodigo = collect();
         $ventasDias = collect();
+        $ventasDetalle = null;
         $clientes = collect();
         $ventasResumen = (object) [
             'prendas_vendidas' => 0, 'devoluciones' => 0,
@@ -127,6 +128,16 @@ class VentaMayoristaController extends Controller
                 ->select('v.fecha')
                 ->selectRaw('COALESCE(SUM(v.cantidad),0) as prendas, COALESCE(SUM(v.p_venta),0) as importe')
                 ->groupBy('v.fecha')->orderBy('v.fecha')->get();
+
+            $ventasDetalle = (clone $baseVentasQuery)
+                ->select(
+                    'v.fecha', 'v.comprobante', 'v.tipo_comprobante',
+                    'v.codigo', 'v.descripcion', 'v.cliente',
+                    'v.cantidad', 'v.p_lista', 'v.descuento', 'v.p_venta'
+                )
+                ->orderBy('v.fecha','desc')->orderBy('v.id','desc')
+                ->simplePaginate(35, ['*'], 'ventas_page')
+                ->appends($request->except('ventas_page'));
 
             $clientes = (clone $baseVentasQuery)
                 ->selectRaw("COALESCE(NULLIF(BTRIM(v.cliente),''),'CLIENTE SIN IDENTIFICAR') as cliente")
@@ -313,16 +324,19 @@ class VentaMayoristaController extends Controller
             $fila->recibido_venta_estimado = $fila->id_ot === null
                 ? null : max(0, $fila->recibido - $fila->reserva_foto);
             $fila->brecha_movimientos = $fila->plan - $fila->remitido;
+            $tieneVenta = $fila->vendidas > 0 || $fila->devoluciones > 0;
             $fila->status = $fila->id_ot === null ? 'SIN OT SEGURA'
-                : ($fila->comprobantes > 0 && $fila->plan === 0 && $fila->remitido === 0
+                : ($tieneVenta && $fila->plan === 0 && $fila->remitido === 0
                     ? 'VENTA SIN PLAN/REMISIÓN'
-                    : ($fila->comprobantes > 0 && $fila->remitido === 0
-                        ? 'VENTA SIN REMISIÓN'
-                        : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE'
-                            : ($fila->remitido === 0 ? 'SOLO PLAN' : 'CON DOCUMENTOS'))));
+                    : ($tieneVenta && $fila->plan === 0
+                        ? 'VENTA SIN PLAN'
+                        : ($tieneVenta && $fila->remitido === 0
+                            ? 'VENTA SIN REMISIÓN'
+                            : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE'
+                            : ($fila->remitido === 0 ? 'SOLO PLAN' : 'CON DOCUMENTOS')))));
             return $fila;
         })->sort(function ($a,$b) {
-            $alerta = ['SIN OT SEGURA'=>0,'VENTA SIN PLAN/REMISIÓN'=>1,'VENTA SIN REMISIÓN'=>2,'RECEPCIÓN PENDIENTE'=>3,'SOLO PLAN'=>4,'CON DOCUMENTOS'=>5];
+            $alerta = ['SIN OT SEGURA'=>0,'VENTA SIN PLAN/REMISIÓN'=>1,'VENTA SIN PLAN'=>2,'VENTA SIN REMISIÓN'=>3,'RECEPCIÓN PENDIENTE'=>4,'SOLO PLAN'=>5,'CON DOCUMENTOS'=>6];
             $prioridad = ($alerta[$a->status] ?? 5) <=> ($alerta[$b->status] ?? 5);
             return $prioridad ?: ($b->venta_neta <=> $a->venta_neta);
         })->values();
@@ -360,7 +374,7 @@ class VentaMayoristaController extends Controller
         return view('ventas.mayoristas',compact(
             'desde','hasta','tipo','buscar','muestrasPorOt','incluirPlan',
             'resumen','ventasResumen','ordenes','remisiones','ventasDias',
-            'clientes','topProductos','tablas','tieneVentas'
+            'clientes','topProductos','ventasDetalle','tablas','tieneVentas'
         ));
     }
 
