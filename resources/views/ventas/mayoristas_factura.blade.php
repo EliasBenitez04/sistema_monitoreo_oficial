@@ -71,12 +71,48 @@
   </div>
 
   <div class="card may-card mb-3">
-    <div class="card-header bg-white"><strong>3. Remisiones candidatas</strong><small class="d-block text-muted mt-1">
+    <div class="card-header bg-white">
+      <strong><i class="fas fa-clipboard-list text-primary mr-1"></i>3. Carpeta de documentos sugeridos · últimos 30 días</strong>
+      <small class="d-block text-muted">Agrupados por número de remisión, fecha y origen. Ordenados por las unidades del documento que coinciden en código completo con esta factura.</small>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm may-table mb-0">
+        <thead><tr>
+          <th>Remisión</th><th>Fecha</th><th>Origen</th>
+          <th class="text-right">Códigos coincidentes</th>
+          <th class="text-right">Aporte potencial a esta factura</th><th>Validación</th>
+        </tr></thead>
+        <tbody>
+          @forelse($documentosSugeridos as $doc)
+            <tr>
+              <td><strong>{{ $doc->serie }}-{{ $doc->numero }}</strong><small class="d-block text-muted">{{ $doc->destino ?: 'COMERCIAL MATRIZ' }}</small></td>
+              <td>{{ date('d/m/Y',strtotime($doc->fecha)) }}</td>
+              <td>{{ $doc->origen ?: 'Sin origen' }}</td>
+              <td class="text-right">{{ $doc->codigos }}</td>
+              <td class="text-right font-weight-bold">{{ number_format($doc->aporte,0,',','.') }} de {{ number_format($factura->brutas,0,',','.') }}</td>
+              <td><small class="text-warning">Candidato, no validado</small></td>
+            </tr>
+          @empty
+            <tr><td colspan="6" class="text-muted text-center p-3">No se encontraron documentos de los 30 días previos que hayan sido recibidos y coincidan en código. Consultá el historial completo más abajo.</td></tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer bg-white">
+      <small class="text-muted">Cada aporte es independiente, no sumable sin una asignación: varios documentos pueden ofrecer los mismos códigos y también servir a otras facturas. Los documentos históricos se pueden revisar en el detalle.</small>
+    </div>
+  </div>
+
+  <details class="card may-card mb-3">
+    <summary class="card-header bg-white" style="cursor:pointer">
+      <strong><i class="fas fa-search mr-1 text-primary"></i>4. Abrir líneas de remisión y vincular con evidencia</strong>
+      <small class="d-block text-muted">Vista ampliada por código, talle, OT, fecha y unidades disponibles. Las remisiones antiguas también se encuentran aquí.</small>
+    </summary><small class="d-block text-muted mt-1">
       Pueden ser de CASA CENTRAL o de uno o varios locales, de este mes o de meses anteriores.
       Incluye remisiones hasta tres días posteriores a la factura como excepción para revisión;
       solo las recibidas y no posteriores permiten vinculación directa.</small></div>
     @if($candidatasLimitadas)
-      <div class="alert alert-warning m-3">Hay más de 300 documentos candidatos para estos códigos. Se muestran los 300 más recientes; revisá los documentos históricos antes de concluir una ausencia.</div>
+      <div class="alert alert-warning m-3">Hay más de 300 líneas de remisión candidatas para estos códigos. Se muestran las 300 líneas más recientes; revisá el historial antes de concluir que no existen documentos adicionales.</div>
     @endif
     <div class="table-responsive">
       <table class="table table-sm table-hover may-table mb-0">
@@ -128,10 +164,10 @@
         </tbody>
       </table>
     </div>
-  </div>
+  </details>
 
   <div class="card may-card mb-3">
-    <div class="card-header bg-white"><strong>4. Remisiones vinculadas y confirmadas por un usuario</strong></div>
+    <div class="card-header bg-white"><strong>5. Remisiones vinculadas y confirmadas por un usuario</strong></div>
     <div class="table-responsive">
       <table class="table table-sm may-table mb-0">
         <thead><tr><th>Remisión</th><th>Fecha</th><th>Origen</th><th>Código</th><th class="text-right">Unidades utilizadas</th><th>Responsable / Referencia</th><th>Revertir con motivo</th></tr></thead>
@@ -161,7 +197,7 @@
 
   @if(isset($auditoria) && $auditoria->isNotEmpty())
   <div class="card may-card mb-4">
-    <div class="card-header bg-white"><strong><i class="fas fa-history mr-1 text-primary"></i>5. Historial de auditoría de esta factura</strong></div>
+    <div class="card-header bg-white"><strong><i class="fas fa-history mr-1 text-primary"></i>6. Historial de auditoría de esta factura</strong></div>
     <div class="table-responsive">
       <table class="table table-sm may-table mb-0">
         <thead><tr><th>Fecha / hora</th><th>Acción</th><th>Usuario</th><th>Cantidad</th><th>Observación</th></tr></thead>

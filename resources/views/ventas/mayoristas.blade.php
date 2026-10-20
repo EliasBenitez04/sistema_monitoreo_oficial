@@ -54,6 +54,89 @@
     </div>
   </div>
 
+  <div class="card may-card mb-3" id="may-avance">
+    <div class="card-header bg-white">
+      <strong><i class="fas fa-tasks text-primary mr-2"></i>Avance de auditoría · {{ $mes }}</strong>
+      <small class="d-block text-muted">Diferenciamos mercadería documentada, facturación registrada y vínculos realmente verificados.</small>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-lg-4 col-md-6 mb-3">
+          <div class="may-metric h-100">
+            <small>Facturas mayoristas para auditar</small>
+            <strong>{{ $avanceGerencial->facturas_venta }}</strong>
+            <span>{{ $avanceGerencial->notas_credito }} notas de crédito analizadas por separado</span>
+          </div>
+        </div>
+        <div class="col-lg-4 col-md-6 mb-3">
+          <div class="may-metric h-100">
+            <small>Conciliación documental de prendas</small>
+            <strong>{{ number_format($resumen->vinculadas,0,',','.') }} / {{ number_format($resumen->brutas,0,',','.') }}</strong>
+            <div class="progress mt-2" style="height:8px">
+              <div class="progress-bar bg-success" role="progressbar"
+                style="width:{{ $avanceGerencial->avance_porcentaje===null ? 0 : $avanceGerencial->avance_porcentaje }}%"
+                aria-valuenow="{{ $avanceGerencial->avance_porcentaje===null ? 0 : $avanceGerencial->avance_porcentaje }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+            <span>{{ $avanceGerencial->avance_porcentaje===null ? 'Sin facturas positivas' : number_format($avanceGerencial->avance_porcentaje,1,',','.').'%' }} confirmado · {{ $avanceGerencial->facturas_confirmadas }} completas y {{ $avanceGerencial->facturas_parciales }} parciales</span>
+          </div>
+        </div>
+        <div class="col-lg-4 col-md-6 mb-3">
+          <div class="may-metric h-100">
+            <small>Impacto de las dos facturas principales</small>
+            <strong>{{ number_format($avanceGerencial->top_dos_prendas,0,',','.') }} prendas</strong>
+            <span>{{ number_format($avanceGerencial->top_dos_porcentaje,1,',','.') }}% de todas las unidades facturadas brutas del mes</span>
+          </div>
+        </div>
+      </div>
+      <div class="may-section mt-0">
+        <div>
+          <h3>Prioridades para demostrar avances</h3>
+          <p>Empezá por las facturas de mayor volumen; los documentos sugeridos no se considerarán vinculados hasta validarlos.</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm may-table mb-0">
+          <thead><tr>
+            <th>Factura</th><th>Cliente</th><th class="text-right">Prendas</th>
+            <th class="text-right">Peso en el mes</th>
+            <th class="text-right">Documentos recientes</th><th class="text-right">Cobertura reciente</th>
+            <th>Estado</th><th></th>
+          </tr></thead>
+          <tbody>
+            @forelse($facturasPrioridad as $prioridad)
+              <tr>
+                <td><strong>{{ $prioridad->comprobante }}</strong><small class="d-block text-muted">{{ date('d/m/Y',strtotime($prioridad->fecha)) }}</small></td>
+                <td>{{ $prioridad->cliente ?: 'Sin cliente' }}</td>
+                <td class="text-right font-weight-bold">{{ number_format($prioridad->brutas,0,',','.') }}</td>
+                <td class="text-right">{{ $resumen->brutas>0 ? number_format($prioridad->brutas*100/$resumen->brutas,1,',','.').'%' : '—' }}</td>
+                <td class="text-right">{{ number_format($prioridad->documentos_recientes,0,',','.') }}</td>
+                <td class="text-right">
+                  {{ number_format($prioridad->cobertura_reciente,0,',','.') }}
+                  <small class="d-block text-muted">de {{ number_format($prioridad->pendientes,0,',','.') }} sin vincular</small>
+                </td>
+                <td>{{ $prioridad->estado }}<small class="d-block text-muted">{{ $prioridad->situacion_busqueda }}</small></td>
+                <td><a class="btn btn-sm btn-primary" href="{{ route('ventas.mayoristas.factura',['clave'=>$prioridad->clave,'mes'=>$mes]) }}">Auditar</a></td>
+              </tr>
+            @empty
+              <tr><td colspan="8" class="text-center text-muted p-3">No hay facturas positivas para priorizar.</td></tr>
+            @endforelse
+          </tbody>
+        </table>
+      </div>
+      <div class="may-example mt-3">
+        <strong>Informe breve para presentar:</strong>
+        En {{ $mes }} se documentaron {{ number_format($recibidas->prendas,0,',','.') }} prendas recibidas en Comercial Matriz
+        y {{ number_format($resumen->brutas,0,',','.') }} unidades facturadas brutas en
+        {{ $avanceGerencial->facturas_venta }} facturas.
+        Se registraron {{ number_format($resumen->devoluciones,0,',','.') }} unidades en notas de crédito
+        y {{ number_format($resumen->vinculadas,0,',','.') }} prendas tienen relación factura–remisión validada.
+        La auditoría se concentra primero en las dos facturas de mayor impacto
+        ({{ number_format($avanceGerencial->top_dos_porcentaje,1,',','.') }}% del volumen bruto).
+        <strong>La conciliación física y el saldo mensual aún requieren evidencia.</strong>
+      </div>
+    </div>
+  </div>
+
   <div class="card may-card mb-3">
     <div class="card-header bg-white"><strong><i class="fas fa-calendar-alt text-primary mr-2"></i>Panorama por mes · últimos seis meses hasta {{ $mes }}</strong>
       <small class="d-block text-muted">Elegí un mes para examinar facturas y remisiones. Las cantidades son hechos del período y no deben sumarse entre categorías.</small></div>
@@ -401,6 +484,7 @@
 .may-section{display:flex;justify-content:space-between;align-items:end;margin:20px 0 12px}
 .may-section h3{margin:0 0 3px;font-size:1.12rem;font-weight:750;color:#1f354d}
 .may-section p{color:#697c8e;font-size:.81rem;margin:0}
+.may-example{border:1px solid #dbe5ef;background:#f6f9fc;color:#394f66;padding:12px 15px;border-radius:8px;font-size:.83rem}
 .may-kpi,.may-metric{background:#fff;border:1px solid #e0e8f1;border-top:3px solid #95a8ba;border-radius:10px;padding:15px;min-height:112px;height:100%}
 .may-blue{border-top-color:#4795c9}.may-green{border-top-color:#2ca777}.may-orange{border-top-color:#edac4e}.may-violet{border-top-color:#917bd5}
 .may-kpi small,.may-metric small{font-size:.76rem;font-weight:700;color:#688096;display:block;margin-bottom:8px}
