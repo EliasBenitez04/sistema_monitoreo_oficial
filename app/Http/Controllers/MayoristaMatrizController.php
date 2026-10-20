@@ -481,7 +481,7 @@ class MayoristaMatrizController extends Controller
                 ? $request->query('origen') : 'todos';
             $consulta = VentaMayoristaController::entradas()
                 ->leftJoinSub($usos, 'usos', 'usos.remision_id', '=', 'r.id')
-                ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'), array_keys($requeridas))
+                ->whereIn(DB::raw("UPPER(REGEXP_REPLACE(BTRIM(COALESCE(r.codigo,'')), '[[:space:]]+', '', 'g'))"), array_keys($requeridas))
                 ->whereNotNull('r.fecha_remision')
                 // Remisiones posteriores (hasta 3 días) se muestran SOLO
                 // para investigar, sin permitir asociarlas a esta factura.
