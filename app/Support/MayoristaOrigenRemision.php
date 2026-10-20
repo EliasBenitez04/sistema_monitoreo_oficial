@@ -34,14 +34,14 @@ class MayoristaOrigenRemision
 
     public static function expresionDestinoMatriz(string $alias = 'r'): string
     {
-        return "({$alias}.cod_sucursal_destino = 25"
+        return "(COALESCE({$alias}.cod_sucursal_destino,0) = 25"
             . " OR UPPER(BTRIM(COALESCE({$alias}.sucursal_destino,''))) IN ('MATRIZ','COMERCIAL MATRIZ')"
             . " OR UPPER(BTRIM(COALESCE({$alias}.sucursal_logistica,''))) IN ('MATRIZ','COMERCIAL MATRIZ'))";
     }
 
     public static function esOrigenMatrizSql(string $alias = 'r'): string
     {
-        return "({$alias}.cod_sucursal_salida = 25"
+        return "(COALESCE({$alias}.cod_sucursal_salida,0) = 25"
             . " OR UPPER(BTRIM(COALESCE({$alias}.sucursal_salida,''))) IN ('MATRIZ','COMERCIAL MATRIZ'))";
     }
 
