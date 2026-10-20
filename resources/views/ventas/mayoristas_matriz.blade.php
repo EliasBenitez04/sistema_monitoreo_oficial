@@ -98,6 +98,11 @@
                     <td>
                       {{ $doc->origen_real }}
                       <small class="d-block text-muted">{{ $doc->tipo_origen }} · origen #{{ $doc->cod_sucursal_salida ?: 'sin código' }}</small>
+                      @if($doc->origen_discordante)
+                        <small class="d-block text-warning">
+                          <i class="fas fa-exclamation-triangle"></i> Revisar origen: el nombre importado dice «{{ $doc->sucursal_salida }}»
+                        </small>
+                      @endif
                     </td>
                     <td>COMERCIAL MATRIZ</td>
                     <td class="text-right">{{ number_format($doc->lineas,0,',','.') }}</td>
