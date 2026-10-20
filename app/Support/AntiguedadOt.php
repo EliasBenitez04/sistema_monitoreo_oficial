@@ -15,6 +15,22 @@ use Carbon\Carbon;
  */
 class AntiguedadOt
 {
+    public static function cortePendientesDelMes(Carbon $mes, ?Carbon $ahora = null): ?Carbon
+    {
+        $actual = $ahora ? $ahora->copy() : Carbon::now();
+        $primeroDelMes = $mes->copy()->startOfMonth();
+        $primeroActual = $actual->copy()->startOfMonth();
+
+        if ($primeroDelMes->greaterThan($primeroActual)) {
+            return null;
+        }
+        if ($primeroDelMes->equalTo($primeroActual)) {
+            return $actual;
+        }
+
+        return $primeroDelMes->endOfMonth()->endOfDay();
+    }
+
     public static function calcular($fechaUltimoMovimiento, $fechaPedido, Carbon $fechaCorte): array
     {
         $ultimo = $fechaUltimoMovimiento
