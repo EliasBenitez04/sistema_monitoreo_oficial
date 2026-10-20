@@ -194,10 +194,10 @@
         @foreach([0,1,2,3,4,5] as $n)
           <option value="{{ $n }}" {{ $n===$muestrasPorOt ? 'selected' : '' }}>{{ $n }}</option>
         @endforeach
+        @if($muestrasPorOt > 5)
+          <option value="{{ $muestrasPorOt }}" selected>{{ $muestrasPorOt }}</option>
+        @endif
       </select>
-      @if($muestrasPorOt > 5)
-        <input type="hidden" name="muestras_por_ot" value="{{ $muestrasPorOt }}">
-      @endif
       <button class="btn btn-sm btn-outline-primary">Aplicar</button>
     </form>
   </div>
