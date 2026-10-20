@@ -90,15 +90,15 @@
   <div class="row">
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-violet">
       <small>Separadas con fecha validada</small><strong>{{ number_format($separaciones->prendas,0,',','.') }}</strong>
-      <span>{{ $separaciones->registros ? $separaciones->registros.' registros con evidencia' : 'Sin separaciones verificadas todavía' }}</span>
+      <span>{{ $separaciones->registros ? $separaciones->registros.' registros con evidencia' : 'No significa que el plan esté vacío: faltan fechas y evidencia de separación' }}</span>
     </div></div>
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-blue">
       <small>Remitidas a Comercial Matriz</small><strong>{{ number_format($emitidas->prendas,0,',','.') }}</strong>
-      <span>{{ number_format($emitidas->documentos,0,',','.') }} líneas emitidas durante el mes</span>
+      <span><strong>{{ number_format($emitidas->documentos,0,',','.') }} remisiones distintas</strong> · {{ number_format($emitidas->lineas,0,',','.') }} líneas de artículo</span>
     </div></div>
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-green">
       <small>Entradas con recepción confirmada</small><strong>{{ number_format($recibidas->prendas,0,',','.') }}</strong>
-      <span>Central: {{ number_format($recibidas->central,0,',','.') }} · Locales: {{ number_format($recibidas->prendas-$recibidas->central,0,',','.') }}</span>
+      <span><strong>{{ number_format($recibidas->documentos,0,',','.') }} remisiones distintas recibidas</strong> · Central {{ number_format($recibidas->central,0,',','.') }} · Locales {{ number_format($recibidas->prendas-$recibidas->central,0,',','.') }}</span>
     </div></div>
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-orange">
       <small>Facturación mayorista neta</small><strong>{{ number_format($resumen->netas,0,',','.') }}</strong>
@@ -123,12 +123,13 @@
     <p>Separé las <strong>unidades realmente vinculadas</strong> de las <strong>coincidencias posibles</strong> para que puedas priorizar qué facturas auditar.</p></div></div>
   <div class="alert alert-info small mb-3">
     <strong><i class="fas fa-search mr-1"></i>Interpretación de las nuevas columnas:</strong>
-    «Líneas candidatas» busca remisiones de entrada a COMERCIAL MATRIZ por
-    <strong>código completo</strong>, emitidas y recibidas hasta la fecha de la factura,
-    con cantidades que aún no fueron vinculadas.
-    «Posible cobertura» indica cuántas prendas de esa factura podrían estar respaldadas
-    con esos documentos. <strong>No son confirmaciones</strong>: una misma remisión candidata
-    podría aparecer para varias facturas, por lo que no se suman estas coberturas entre comprobantes.
+    «Remisiones recientes» cuenta <strong>documentos únicos</strong>, no líneas de artículos:
+    mismo documento, código completo y fechas de emisión y recepción no posteriores a la factura
+    y emitidos como máximo 30 días antes.
+    La «Cobertura reciente» indica cuántas prendas aún no vinculadas podrían estar respaldadas
+    con esos documentos. «Histórico» se refiere a remisiones de más de 30 días.
+    <strong>No son confirmaciones ni stock actual</strong>: una misma remisión puede ser candidata
+    para varias facturas, por lo que estas cantidades no se deben sumar entre comprobantes.
     Para confirmar el origen, abrí <strong>Revisar</strong> y asigná cada documento con evidencia.
   </div>
   <div class="card may-card mb-3">
@@ -140,8 +141,8 @@
           <th class="text-right">Devoluciones</th><th class="text-right">Neto</th>
           <th class="text-right">Importe Gs</th><th class="text-right">Vinculadas</th>
           <th class="text-right">Sin vínculo</th>
-          <th class="text-right">Líneas candidatas</th>
-          <th class="text-right">Posible cobertura</th>
+          <th class="text-right">Remisiones recientes</th>
+          <th class="text-right">Cobertura estimada</th>
           <th>Estado documental</th><th></th>
         </tr></thead>
         <tbody>
@@ -162,13 +163,20 @@
             <td class="text-right text-success">{{ number_format($factura->vinculadas,0,',','.') }}</td>
             <td class="text-right {{ $factura->pendientes > 0 ? 'text-warning font-weight-bold' : '' }}">{{ number_format($factura->pendientes,0,',','.') }}</td>
             <td class="text-right">
-              {{ $factura->brutas > 0 ? number_format($factura->lineas_candidatas,0,',','.') : '—' }}
+              @if($factura->brutas > 0)
+                <strong>{{ number_format($factura->documentos_recientes,0,',','.') }}</strong>
+                <small class="d-block text-muted">últimos 30 días</small>
+                <small class="d-block text-muted">{{ number_format($factura->documentos_historicos,0,',','.') }} históricos</small>
+              @else
+                —
+              @endif
             </td>
             <td class="text-right">
               @if($factura->brutas > 0)
-                <strong class="{{ $factura->cobertura_candidata > 0 ? 'text-primary' : 'text-muted' }}">{{ number_format($factura->cobertura_candidata,0,',','.') }}</strong>
-                <small class="d-block text-muted">de {{ number_format($factura->pendientes,0,',','.') }} sin vínculo</small>
-                <small class="d-block {{ $factura->pendiente_sin_candidata>0 ? 'text-warning':'text-success' }}">{{ number_format($factura->pendiente_sin_candidata,0,',','.') }} sin cobertura previa</small>
+                <strong class="{{ $factura->cobertura_reciente > 0 ? 'text-primary' : 'text-muted' }}">{{ number_format($factura->cobertura_reciente,0,',','.') }}</strong>
+                <small class="d-block text-muted">reciente, de {{ number_format($factura->pendientes,0,',','.') }} sin vínculo</small>
+                <small class="d-block text-muted">+ {{ number_format($factura->cobertura_historica,0,',','.') }} históricas</small>
+                <small class="d-block {{ $factura->pendiente_sin_candidata>0 ? 'text-warning':'text-muted' }}">{{ number_format($factura->pendiente_sin_candidata,0,',','.') }} sin cobertura candidata</small>
               @else
                 —
               @endif
@@ -200,17 +208,24 @@
 
   <div class="row">
     <div class="col-lg-7 mb-3"><div class="card may-card h-100">
-      <div class="card-header bg-white"><strong>Saldo por código · prueba documental</strong></div>
+      <div class="card-header bg-white"><strong>Artículos que requieren revisión documental</strong>
+        <small class="d-block text-muted">{{ number_format($cantidadDiferencias,0,',','.') }} códigos con entradas del mes distintas de ventas netas; no es faltante físico</small>
+        <a href="{{ route('ventas.mayoristas.index',array_merge(request()->query(),['ver_saldos'=>$verTodosSaldos?'prioritarios':'todos'])) }}" class="btn btn-sm btn-outline-primary mt-2">
+          {{ $verTodosSaldos ? 'Ver solo prioritarios' : 'Ver todos los códigos ('.number_format($saldos->count(),0,',','.').')' }}
+        </a></div>
       <div class="table-responsive may-scroll">
         <table class="table table-sm may-table mb-0">
-          <thead><tr><th>Código completo</th><th class="text-right">Saldo inicial</th><th class="text-right">Recibido</th><th class="text-right">Facturado neto</th><th class="text-right">Saldo teórico</th></tr></thead>
+          <thead><tr><th>Código completo</th><th class="text-right">Apertura</th><th class="text-right">Recibido</th><th class="text-right">Facturado neto</th><th class="text-right">Diferencia del mes</th></tr></thead>
           <tbody>
-            @forelse($saldos as $s)
+            @forelse($saldosVisibles as $s)
             <tr><td><strong>{{ $s->codigo }}</strong></td>
               <td class="text-right">{{ $s->inicial===null ? 'SIN DATO' : number_format($s->inicial,0,',','.') }}</td>
               <td class="text-right">{{ number_format($s->entrada,0,',','.') }}</td>
               <td class="text-right">{{ number_format($s->venta,0,',','.') }}</td>
-              <td class="text-right">{{ $s->cierre===null ? 'NO DETERMINADO' : number_format($s->cierre,0,',','.') }}</td></tr>
+              <td class="text-right {{ $s->entrada != $s->venta ? 'text-warning font-weight-bold':'text-muted' }}">
+                {{ ($s->entrada-$s->venta)>0 ? '+' : '' }}{{ number_format($s->entrada-$s->venta,0,',','.') }}
+                <small class="d-block text-muted">No es stock</small>
+              </td></tr>
             @empty
               <tr><td colspan="5" class="text-center text-muted p-3">Sin movimientos para calcular.</td></tr>
             @endforelse
