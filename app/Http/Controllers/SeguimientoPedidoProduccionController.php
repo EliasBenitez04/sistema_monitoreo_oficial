@@ -357,6 +357,7 @@ class SeguimientoPedidoProduccionController extends Controller
                 'cantidad' => $cantidadOrden,
                 'cantidad_ingresada' => $cantidadIngresada,
                 'cantidad_pendiente' => $cantidadPendiente,
+                'cantidad_etapa_disponible' => $ultimo !== null && $ultimo->resultado !== null,
                 'pedidos' => $registros->pluck('nro_pedido')->unique()->implode(', '),
                 'etapa' => $etapa,
                 'ultima_fecha' => $fechaUltimaActividad,
@@ -381,21 +382,61 @@ class SeguimientoPedidoProduccionController extends Controller
          */
         $todosPorEtapa = collect();
         if ($cortePendientes && $pendientes->isNotEmpty()) {
+            // Una fila por OT y su ÚLTIMA etapa al corte (no se cuentan
+            // todos los movimientos históricos como unidades separadas).
+            // Misma regla cronológica y de desempate que UltimoProcesoOt.
             $ultimoPorOt = DB::table('ot_trazabilidad as t')
                 ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
                 ->whereNotNull('t.fecha_proceso')
                 ->where('t.fecha_proceso', '<=', $cortePendientes->format('Y-m-d H:i:s'))
-                ->selectRaw('DISTINCT ON (o.nro_ot) o.nro_ot, t.proceso')
-                ->orderBy('o.nro_ot')
+                ->selectRaw('DISTINCT ON (o.id_ot) o.id_ot, o.nro_ot, t.proceso, t.resultado')
+                ->orderBy('o.id_ot')
                 ->orderByRaw('DATE(t.fecha_proceso) DESC, '
                     . UltimoProcesoOt::prioridadSql('t.proceso')
                     . ' DESC, t.fecha_proceso DESC, t.id_trazabilidad DESC');
 
-            // Resultado reducido: una fila por nombre de etapa, con su
-            // cantidad de OT únicas, sin descargar todo el historial.
-            $todosPorEtapa = DB::query()->fromSub($ultimoPorOt, 'ultimo')
+            // Asociación válida a cualquier pedido a la fecha del corte.
+            // Se incluyen pedidos de todos los prefijos, no solo P.
+            // Una anulación/reemplazo invalida únicamente la relación
+            // específica OT-pedido; no implica que la OT esté sin pedido
+            // si permanece activa en otro.
+            $asociacionesActivas = DB::table('seguimiento_pedido_detalle as d')
+                ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
+                ->join('ot as o_pedido', 'o_pedido.id_ot', '=', 'd.id_ot')
+                ->where(function ($q) use ($cortePendientes) {
+                    $q->where('p.fecha_pedido', '<=', $cortePendientes->format('Y-m-d'))
+                      ->orWhere(function ($sinFecha) use ($cortePendientes) {
+                          $sinFecha->whereNull('p.fecha_pedido')
+                              ->where('p.created_at', '<=', $cortePendientes->format('Y-m-d H:i:s'));
+                      });
+                })
+                ->whereNotExists(function ($q) use ($cortePendientes) {
+                    $q->selectRaw('1')
+                        ->from('pedido_ot_cambios as c')
+                        ->whereColumn('c.pedido_id', 'p.id')
+                        ->whereIn('c.accion', ['ANULAR', 'REEMPLAZAR'])
+                        ->whereRaw('c.ot_anterior = CAST(o_pedido.nro_ot AS TEXT)')
+                        ->where('c.created_at', '<=', $cortePendientes->format('Y-m-d H:i:s'));
+                })
+                ->select('d.id_ot')->distinct();
+
+            // Sumar RESULTADO de la última etapa (no cantidad_orden,
+            // no suma de todos los movimientos). NULL = desconocido,
+            // con contador separado para no certificar prendas ficticias.
+            $cantidad = 'GREATEST(0, COALESCE(ultimo.resultado, 0))';
+            $todosPorEtapa = DB::query()
+                ->fromSub($ultimoPorOt, 'ultimo')
+                ->leftJoinSub($asociacionesActivas, 'pedido_activo', 'pedido_activo.id_ot', '=', 'ultimo.id_ot')
                 ->select('ultimo.proceso')
                 ->selectRaw('COUNT(*) as ots')
+                ->selectRaw("SUM($cantidad) as prendas_registradas")
+                ->selectRaw('COUNT(*) FILTER (WHERE ultimo.resultado IS NULL) as sin_cantidad')
+                ->selectRaw('COUNT(*) FILTER (WHERE pedido_activo.id_ot IS NOT NULL) as ots_con_pedido')
+                ->selectRaw("SUM(CASE WHEN pedido_activo.id_ot IS NOT NULL THEN $cantidad ELSE 0 END) as prendas_con_pedido")
+                ->selectRaw('COUNT(*) FILTER (WHERE pedido_activo.id_ot IS NOT NULL AND ultimo.resultado IS NULL) as con_pedido_sin_cantidad')
+                ->selectRaw('COUNT(*) FILTER (WHERE pedido_activo.id_ot IS NULL) as ots_sin_pedido')
+                ->selectRaw("SUM(CASE WHEN pedido_activo.id_ot IS NULL THEN $cantidad ELSE 0 END) as prendas_sin_pedido")
+                ->selectRaw('COUNT(*) FILTER (WHERE pedido_activo.id_ot IS NULL AND ultimo.resultado IS NULL) as sin_pedido_sin_cantidad')
                 ->groupBy('ultimo.proceso')
                 ->get();
         }
