@@ -12,6 +12,7 @@ use App\Support\PromedioDiarioProduccion;
 use App\Support\UltimoProcesoOt;
 use App\Support\ConteoEtapasPedido;
 use App\Support\AntiguedadOt;
+use App\Support\ResumenGerencialProduccion;
 
 class SeguimientoPedidoProduccionController extends Controller
 {
@@ -446,6 +447,50 @@ class SeguimientoPedidoProduccionController extends Controller
 
         $porEtapa = ConteoEtapasPedido::comparar($pendientes, $todosPorEtapa);
 
+        // Panel gerencial: lectura compacta a partir de los MISMOS
+        // movimientos, pendientes P y totales por etapa del informe.
+        // No introduce metas ficticias ni confunde cobertura P con
+        // cumplimiento de pedidos (este último requiere fecha/hito por OT).
+        $ultimoIngreso = $ultimoDia ? (int) $ultimoDia->prendas : null;
+        $promedioHastaUltimo = $ultimoDia && $ultimoDia->promedio !== null
+            ? (float) $ultimoDia->promedio : null;
+        $desviacionIngreso = ResumenGerencialProduccion::desviacionDiaria(
+            $ultimoIngreso, $promedioHastaUltimo
+        );
+        // "Alcanzó IT" es avance DOCUMENTAL de OT activas vinculadas a P,
+        // nunca significa pedido cumplido en fecha ni prendas completas.
+        $otPAsociadas = $vinculos->pluck('nro_ot')->filter()->unique()->count();
+        $avanceP = ResumenGerencialProduccion::avanceOtP(
+            $otPAsociadas, $pendientes->count()
+        );
+        $resumenGerencial = (object) [
+            'ot_p_asociadas' => $otPAsociadas,
+            'ot_p_con_hito' => $avanceP['con_hito'],
+            'porcentaje_p_en_it' => $avanceP['porcentaje'],
+            'ultimo_dia_fecha' => $ultimoDia->fecha ?? null,
+            'ultimo_dia_prendas' => $ultimoIngreso,
+            'desviacion_vs_promedio' => $desviacionIngreso,
+            'ot_pendientes' => $pendientes->count(),
+            'ot_urgentes' => $pendientes->where('prioridad', 'URGENTE')->count(),
+            'prendas_pendientes' => (int) $pendientes->sum('cantidad_pendiente'),
+            'fecha_corte_pendientes' => $cortePendientes,
+        ];
+        // Priorización por prendas pendientes documentadas de pedidos P.
+        // "Cuello de botella" aquí es una concentración, no prueba de
+        // causa productiva ni de bloqueo físico en la línea.
+        $etapasFoco = $porEtapa->filter(function ($area) {
+            return $area->ots > 0;
+        })->sortByDesc(function ($area) {
+            return $area->prendas !== null ? $area->prendas : -1;
+        })->take(5)->values();
+        $sinPedidoFoco = $porEtapa->filter(function ($area) {
+            return $area->ots_sin_pedido !== null && $area->ots_sin_pedido > 0;
+        })->sortByDesc(function ($area) {
+            return $area->prendas_sin_pedido !== null ? $area->prendas_sin_pedido : -1;
+        })->take(3)->values();
+        $pendientesCriticos = $pendientes->where('prioridad', 'URGENTE')
+            ->sortByDesc('dias_sin_movimiento')->take(6)->values();
+
         $habilesTranscurridos = $ultimoDia->dias_transcurridos ?? 0;
         $habilesRestantes = max(0, $diasHabilesMes - $habilesTranscurridos);
         $promedio = $ultimoDia->promedio ?? null;
@@ -483,7 +528,8 @@ class SeguimientoPedidoProduccionController extends Controller
         ];
         return view('seguimiento_pedidos_produccion.dashboard_mensual', compact(
             'mes', 'dias', 'salidas', 'pendientes', 'porEtapa', 'indicadores',
-            'escalaProyecciones'
+            'escalaProyecciones', 'resumenGerencial', 'etapasFoco',
+            'sinPedidoFoco', 'pendientesCriticos'
         ));
     }
 

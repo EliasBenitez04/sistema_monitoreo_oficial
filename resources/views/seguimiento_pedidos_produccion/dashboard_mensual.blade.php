@@ -21,6 +21,22 @@
             margin: 0
         }
 
+        .prod-focus-title { margin: 3px 0 10px; }
+        .prod-focus-card .table { font-size: .85rem; }
+        .prod-focus-card .table td, .prod-focus-card .table th { padding: 9px 11px; vertical-align: middle; }
+        .prod-focus-card .table td:first-child { min-width: 130px; white-space: normal; }
+        .prod-focus-context { border: 1px solid #dce5ef; background: #f8fafc; padding: 11px 14px; border-radius: 9px; font-size: .83rem; }
+        .prod-area-chip { display: inline-block; border: 1px solid #e0e8f0; background: #fff; padding: 5px 9px; margin: 4px; border-radius: 6px; }
+        .prod-details { border: 1px solid #e1e8ef; border-radius: 9px; background: #fff; margin-bottom: 14px; overflow: hidden; }
+        .prod-details > summary { list-style: none; cursor: pointer; padding: 14px 18px; font-weight: 700; color: #284765; background: #f7fafc; display: flex; align-items: center; gap: 8px; }
+        .prod-details > summary::-webkit-details-marker { display: none; }
+        .prod-details > summary:after { content: 'Mostrar'; margin-left: auto; font-weight: 500; font-size: .8rem; color: #4872a0; }
+        .prod-details[open] > summary:after { content: 'Ocultar'; }
+        .prod-details > .card, .prod-details > .row { margin: 10px; }
+        .prod-details > .row { margin-right: -5px; margin-left: -5px; }
+        .prod-details > .card { margin-bottom: 12px; }
+        @media(max-width:767px) { .prod-focus-card .table { font-size: .78rem; } .prod-area-chip { display: block; } }
+
         .prod-overview {
             border: 1px solid #e3e9f0;
             border-radius: 12px;
@@ -605,57 +621,148 @@
                 <div class="row no-gutters">
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Promedio diario de OT</div>
-                            <div class="prod-kpi-value">
-                                {{ $indicadores->promedio_ot !== null ? number_format($indicadores->promedio_ot, 1, ',', '.') : '-' }}
+                            <div class="prod-kpi-label">Último ingreso a IT</div>
+                            <div class="prod-kpi-value">{{ $resumenGerencial->ultimo_dia_prendas !== null ? number_format($resumenGerencial->ultimo_dia_prendas,0,',','.') : '—' }}</div>
+                            <div class="prod-kpi-desc">
+                                {{ $resumenGerencial->ultimo_dia_fecha ? date('d/m/Y',strtotime($resumenGerencial->ultimo_dia_fecha)) : 'Sin registros del período' }}
+                                @if($resumenGerencial->desviacion_vs_promedio !== null)
+                                    <span class="d-block {{ $resumenGerencial->desviacion_vs_promedio < 0 ? 'text-danger':'text-success' }}">
+                                        {{ $resumenGerencial->desviacion_vs_promedio > 0 ? '+' : '' }}{{ number_format($resumenGerencial->desviacion_vs_promedio,1,',','.') }}% frente al promedio acumulado
+                                    </span>
+                                @endif
                             </div>
-                            <div class="prod-kpi-desc">{{ $indicadores->dias_transcurridos }} días hábiles transcurridos ·
-                                {{ number_format($indicadores->ot_dia, 0, ',', '.') }} registros</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Promedio diario de prendas</div>
-                            <div class="prod-kpi-value">
-                                {{ $indicadores->promedio !== null ? number_format($indicadores->promedio, 1, ',', '.') : '-' }}
-                            </div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->prendas, 0, ',', '.') }} prendas
-                                acumuladas · {{ $indicadores->dias_habiles_mes }} días hábiles del mes</div>
+                            <div class="prod-kpi-label">Ritmo promedio diario</div>
+                            <div class="prod-kpi-value">{{ $indicadores->promedio !== null ? number_format($indicadores->promedio,0,',','.') : '—' }}</div>
+                            <div class="prod-kpi-desc">Prendas por día hábil · {{ number_format($indicadores->prendas,0,',','.') }} acumuladas</div>
+                            <div class="prod-kpi-desc">{{ number_format($indicadores->promedio_ot ?? 0,1,',','.') }} movimientos OT por día hábil</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Con pedido P</div>
-                            <div class="prod-kpi-value good">{{ number_format($indicadores->con, 0, ',', '.') }}</div>
-                            <div class="prod-kpi-desc"><strong>{{ number_format($indicadores->ots_con_pedido, 0, ',', '.') }} OT distintas</strong>
-                                · {{ number_format($indicadores->efectividad, 1, ',', '.') }}% de prendas</div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->registros_con_pedido, 0, ',', '.') }} movimientos OT/día</div>
+                            <div class="prod-kpi-label">OT vinculadas a P con hito IT</div>
+                            <div class="prod-kpi-value">{{ $resumenGerencial->porcentaje_p_en_it !== null ? number_format($resumenGerencial->porcentaje_p_en_it,1,',','.').'%' : '—' }}</div>
+                            <div class="prod-kpi-desc">{{ $resumenGerencial->ot_p_con_hito === null ? 'Revisar datos' : number_format($resumenGerencial->ot_p_con_hito,0,',','.') }} de {{ number_format($resumenGerencial->ot_p_asociadas,0,',','.') }} OT vinculadas ya registran el hito</div>
+                            <div class="prod-kpi-desc">Avance documental, no entrega en plazo ni cantidad completa</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Sin pedido P</div>
-                            <div class="prod-kpi-value bad">{{ number_format($indicadores->sin, 0, ',', '.') }}</div>
-                            <div class="prod-kpi-desc"><strong>{{ number_format($indicadores->ots_sin_pedido, 0, ',', '.') }} OT distintas</strong>
-                                · {{ number_format($indicadores->prendas > 0 ? ($indicadores->sin * 100) / $indicadores->prendas : 0, 1, ',', '.') }}% de prendas</div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->registros_sin_pedido, 0, ',', '.') }} movimientos OT/día</div>
+                            <div class="prod-kpi-label">Pedidos P pendientes</div>
+                            <div class="prod-kpi-value">{{ number_format($resumenGerencial->ot_pendientes,0,',','.') }} <small class="text-muted" style="font-size:.9rem">OT</small></div>
+                            <div class="prod-kpi-desc"><strong class="text-danger">{{ number_format($resumenGerencial->ot_urgentes,0,',','.') }} urgentes</strong> · {{ number_format($resumenGerencial->prendas_pendientes,0,',','.') }} prendas en etapa</div>
+                            <div class="prod-kpi-desc">Corte: {{ $resumenGerencial->fecha_corte_pendientes ? $resumenGerencial->fecha_corte_pendientes->format('d/m H:i') : 'sin corte' }}</div>
                         </div>
                     </div>
                 </div>
                 <div class="px-4 pt-2 pb-3">
                     <div class="d-flex justify-content-between mb-2">
-                        <small class="font-weight-bold text-success">Con pedido P</small>
-                        <small class="font-weight-bold text-danger">Sin pedido P</small>
+                        <small class="font-weight-bold text-success">Prendas con pedido P: {{ number_format($indicadores->efectividad,1,',','.') }}%</small>
+                        <small class="font-weight-bold text-danger">Sin vinculación a P</small>
                     </div>
                     <div class="prod-progress">
                         <div class="bg-success" style="width:{{ $indicadores->efectividad }}%"></div>
                         <div class="bg-danger"
                             style="width:{{ $indicadores->prendas > 0 ? 100 - $indicadores->efectividad : 0 }}%"></div>
                     </div>
-                    <p class="small text-muted mb-0 mt-2">Las prendas con pedido P más las prendas sin pedido P equivalen al
-                        total ingresado. Una OT puede vincularse a un pedido de fecha posterior al movimiento.</p>
+                    <p class="small text-muted mb-0 mt-2">Distribución de prendas ingresadas al hito IT: con y sin asociación a P.
+                        Estar fuera de P no demuestra ausencia de otros pedidos ni incumplimiento.
+                        Una OT puede vincularse a un pedido posterior al movimiento.</p>
                 </div>
             </div>
+            <div class="prod-focus-title d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <h3 class="prod-section-title mb-1"><i class="fas fa-bullseye mr-2 text-primary"></i>Atención gerencial · dónde intervenir</h3>
+                    <p class="small text-muted mb-2">Concentración por última etapa registrada; no es una confirmación de bloqueo físico.</p>
+                </div>
+                <a class="btn btn-sm btn-outline-primary mb-2" href="#detalleOperativo">Consultar detalle completo</a>
+            </div>
+            <div class="row">
+                <div class="col-lg-7 mb-3">
+                    <div class="card prod-section-card prod-focus-card h-100 mb-0">
+                        <div class="card-header bg-white">
+                            <strong><i class="fas fa-industry text-primary mr-2"></i>Áreas con más prendas P pendientes</strong>
+                            <small class="d-block text-muted">Máximo cinco áreas, ordenadas por volumen de prendas pendientes, no por cantidad de movimientos</small>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="thead-light"><tr>
+                                    <th>Última etapa</th>
+                                    <th class="text-right">OT P</th>
+                                    <th class="text-right">Prendas P</th>
+                                    <th class="text-right">OT sin pedido</th>
+                                </tr></thead>
+                                <tbody>
+                                    @forelse($etapasFoco as $area)
+                                        <tr>
+                                            <td class="font-weight-bold">{{ $area->etapa }}</td>
+                                            <td class="text-right">{{ number_format($area->ots,0,',','.') }}</td>
+                                            <td class="text-right">{{ $area->prendas === null ? 'Sin dato' : number_format($area->prendas,0,',','.') }}</td>
+                                            <td class="text-right">{{ $area->ots_sin_pedido === null ? 'Revisar' : number_format($area->ots_sin_pedido,0,',','.') }}</td>
+                                        </tr>
+                                    @empty
+                                        <tr><td colspan="4" class="text-muted text-center">Sin OT P pendientes para este corte.</td></tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card-footer small text-muted bg-white">
+                            Pendientes P medidos antes del hito IT. OT sin pedido = sin asociación vigente registrada al corte;
+                            las cantidades de prendas de otras categorías están en el detalle.
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-5 mb-3">
+                    <div class="card prod-section-card prod-focus-card h-100 mb-0">
+                        <div class="card-header bg-white">
+                            <strong><i class="fas fa-exclamation-circle text-danger mr-2"></i>OT urgentes de pedidos P</strong>
+                            <small class="d-block text-muted">Hasta seis OT; urgencia definida por 15 días o más de espera P</small>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="thead-light"><tr>
+                                    <th>OT</th><th>Última etapa</th><th class="text-right">Sin movimiento</th>
+                                </tr></thead>
+                                <tbody>
+                                    @forelse($pendientesCriticos as $ot)
+                                        <tr>
+                                            <td><a href="{{ url('/dashboard/ot').'?nro_ot='.urlencode($ot->nro_ot) }}" class="font-weight-bold">{{ $ot->nro_ot }}</a></td>
+                                            <td>{{ $ot->etapa }}</td>
+                                            <td class="text-right">{{ $ot->dias_sin_movimiento !== null ? (int) floor($ot->dias_sin_movimiento).' d' : 'Sin dato' }}</td>
+                                        </tr>
+                                    @empty
+                                        <tr><td colspan="3" class="text-center text-muted">No hay OT P urgentes a este corte.</td></tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card-footer small text-muted bg-white">
+                            La antigüedad mostrada es tiempo sin actividad; la prioridad URGENTE se calcula con la espera del pedido P.
+                            <a href="#listaPendientesCompleta">Ver todas las pendientes</a>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            @if($sinPedidoFoco->isNotEmpty())
+                <div class="prod-focus-context mb-3">
+                    <strong>Otras OT sin pedido registrado:</strong>
+                    @foreach($sinPedidoFoco as $area)
+                        <span class="prod-area-chip">{{ $area->etapa }}:
+                            {{ number_format($area->ots_sin_pedido,0,',','.') }} OT
+                            @if($area->prendas_sin_pedido !== null)
+                                · {{ number_format($area->prendas_sin_pedido,0,',','.') }} prendas
+                            @else
+                                · cantidad pendiente de validar
+                            @endif
+                        </span>
+                    @endforeach
+                    <a href="#detalleOperativo" class="ml-1">Ver clasificación completa</a>
+                </div>
+            @endif
+
             {{-- Gráfico interactivo del mismo período y los mismos indicadores usados en la tabla. --}}
             @php
                 $serieGraficaProduccion = $dias
@@ -755,6 +862,8 @@
                 </div>
             </div>
 
+            <details class="prod-details" id="calendarioProduccion">
+                <summary><i class="far fa-calendar-alt mr-1"></i>Calendario completo de producción y consulta diaria de OT</summary>
             <div class="card mb-3">
                 <div class="card-header bg-white">
                     <h3 class="prod-section-title mb-1"><i class="far fa-calendar-alt mr-2 text-primary"></i>Calendario de
@@ -906,6 +1015,8 @@
                 @endif
             @endforeach
 
+            </details>
+
             <div class="alert {{ $indicadores->pendientes_en_vivo ? 'alert-info' : 'alert-secondary' }} mb-3">
                 <i class="fas fa-clock mr-1"></i>
                 <strong>{{ $indicadores->pendientes_en_vivo ? 'Pendientes vigentes' : 'Pendientes al corte histórico' }}:</strong>
@@ -922,6 +1033,8 @@
                     No confundir 25 días de un corte anterior con los días actuales.
                 </span>
             </div>
+            <details class="prod-details" id="detalleOperativo">
+                <summary><i class="fas fa-layer-group mr-1"></i>Ver todas las áreas, cantidades y clasificación de pedidos</summary>
             <div class="row">
                 <div class="col-12 mb-3">
                     <div class="card prod-section-card">
@@ -1008,6 +1121,10 @@
                 </div>
             </div>
 
+            </details>
+
+            <details class="prod-details" id="listaPendientesCompleta">
+                <summary><i class="fas fa-clipboard-list mr-1"></i>Lista completa de OT P pendientes y prioridades</summary>
             <div class="card prod-section-card">
                 <div class="card-header"><strong><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Prioridades
                         y pendientes para intervenir</strong>
@@ -1057,6 +1174,10 @@
                     </table>
                 </div>
             </div>
+            </details>
+
+            <details class="prod-details" id="movimientosMensuales">
+                <summary><i class="fas fa-truck-loading mr-1"></i>Documentos y movimientos del hito IT por fecha</summary>
             <div class="card prod-section-card">
                 <div class="card-header"><strong><i class="fas fa-truck-loading text-primary mr-2"></i>Movimientos del
                         hito durante el mes · Asociación con pedidos P</strong></div>
@@ -1093,6 +1214,7 @@
                     </table>
                 </div>
             </div>
+            </details>
         </div>
     </section>
 @endsection
