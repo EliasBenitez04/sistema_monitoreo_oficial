@@ -41,11 +41,15 @@ class MayoristaCruceDocumento
                     'codigos' => [], 'lineas' => collect(),
                     'remitidas' => 0, 'usadas' => 0, 'disponibles' => 0,
                     'posible' => 0, 'coincidencias' => 0, 'completo' => false,
+                    'codigos_por_ot' => [], 'grupos_de_ot' => [],
                 ];
             }
             $doc = $documentos[$clave];
             $doc->lineas->push($r);
             $doc->codigos[$codigo] = true;
+            if (!empty($r->id_ot)) {
+                $doc->codigos_por_ot[$r->id_ot][$codigo] = true;
+            }
             $doc->remitidas += (int) $r->cantidad;
             $doc->usadas += (int) ($r->usadas ?? 0);
             $doc->disponibles += $disponible;
@@ -55,6 +59,16 @@ class MayoristaCruceDocumento
             $doc->coincidencias = count($doc->codigos);
             $doc->completo = count($requeridas) > 0
                 && count(array_diff(array_keys($requeridas), array_keys($doc->codigos))) === 0;
+            // Orientación cuando un mismo documento contiene varios
+            // códigos/talles de la MISMA OT. No asumir que 4 códigos
+            // son exactamente los 4 talles de un artículo.
+            foreach ($doc->codigos_por_ot as $idOt => $codigos) {
+                if (count($codigos) >= 4) {
+                    $doc->grupos_de_ot[] = (object)[
+                        'id_ot' => $idOt, 'codigos' => count($codigos)
+                    ];
+                }
+            }
         }
 
         return collect(array_values($documentos))
