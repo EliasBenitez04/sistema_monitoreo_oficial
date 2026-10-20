@@ -163,7 +163,7 @@
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-kpi-blue">
       <small>Volumen de remisiones</small>
       <strong>{{ number_format($resumen->remitido,0,',','.') }}</strong>
-      <span>{{ number_format($resumen->salida_central,0,',','.') }} salidas Central · {{ number_format($resumen->traslados,0,',','.') }} traslados</span>
+      <span>{{ number_format($resumen->salida_central,0,',','.') }} salidas Central · {{ number_format($resumen->traslados,0,',','.') }} movimientos no centrales</span>
     </div></div>
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-kpi-green">
       <small>Movimientos recibidos</small>
@@ -178,7 +178,7 @@
   </div>
   <div class="alert alert-light border mb-3">
     <strong><i class="fas fa-info-circle text-primary mr-1"></i>No mezclar unidades:</strong>
-    las ventas son comprobantes comerciales; el plan es asignación; las remisiones incluyen traslados y redistribuciones.
+    las ventas son comprobantes comerciales; el plan es asignación; las remisiones incluyen redistribuciones o movimientos de origen no central. No todos equivalen a nuevas prendas.
     Esas tres magnitudes no se suman como prendas únicas ni la diferencia se declara automáticamente stock faltante.
   </div>
 
@@ -239,7 +239,7 @@
           <th class="text-right">Remisiones<br>período</th>
           <th class="text-right">Diferencia<br>Plan − Mov.</th>
           <th class="text-right">Recibido</th>
-          <th class="text-right">Traslados<br>internos</th>
+          <th class="text-right">Movimientos<br>no centrales</th>
           <th class="text-right">Venta<br>neta unid.</th>
           <th class="text-right">PVTA<br>Gs</th>
           <th>Diagnóstico documental</th>
@@ -318,7 +318,47 @@
   </div>
 
   <div class="may-section-heading">
-    <h3><i class="fas fa-clipboard-list mr-2 text-primary"></i>5. Documentos de logística · Auditoría</h3>
+    <h3><i class="fas fa-receipt mr-2 text-primary"></i>5. Comprobantes reales · Comercial Matriz</h3>
+    <small>Listado de ventas, notas de crédito y devoluciones de la fuente de Ventas.</small>
+  </div>
+  <div class="card may-card mb-3">
+    <div class="card-header bg-white">
+      <strong>Auditoría comercial</strong>
+      <small class="d-block text-muted">Un importe negativo se conserva como devolución; PLISTA, DTO y PVTA ya son totales de la línea importada.</small>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm may-table mb-0">
+        <thead><tr>
+          <th>Fecha</th><th>Comprobante</th><th>Tipo</th><th>Cliente</th><th>Código / Artículo</th>
+          <th class="text-right">Cantidad</th><th class="text-right">PLISTA</th>
+          <th class="text-right">DTO</th><th class="text-right">PVTA</th>
+        </tr></thead>
+        <tbody>
+          @forelse($ventasDetalle ?? [] as $v)
+            <tr class="{{ $v->cantidad < 0 ? 'table-danger' : '' }}">
+              <td>{{ date('d/m/Y',strtotime($v->fecha)) }}</td>
+              <td><strong>{{ $v->comprobante }}</strong></td>
+              <td>{{ $v->tipo_comprobante ?: '—' }}</td>
+              <td>{{ $v->cliente ?: 'Sin cliente' }}</td>
+              <td>{{ $v->codigo }}<small class="d-block text-muted">{{ $v->descripcion }}</small></td>
+              <td class="text-right {{ $v->cantidad < 0 ? 'text-danger' : '' }}">{{ number_format($v->cantidad,0,',','.') }}</td>
+              <td class="text-right">Gs {{ number_format($v->p_lista,0,',','.') }}</td>
+              <td class="text-right">Gs {{ number_format($v->descuento,0,',','.') }}</td>
+              <td class="text-right font-weight-bold {{ $v->p_venta < 0 ? 'text-danger' : 'text-success' }}">Gs {{ number_format($v->p_venta,0,',','.') }}</td>
+            </tr>
+          @empty
+            <tr><td colspan="9" class="text-muted text-center p-4">No hay comprobantes comerciales en el período consultado.</td></tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+    @if($ventasDetalle && $ventasDetalle->hasPages())
+      <div class="card-footer bg-white">{{ $ventasDetalle->links() }}</div>
+    @endif
+  </div>
+
+  <div class="may-section-heading">
+    <h3><i class="fas fa-clipboard-list mr-2 text-primary"></i>6. Documentos de logística · Auditoría</h3>
     <small>Remisiones del período, con origen, destino y comprobante.</small>
   </div>
   <div class="card may-card mb-4">
