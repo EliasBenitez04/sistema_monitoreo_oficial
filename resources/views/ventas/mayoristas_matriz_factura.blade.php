@@ -38,11 +38,18 @@
   <div class="card mb-3 maym-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
       <div><strong>2. Remisiones hacia Matriz desde TODAS las sucursales y Modelo Muestra</strong>
-        <small class="d-block text-muted">Verificá los códigos y talles de una misma OT dentro del documento; nunca se juntan distintas remisiones para simular una coincidencia completa.</small></div>
-      <div class="btn-group btn-group-sm mt-2">
-        <a class="btn btn-{{ $diasHistorial==='90'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'90']) }}">90 días</a>
-        <a class="btn btn-{{ $diasHistorial==='365'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'365']) }}">1 año</a>
-        <a class="btn btn-{{ $diasHistorial==='todo'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'todo']) }}">Todo</a>
+        <small class="d-block text-muted">Verificá los códigos y talles dentro del mismo documento. Cada remisión conserva su origen real (Multiplaza, Luque, Central, etc.). Las remisiones posteriores a la factura se muestran para investigar, pero no se pueden asignar.</small></div>
+      <div class="d-flex flex-wrap align-items-center mt-2" style="gap:5px">
+        <div class="btn-group btn-group-sm">
+          <a class="btn btn-{{ $filtroOrigen==='todos'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>$diasHistorial,'origen'=>'todos']) }}">Todas las sucursales</a>
+          <a class="btn btn-{{ $filtroOrigen==='locales'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>$diasHistorial,'origen'=>'locales']) }}">Solo locales → Matriz</a>
+          <a class="btn btn-{{ $filtroOrigen==='central'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>$diasHistorial,'origen'=>'central']) }}">Solo Casa Central</a>
+        </div>
+        <div class="btn-group btn-group-sm">
+          <a class="btn btn-{{ $diasHistorial==='90'?'secondary':'outline-secondary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'90','origen'=>$filtroOrigen]) }}">90 días</a>
+          <a class="btn btn-{{ $diasHistorial==='365'?'secondary':'outline-secondary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'365','origen'=>$filtroOrigen]) }}">1 año</a>
+          <a class="btn btn-{{ $diasHistorial==='todo'?'secondary':'outline-secondary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'todo','origen'=>$filtroOrigen]) }}">Todo</a>
+        </div>
       </div>
     </div>
     @if($totales->candidatas_limitadas)
@@ -91,6 +98,11 @@
                       @if($r->fecha_recepcion)<span class="text-success">{{ date('d/m/Y',strtotime($r->fecha_recepcion)) }}</span>
                       @else<span class="text-warning">Sin recepción</span>@endif
                       @if($r->modelo)<small class="d-block text-primary">Modelo Muestra</small>@endif
+                      @if($r->posterior)
+                        <small class="d-block text-warning">Emitida después de la factura · solo revisión</small>
+                      @elseif($r->recepcion_posterior && !$r->modelo)
+                        <small class="d-block text-warning">Recibida después de la factura · solo revisión</small>
+                      @endif
                     </td>
                     <td class="text-right">{{ number_format($r->cantidad,0,',','.') }}</td>
                     <td class="text-right">{{ number_format($r->usadas,0,',','.') }}</td>
@@ -112,7 +124,7 @@
                           <button class="btn btn-sm btn-outline-success" onclick="return confirm('¿Confirmar cantidad de esta remisión para esta factura?')">Asignar</button>
                         </form>
                       @else
-                        <small class="text-muted">{{ $r->disponible <= 0 ? 'Sin saldo':'Factura cubierta o requiere verificar recepción' }}</small>
+                        <small class="text-muted">{{ $r->posterior ? 'Remisión posterior a factura' : (($r->recepcion_posterior && !$r->modelo) ? 'Recepción posterior a factura' : ($r->disponible <= 0 ? 'Sin saldo' : 'Factura cubierta o recepción pendiente')) }}</small>
                       @endif
                     </td>
                   </tr>
