@@ -17,14 +17,25 @@ class VentaMayoristaController extends Controller
         $this->middleware('permission:pedido_compras index');
     }
 
+    /**
+     * Remisiones que documentan entrada a MATRIZ o destino MODELO MUESTRA.
+     * Una remisión a MODELO MUESTRA NO demuestra por sí sola que ingresó
+     * físicamente a COMERCIAL MATRIZ; esta distinción se mantiene en UI.
+     */
     public static function entradas()
     {
         return DB::table('ot_logistica_remisiones as r')
             ->where(function ($q) {
                 $q->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = 'COMERCIAL MATRIZ'")
-                  ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) = 'COMERCIAL MATRIZ'");
-            })
-            ->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) <> 'COMERCIAL MATRIZ'");
+                  ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) = 'COMERCIAL MATRIZ'")
+                  ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) LIKE '%MODELO%MUESTRA%'")
+                  ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) LIKE '%MODELO%MUESTRA%'")
+                  ->orWhereExists(function ($sub) {
+                      $sub->selectRaw('1')->from('ot_logistica_detalle as d')
+                          ->whereColumn('d.id', 'r.id_logistica_detalle')
+                          ->whereRaw("UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MODELO%MUESTRA%'");
+                  });
+            });
     }
 
     public static function ventas()
