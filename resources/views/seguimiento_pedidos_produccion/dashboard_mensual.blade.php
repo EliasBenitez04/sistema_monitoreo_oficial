@@ -605,55 +605,56 @@
                 <div class="row no-gutters">
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Promedio diario de OT</div>
-                            <div class="prod-kpi-value">
-                                {{ $indicadores->promedio_ot !== null ? number_format($indicadores->promedio_ot, 1, ',', '.') : '-' }}
+                            <div class="prod-kpi-label">Último ingreso a IT</div>
+                            <div class="prod-kpi-value">{{ $resumenGerencial->ultimo_dia_prendas !== null ? number_format($resumenGerencial->ultimo_dia_prendas,0,',','.') : '—' }}</div>
+                            <div class="prod-kpi-desc">
+                                {{ $resumenGerencial->ultimo_dia_fecha ? date('d/m/Y',strtotime($resumenGerencial->ultimo_dia_fecha)) : 'Sin registros del período' }}
+                                @if($resumenGerencial->desviacion_vs_promedio !== null)
+                                    <span class="d-block {{ $resumenGerencial->desviacion_vs_promedio < 0 ? 'text-danger':'text-success' }}">
+                                        {{ $resumenGerencial->desviacion_vs_promedio > 0 ? '+' : '' }}{{ number_format($resumenGerencial->desviacion_vs_promedio,1,',','.') }}% frente al promedio acumulado
+                                    </span>
+                                @endif
                             </div>
-                            <div class="prod-kpi-desc">{{ $indicadores->dias_transcurridos }} días hábiles transcurridos ·
-                                {{ number_format($indicadores->ot_dia, 0, ',', '.') }} registros</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Promedio diario de prendas</div>
-                            <div class="prod-kpi-value">
-                                {{ $indicadores->promedio !== null ? number_format($indicadores->promedio, 1, ',', '.') : '-' }}
-                            </div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->prendas, 0, ',', '.') }} prendas
-                                acumuladas · {{ $indicadores->dias_habiles_mes }} días hábiles del mes</div>
+                            <div class="prod-kpi-label">Ritmo promedio diario</div>
+                            <div class="prod-kpi-value">{{ $indicadores->promedio !== null ? number_format($indicadores->promedio,0,',','.') : '—' }}</div>
+                            <div class="prod-kpi-desc">Prendas por día hábil · {{ number_format($indicadores->prendas,0,',','.') }} acumuladas</div>
+                            <div class="prod-kpi-desc">{{ number_format($indicadores->promedio_ot ?? 0,1,',','.') }} movimientos OT por día hábil</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Con pedido P</div>
-                            <div class="prod-kpi-value good">{{ number_format($indicadores->con, 0, ',', '.') }}</div>
-                            <div class="prod-kpi-desc"><strong>{{ number_format($indicadores->ots_con_pedido, 0, ',', '.') }} OT distintas</strong>
-                                · {{ number_format($indicadores->efectividad, 1, ',', '.') }}% de prendas</div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->registros_con_pedido, 0, ',', '.') }} movimientos OT/día</div>
+                            <div class="prod-kpi-label">Participación de pedidos P</div>
+                            <div class="prod-kpi-value">{{ number_format($indicadores->efectividad,1,',','.') }}%</div>
+                            <div class="prod-kpi-desc">{{ number_format($indicadores->con,0,',','.') }} prendas vinculadas a P</div>
+                            <div class="prod-kpi-desc">Indicador de participación; no mide pedidos cumplidos</div>
                         </div>
                     </div>
                     <div class="col-lg-3 col-sm-6">
                         <div class="prod-kpi">
-                            <div class="prod-kpi-label">Sin pedido P</div>
-                            <div class="prod-kpi-value bad">{{ number_format($indicadores->sin, 0, ',', '.') }}</div>
-                            <div class="prod-kpi-desc"><strong>{{ number_format($indicadores->ots_sin_pedido, 0, ',', '.') }} OT distintas</strong>
-                                · {{ number_format($indicadores->prendas > 0 ? ($indicadores->sin * 100) / $indicadores->prendas : 0, 1, ',', '.') }}% de prendas</div>
-                            <div class="prod-kpi-desc">{{ number_format($indicadores->registros_sin_pedido, 0, ',', '.') }} movimientos OT/día</div>
+                            <div class="prod-kpi-label">Pedidos P pendientes</div>
+                            <div class="prod-kpi-value">{{ number_format($resumenGerencial->ot_pendientes,0,',','.') }} <small class="text-muted" style="font-size:.9rem">OT</small></div>
+                            <div class="prod-kpi-desc"><strong class="text-danger">{{ number_format($resumenGerencial->ot_urgentes,0,',','.') }} urgentes</strong> · {{ number_format($resumenGerencial->prendas_pendientes,0,',','.') }} prendas en etapa</div>
+                            <div class="prod-kpi-desc">Corte: {{ $resumenGerencial->fecha_corte_pendientes ? $resumenGerencial->fecha_corte_pendientes->format('d/m H:i') : 'sin corte' }}</div>
                         </div>
                     </div>
                 </div>
                 <div class="px-4 pt-2 pb-3">
                     <div class="d-flex justify-content-between mb-2">
                         <small class="font-weight-bold text-success">Con pedido P</small>
-                        <small class="font-weight-bold text-danger">Sin pedido P</small>
+                        <small class="font-weight-bold text-danger">Sin vinculación a P</small>
                     </div>
                     <div class="prod-progress">
                         <div class="bg-success" style="width:{{ $indicadores->efectividad }}%"></div>
                         <div class="bg-danger"
                             style="width:{{ $indicadores->prendas > 0 ? 100 - $indicadores->efectividad : 0 }}%"></div>
                     </div>
-                    <p class="small text-muted mb-0 mt-2">Las prendas con pedido P más las prendas sin pedido P equivalen al
-                        total ingresado. Una OT puede vincularse a un pedido de fecha posterior al movimiento.</p>
+                    <p class="small text-muted mb-0 mt-2">Distribución de prendas ingresadas al hito IT: con y sin asociación a P.
+                        Estar fuera de P no demuestra ausencia de otros pedidos ni incumplimiento.
+                        Una OT puede vincularse a un pedido posterior al movimiento.</p>
                 </div>
             </div>
             {{-- Gráfico interactivo del mismo período y los mismos indicadores usados en la tabla. --}}
