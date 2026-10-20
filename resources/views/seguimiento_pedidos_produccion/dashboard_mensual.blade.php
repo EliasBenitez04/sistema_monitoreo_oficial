@@ -938,9 +938,9 @@
                                 <thead>
                                     <tr>
                                         <th rowspan="2">Proceso actual</th>
-                                        <th title="Todas las OT cuyo último proceso registrado corresponde al área, con o sin pedido P">OT en esta área</th>
-                                        <th title="OT de pedidos P todavía pendientes en esta etapa">OT de pedidos P</th>
-                                        <th title="Prendas pendientes de los pedidos P; no incluye otras OT del área">Prendas de P</th>
+                                        <th colspan="2">Total del área</th>
+                                        <th colspan="2">Pendientes P</th>
+                                        <th colspan="2">Con otro pedido vigente</th><th colspan="2">Sin pedido asignado</th>
                                     </tr>
                                 </thead>
                                 <tbody>
