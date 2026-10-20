@@ -961,7 +961,7 @@
                                 <div class="col-4"><small class="text-muted">OT pendientes</small>
                                     <h3>{{ number_format($indicadores->pendientes, 0, ',', '.') }}</h3>
                                 </div>
-                                <div class="col-4"><small class="text-muted">Prendas según último proceso</small>
+                                <div class="col-4"><small class="text-muted">Prendas según etapa vigente</small>
                                     <h3>{{ number_format($indicadores->prendas_pendientes, 0, ',', '.') }}</h3>
                                 </div>
                                 <div class="col-4"><small class="text-muted">Urgentes · 15 días o más de espera P</small>
@@ -975,7 +975,8 @@
                                 revisar desde 8 hasta menos de 15 días; urgente 15 días o más de espera.
                                 Una OT deja de estar pendiente al registrar
                                 TERMINACION - INGRESO TERMINACION, aunque cambie la cantidad.
-                                Las prendas mostradas corresponden al resultado del último proceso documentado.
+                                Las prendas mostradas corresponden al resultado de la etapa vigente
+                                seleccionada por fecha y jerarquía de producción.
                             </p>
                         </div>
                     </div>
@@ -1002,7 +1003,7 @@
                                 <th>Sin movimiento real</th>
                                 <th>Prendas OT</th>
                                 <th>Ingresadas a IT</th>
-                                <th>Cant. último proceso</th>
+                                <th>Cant. etapa vigente</th>
                                 <th>Prioridad</th>
                             </tr>
                         </thead>
