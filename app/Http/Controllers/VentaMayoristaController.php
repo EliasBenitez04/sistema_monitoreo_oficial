@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\MayoristaConciliacion as Conciliador;
 use Carbon\Carbon;
-use App\Support\ConfirmacionTupi;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -17,410 +17,497 @@ class VentaMayoristaController extends Controller
         $this->middleware('permission:pedido_compras index');
     }
 
-    /**
-     * Ventas del canal mayorista = TODAS las líneas del local COMERCIAL MATRIZ.
-     * Las remisiones son movimientos físicos, NO comprobantes de venta.
-     *
-     * Para enlazar ventas con OT se normaliza el código base de 9 caracteres
-     * y se asigna únicamente cuando esa base pertenece a UNA OT en toda la BD.
-     * Cuando no existe una coincidencia unívoca, no se inventa una OT.
-     */
+    public static function entradas()
+    {
+        return DB::table('ot_logistica_remisiones as r')
+            ->where(function ($q) {
+                $q->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = 'COMERCIAL MATRIZ'")
+                  ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) = 'COMERCIAL MATRIZ'");
+            })
+            ->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) <> 'COMERCIAL MATRIZ'");
+    }
+
+    public static function ventas()
+    {
+        return DB::table('ventas as v')
+            ->whereRaw("UPPER(BTRIM(COALESCE(v.local,''))) = 'COMERCIAL MATRIZ'");
+    }
+
+    public static function rango(string $mes): array
+    {
+        $inicio = Carbon::parse($mes . '-01')->startOfMonth();
+        return [$inicio->format('Y-m-d'), $inicio->copy()->endOfMonth()->format('Y-m-d')];
+    }
+
+    public static function mes(Request $request): string
+    {
+        $mes = (string) $request->query('mes', '');
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mes)) {
+            return $mes;
+        }
+        $ultima = self::ventas()->max('v.fecha');
+        return $ultima ? substr((string) $ultima, 0, 7) : Carbon::today()->format('Y-m');
+    }
+
+    public static function facturas(string $mes)
+    {
+        list($desde, $hasta) = self::rango($mes);
+        return self::ventas()->whereBetween('v.fecha', [$desde, $hasta])
+            ->select('v.fecha','v.comprobante','v.cli_cod','v.cliente','v.tipo_comprobante')
+            ->selectRaw('SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END) as brutas')
+            ->selectRaw('SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END) as devoluciones')
+            ->selectRaw('COALESCE(SUM(v.cantidad),0) as netas, COALESCE(SUM(v.p_venta),0) as pvta')
+            ->selectRaw('COUNT(*) as lineas, COUNT(DISTINCT v.codigo) as articulos')
+            ->groupBy('v.fecha','v.comprobante','v.cli_cod','v.cliente','v.tipo_comprobante')
+            ->orderBy('v.fecha','desc')->orderBy('v.comprobante','desc')
+            ->get()->map(function ($f) {
+                $f->clave = Conciliador::claveFactura($f->fecha,$f->comprobante,$f->cli_cod,$f->cliente);
+                return $f;
+            });
+    }
+
+    public static function buscarFactura(string $clave,string $mes)
+    {
+        $factura = self::facturas($mes)->first(function($f)use($clave) {
+            return hash_equals($f->clave,$clave);
+        });
+        abort_unless($factura,404,'Factura mayorista no encontrada en el mes seleccionado.');
+        return $factura;
+    }
+
+    public static function lineas($factura)
+    {
+        return self::ventas()->where('v.fecha',$factura->fecha)
+            ->where('v.comprobante',$factura->comprobante)
+            ->whereRaw("COALESCE(BTRIM(v.cli_cod),'') = ?",[trim((string)$factura->cli_cod)])
+            ->whereRaw("COALESCE(BTRIM(v.cliente),'') = ?",[trim((string)$factura->cliente)])
+            ->select('v.id','v.codigo','v.descripcion','v.cantidad','v.p_lista','v.descuento','v.p_venta')
+            ->orderBy('v.codigo')->get();
+    }
+
+    public static function necesidades($lineas): array
+    {
+        $requeridas=[];
+        foreach($lineas as $linea) {
+            $codigo=Conciliador::codigo($linea->codigo);
+            if($codigo!=='' && (int)$linea->cantidad>0) {
+                $requeridas[$codigo]=($requeridas[$codigo]??0)+(int)$linea->cantidad;
+            }
+        }
+        return $requeridas;
+    }
+
     public function index(Request $request)
     {
-        $tablas = Schema::hasTable('ot')
-            && Schema::hasTable('ot_logistica_detalle')
-            && Schema::hasTable('ot_logistica_remisiones');
-        $tieneVentas = Schema::hasTable('ventas');
-
-        $fechaVentas = $tieneVentas ? DB::table('ventas')
-            ->whereRaw("UPPER(BTRIM(COALESCE(local,''))) = 'COMERCIAL MATRIZ'")
-            ->max('fecha') : null;
-        $fechaRemision = $tablas ? DB::table('ot_logistica_remisiones')->max('fecha_remision') : null;
-        $referencia = Carbon::parse(max($fechaVentas ?: '', $fechaRemision ?: '') ?: Carbon::today()->format('Y-m-d'));
-
-        try {
-            $desde = $request->filled('desde')
-                ? Carbon::createFromFormat('Y-m-d', (string) $request->query('desde'))->format('Y-m-d')
-                : $referencia->copy()->startOfMonth()->format('Y-m-d');
-            $hasta = $request->filled('hasta')
-                ? Carbon::createFromFormat('Y-m-d', (string) $request->query('hasta'))->format('Y-m-d')
-                : $referencia->format('Y-m-d');
-        } catch (\Exception $e) {
-            $desde = $referencia->copy()->startOfMonth()->format('Y-m-d');
-            $hasta = $referencia->format('Y-m-d');
+        if (!Schema::hasTable('ventas') || !Schema::hasTable('ot_logistica_remisiones')) {
+            return view('ventas.mayoristas',['sinFuentes'=>true]);
         }
-        if ($desde > $hasta) {
-            list($desde, $hasta) = [$hasta, $desde];
+        $mes=self::mes($request);
+        list($desde,$hasta)=self::rango($mes);
+        $facturas=self::facturas($mes);
+        $claves=$facturas->pluck('clave')->all();
+        $vinculos=$claves?DB::table('mayorista_vinculos')->whereIn('factura_clave',$claves)
+            ->select('factura_clave')->selectRaw('SUM(cantidad) as cantidad')
+            ->groupBy('factura_clave')->pluck('cantidad','factura_clave'):collect();
+        foreach($facturas as $f) {
+            $f->vinculadas=(int)($vinculos[$f->clave]??0);
+            $f->pendientes=max(0,(int)$f->brutas-$f->vinculadas);
+            $f->estado=(int)$f->brutas===0?'NOTA DE CRÉDITO'
+                :($f->pendientes===0?'CONFIRMADA DOCUMENTALMENTE'
+                    :($f->vinculadas>0?'PARCIAL':'SIN VALIDAR'));
         }
 
-        $tipo = (string) $request->query('destino', 'todos');
-        if (!in_array($tipo, ['todos', 'modelo', 'mayorista'], true)) {
-            $tipo = 'todos';
-        }
-        $buscar = trim((string) $request->query('buscar', ''));
-        $muestrasPorOt = min(20, max(0, (int) $request->query('muestras_por_ot', 1)));
-        $incluirPlan = $request->boolean('incluir_plan');
-
-        $baseOt = $this->baseCodigoSql('o.codigo');
-        $baseVentas = $this->baseCodigoSql('v.codigo');
-        $modeloD = "UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MODELO%MUESTRA%'";
-        $mayoristaD = "(UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MAYORISTA%' OR UPPER(BTRIM(COALESCE(d.sucursal,''))) = 'COMERCIAL MATRIZ')";
-        $modeloR = "(UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) LIKE '%MODELO%MUESTRA%' OR UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) LIKE '%MODELO%MUESTRA%' OR $modeloD)";
-        $mayoristaR = "(UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = 'COMERCIAL MATRIZ' OR UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) LIKE '%MAYORISTA%' OR UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) LIKE '%MAYORISTA%' OR UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = 'COMERCIAL MATRIZ' OR $mayoristaD)";
-        $clase = "CASE WHEN $modeloR THEN 'MODELO MUESTRA' ELSE 'MAYORISTA' END";
-        $clasePlan = "CASE WHEN $modeloD THEN 'MODELO MUESTRA' ELSE 'MAYORISTA' END";
-
-        $baseVentasQuery = null;
-        $ventasPorCodigo = collect();
-        $ventasDias = collect();
-        $ventasDetalle = null;
-        $clientes = collect();
-        $ventasResumen = (object) [
-            'prendas_vendidas' => 0, 'devoluciones' => 0,
-            'prendas_netas' => 0, 'importe_neto' => 0,
-            'venta_lista' => 0, 'descuento' => 0, 'comprobantes' => 0,
-            'clientes' => 0, 'codigos' => 0,
+        $resumen=(object)[
+            'facturas'=>$facturas->count(),
+            'brutas'=>$facturas->sum('brutas'),
+            'devoluciones'=>$facturas->sum('devoluciones'),
+            'netas'=>$facturas->sum('netas'),
+            'pvta'=>$facturas->sum('pvta'),
+            'vinculadas'=>$facturas->sum('vinculadas'),
+            'pendientes'=>$facturas->sum('pendientes'),
+            'facturas_pendientes'=>$facturas->where('pendientes','>',0)->count()
         ];
 
-        $basesOtBuscadas = [];
-        if ($buscar !== '' && $tablas) {
-            $basesOtBuscadas = DB::table('ot as o')
-                ->where(function ($q) use ($buscar) {
-                    $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
-                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
-                })->selectRaw($baseOt . ' as base')->pluck('base')->filter()->unique()->all();
-        }
+        $emitidas=self::entradas()->whereBetween('r.fecha_remision',[$desde,$hasta])
+            ->selectRaw('COUNT(*) as documentos, COALESCE(SUM(r.cantidad),0) as prendas')
+            ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
+            ->first();
+        $recibidas=self::entradas()->whereBetween('r.fecha_recepcion',[$desde,$hasta])
+            ->selectRaw('COUNT(*) as documentos, COALESCE(SUM(r.cantidad),0) as prendas')
+            ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
+            ->first();
 
-        if ($tieneVentas) {
-            $baseVentasQuery = DB::table('ventas as v')
-                ->whereRaw("UPPER(BTRIM(COALESCE(v.local,''))) = 'COMERCIAL MATRIZ'")
-                ->whereBetween('v.fecha', [$desde, $hasta]);
-            if ($buscar !== '') {
-                $baseVentasQuery->where(function ($q) use ($buscar, $baseVentas, $basesOtBuscadas) {
-                    $q->where('v.codigo', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('v.descripcion', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('v.cliente', 'ILIKE', '%' . $buscar . '%');
-                    if ($basesOtBuscadas) {
-                        foreach (array_chunk($basesOtBuscadas, 400) as $bases) {
-                            $q->orWhereIn(DB::raw($baseVentas), $bases);
-                        }
-                    }
+        $separaciones=DB::table('mayorista_separaciones')
+            ->whereBetween('fecha_separacion',[$desde,$hasta])
+            ->selectRaw('COUNT(*) as registros, COALESCE(SUM(cantidad),0) as prendas')->first();
+        $muestrasPorOt=min(20,max(0,(int)$request->query('muestras_por_ot',1)));
+        $fotoPorOt=DB::table('mayorista_separaciones as s')
+            ->join('ot_logistica_detalle as d','d.id','=','s.logistica_detalle_id')
+            ->whereBetween('s.fecha_separacion',[$desde,$hasta])
+            ->whereRaw("UPPER(BTRIM(d.sucursal)) LIKE '%MODELO%MUESTRA%'")
+            ->select('s.id_ot')->selectRaw('SUM(s.cantidad) as cantidad')
+            ->groupBy('s.id_ot')->get();
+        $reservaFotoEstimada=$fotoPorOt->sum(function($ot)use($muestrasPorOt) {
+            return min($muestrasPorOt,(int)$ot->cantidad);
+        });
+        $separacionesDetalle=DB::table('mayorista_separaciones as s')
+            ->leftJoin('ot as o','o.id_ot','=','s.id_ot')
+            ->whereBetween('s.fecha_separacion',[$desde,$hasta])
+            ->select('s.*','o.nro_ot','o.codigo')
+            ->orderBy('s.fecha_separacion','desc')->limit(30)->get();
+
+        // No inventar un saldo inicial de cero: exige declaración por
+        // cada código que tuvo ingresos o movimientos comerciales.
+        $aperturas=DB::table('mayorista_saldos_iniciales')->where('mes',$desde)
+            ->get()->keyBy('codigo');
+        $entradasCodigo=self::entradas()->whereBetween('r.fecha_recepcion',[$desde,$hasta])
+            ->selectRaw('UPPER(BTRIM(r.codigo)) as codigo, SUM(r.cantidad) as prendas')
+            ->groupByRaw('UPPER(BTRIM(r.codigo))')->pluck('prendas','codigo');
+        $ventasCodigo=self::ventas()->whereBetween('v.fecha',[$desde,$hasta])
+            ->selectRaw('UPPER(BTRIM(v.codigo)) as codigo, SUM(v.cantidad) as prendas')
+            ->groupByRaw('UPPER(BTRIM(v.codigo))')->pluck('prendas','codigo');
+        $codigos=$entradasCodigo->keys()->merge($ventasCodigo->keys())
+            ->merge($aperturas->keys())->unique()->filter();
+        $saldos=$codigos->map(function($codigo)use($aperturas,$entradasCodigo,$ventasCodigo) {
+            $apertura=$aperturas->has($codigo)?(int)$aperturas[$codigo]->cantidad:null;
+            $entrada=(int)($entradasCodigo[$codigo]??0);
+            $venta=(int)($ventasCodigo[$codigo]??0);
+            return (object)[
+                'codigo'=>$codigo,'inicial'=>$apertura,'entrada'=>$entrada,
+                'venta'=>$venta,
+                'cierre'=>Conciliador::saldoDocumental($apertura,$entrada,$venta)
+            ];
+        })->sortBy('codigo')->values();
+        $sinSaldo=$saldos->filter(function($fila) {
+            return $fila->inicial===null;
+        })->count();
+        $cierre=$saldos->isNotEmpty() && $sinSaldo===0?$saldos->sum('cierre'):null;
+
+        // Comparación de los seis meses anteriores hasta el seleccionado.
+        // Las columnas son hechos fechados independientes, no stock acumulado.
+        $mesesComparacion=collect(range(0,5))->map(function($i)use($mes) {
+            return Carbon::parse($mes.'-01')->subMonths($i)->format('Y-m');
+        });
+        list($inicioComparacion,)=self::rango($mesesComparacion->last());
+        $mesSepSql="TO_CHAR(fecha_separacion::timestamp,'YYYY-MM')";
+        $separadosMes=DB::table('mayorista_separaciones')
+            ->whereBetween('fecha_separacion',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesSepSql as mes, SUM(cantidad) as prendas")
+            ->groupByRaw($mesSepSql)->pluck('prendas','mes');
+        $mesEmitSql="TO_CHAR(r.fecha_remision::timestamp,'YYYY-MM')";
+        $emitidosMes=self::entradas()->whereBetween('r.fecha_remision',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesEmitSql as mes, SUM(r.cantidad) as prendas")
+            ->groupByRaw($mesEmitSql)->pluck('prendas','mes');
+        $mesRecepSql="TO_CHAR(r.fecha_recepcion::timestamp,'YYYY-MM')";
+        $recibidosMes=self::entradas()->whereBetween('r.fecha_recepcion',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesRecepSql as mes, SUM(r.cantidad) as prendas")
+            ->groupByRaw($mesRecepSql)->pluck('prendas','mes');
+        $mesVentaSql="TO_CHAR(v.fecha::timestamp,'YYYY-MM')";
+        $ventasMes=self::ventas()->whereBetween('v.fecha',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesVentaSql as mes, SUM(v.cantidad) as prendas")
+            ->groupByRaw($mesVentaSql)->pluck('prendas','mes');
+        $resumenMeses=$mesesComparacion->map(function($mesFila)use(
+            $separadosMes,$emitidosMes,$recibidosMes,$ventasMes,$mes,$cierre) {
+            return (object)[
+                'mes'=>$mesFila,
+                'separadas'=>(int)($separadosMes[$mesFila]??0),
+                'emitidas'=>(int)($emitidosMes[$mesFila]??0),
+                'recibidas'=>(int)($recibidosMes[$mesFila]??0),
+                'facturadas'=>(int)($ventasMes[$mesFila]??0),
+                'cierre'=>$mesFila===$mes?$cierre:null,
+                'es_actual'=>$mesFila===$mes
+            ];
+        });
+
+        $arrastres=self::entradas()
+            ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
+            ->leftJoin('ot as o',function($join) {
+                $join->on('o.id_ot','=',DB::raw('COALESCE(r.id_ot,d.id_ot)'));
+            })
+            ->where('r.fecha_remision','<',$desde)
+            ->whereNotNull('r.fecha_recepcion')->where('r.fecha_recepcion','<',$desde)
+            ->select('r.id','r.fecha_remision','r.codigo','r.cantidad','r.serie',
+                'r.numero_remision','r.sucursal_salida','o.nro_ot')
+            ->orderBy('r.fecha_remision','desc')->limit(100)->get();
+        $ids=$arrastres->pluck('id')->all();
+        $usos=$ids?DB::table('mayorista_vinculos')->whereIn('remision_id',$ids)
+            ->select('remision_id')->selectRaw('SUM(cantidad) as usado')
+            ->groupBy('remision_id')->pluck('usado','remision_id'):collect();
+        $arrastres=$arrastres->map(function($r)use($usos) {
+            $r->sin_vincular=max(0,(int)$r->cantidad-(int)($usos[$r->id]??0));
+            return $r;
+        })->where('sin_vincular','>',0)->take(30)->values();
+
+        $planBuscar=trim((string)$request->query('ot_plan',''));
+        $planes=collect();
+        if(Schema::hasTable('ot_logistica_detalle') && Schema::hasTable('ot')) {
+            $planesQuery=DB::table('ot_logistica_detalle as d')
+                ->join('ot as o','o.id_ot','=','d.id_ot')
+                ->where(function($q) {
+                    $q->whereRaw("UPPER(BTRIM(d.sucursal)) LIKE '%MODELO%MUESTRA%'")
+                        ->orWhereRaw("UPPER(BTRIM(d.sucursal)) LIKE '%MAYORISTA%'");
+                });
+            if($planBuscar!=='') {
+                $planesQuery->where(function($q)use($planBuscar) {
+                    $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?',['%'.$planBuscar.'%'])
+                      ->orWhere('o.codigo','ILIKE','%'.$planBuscar.'%');
                 });
             }
-            $ventasResumen = (clone $baseVentasQuery)
-                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END),0) as prendas_vendidas")
-                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END),0) as devoluciones")
-                ->selectRaw("COALESCE(SUM(v.cantidad),0) as prendas_netas, COALESCE(SUM(v.p_venta),0) as importe_neto")
-                ->selectRaw("COALESCE(SUM(v.p_lista),0) as venta_lista, COALESCE(SUM(v.descuento),0) as descuento")
-                ->selectRaw("COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante ELSE NULL END) as comprobantes")
-                ->selectRaw("COUNT(DISTINCT NULLIF(BTRIM(COALESCE(v.cli_cod,'')),'')) as clientes, COUNT(DISTINCT v.codigo) as codigos")
-                ->first();
-            $ventasPorCodigo = (clone $baseVentasQuery)
-                ->selectRaw("$baseVentas as codigo_base, MAX(v.descripcion) as descripcion")
-                ->selectRaw("COALESCE(SUM(v.cantidad),0) as prendas_netas, COALESCE(SUM(v.p_venta),0) as venta_neta")
-                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END),0) as vendidas")
-                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END),0) as devoluciones")
-                ->selectRaw("COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante ELSE NULL END) as comprobantes")
-                ->groupByRaw($baseVentas)->get();
-
-            $ventasDias = (clone $baseVentasQuery)
-                ->select('v.fecha')
-                ->selectRaw('COALESCE(SUM(v.cantidad),0) as prendas, COALESCE(SUM(v.p_venta),0) as importe')
-                ->groupBy('v.fecha')->orderBy('v.fecha')->get();
-
-            $ventasDetalle = (clone $baseVentasQuery)
-                ->select(
-                    'v.fecha', 'v.comprobante', 'v.tipo_comprobante',
-                    'v.codigo', 'v.descripcion', 'v.cliente',
-                    'v.cantidad', 'v.p_lista', 'v.descuento', 'v.p_venta'
-                )
-                ->orderBy('v.fecha','desc')->orderBy('v.id','desc')
-                ->simplePaginate(35, ['*'], 'ventas_page')
-                ->appends($request->except('ventas_page'));
-
-            $clientes = (clone $baseVentasQuery)
-                ->selectRaw("COALESCE(NULLIF(BTRIM(v.cliente),''),'CLIENTE SIN IDENTIFICAR') as cliente")
-                ->selectRaw("COALESCE(SUM(v.p_venta),0) as venta_neta, COALESCE(SUM(v.cantidad),0) as prendas")
-                ->groupByRaw("COALESCE(NULLIF(BTRIM(v.cliente),''),'CLIENTE SIN IDENTIFICAR')")
-                ->orderBy('venta_neta','desc')->limit(8)->get();
-        }
-
-        // Nunca atribuir ventas solo por descripción. El código base debe
-        // identificar inequívocamente una OT en TODA la base histórica.
-        $idsPorBase = [];
-        if ($tablas && $ventasPorCodigo->isNotEmpty()) {
-            $bases = $ventasPorCodigo->pluck('codigo_base')->filter()->unique()->values()->all();
-            $candidatos = collect();
-            foreach (array_chunk($bases, 400) as $fragmento) {
-                $candidatos = $candidatos->concat(DB::table('ot as o')
-                    ->whereIn(DB::raw($baseOt), $fragmento)
-                    ->select('o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion')
-                    ->selectRaw("$baseOt as codigo_base")->get());
-            }
-            foreach ($candidatos->groupBy('codigo_base') as $base => $grupo) {
-                if ($grupo->pluck('id_ot')->unique()->count() === 1) {
-                    $idsPorBase[$base] = $grupo->first();
-                }
+            $planes=$planesQuery->select('d.id','d.id_ot','d.sucursal','d.cantidad','o.nro_ot','o.codigo')
+                ->orderBy('d.id','desc')->limit(60)->get();
+            $planIds=$planes->pluck('id')->all();
+            $declaradas=$planIds?DB::table('mayorista_separaciones')
+                ->whereIn('logistica_detalle_id',$planIds)
+                ->select('logistica_detalle_id')->selectRaw('SUM(cantidad) as cantidad')
+                ->groupBy('logistica_detalle_id')->pluck('cantidad','logistica_detalle_id'):collect();
+            foreach($planes as $p) {
+                $p->pendiente=max(0,(int)$p->cantidad-(int)($declaradas[$p->id]??0));
             }
         }
 
-        $mapa = [];
-        $nuevo = function ($idOt, $codigoBase, $descripcion, $nroOt) use (&$mapa) {
-            $clave = $idOt !== null ? 'OT:' . $idOt : 'SIN_OT:' . $codigoBase;
-            if (!isset($mapa[$clave])) {
-                $mapa[$clave] = (object) [
-                    'id_ot' => $idOt, 'nro_ot' => $nroOt,
-                    'codigo' => $codigoBase, 'descripcion' => $descripcion,
-                    'plan_modelo' => 0, 'plan_mayorista' => 0,
-                    'remitido_modelo' => 0, 'remitido_mayorista' => 0,
-                    'recibido_modelo' => 0, 'recibido_mayorista' => 0,
-                    'salida_central' => 0, 'traslado' => 0,
-                    'valor_referencial' => 0, 'costo_referencial' => 0,
-                    'documentos' => 0, 'ultima_remision' => null,
-                    'ventas_netas' => 0, 'vendidas' => 0, 'devoluciones' => 0,
-                    'venta_neta' => 0, 'comprobantes' => 0,
-                    'venta_sin_ot' => false, 'remision_sin_ot' => false,
-                ];
-            }
-            return $clave;
-        };
-
-        $remisiones = null;
-        if ($tablas) {
-            $baseRemision = DB::table('ot_logistica_remisiones as r')
-                ->leftJoin('ot_logistica_detalle as d', 'd.id', '=', 'r.id_logistica_detalle')
-                ->leftJoin('ot as o', function ($join) {
-                    $join->on('o.id_ot', '=', DB::raw('COALESCE(r.id_ot, d.id_ot)'));
+        $buscar=trim((string)$request->query('buscar',''));
+        if($buscar!=='') {
+            $facturas=$facturas->filter(function($f)use($buscar) {
+                return stripos((string)$f->comprobante,$buscar)!==false
+                    || stripos((string)$f->cliente,$buscar)!==false
+                    || stripos((string)$f->cli_cod,$buscar)!==false;
+            })->values();
+        }
+        // Filtros de investigación: nunca se convierten en vínculos
+        // confirmados. Una remisión o una OT filtra facturas por códigos
+        // candidatos, no acredita su procedencia.
+        $filtroFactura=trim((string)$request->query('factura',''));
+        $filtroCliente=trim((string)$request->query('cliente',''));
+        $filtroCodigo=trim((string)$request->query('codigo',''));
+        $filtroRemision=trim((string)$request->query('remision',''));
+        $filtroOt=trim((string)$request->query('ot',''));
+        $filtroEstado=trim((string)$request->query('estado',''));
+        if($filtroFactura!=='') {
+            $facturas=$facturas->filter(function($f)use($filtroFactura) {
+                return stripos((string)$f->comprobante,$filtroFactura)!==false;
+            });
+        }
+        if($filtroCliente!=='') {
+            $facturas=$facturas->filter(function($f)use($filtroCliente) {
+                return stripos((string)$f->cliente,$filtroCliente)!==false
+                    || stripos((string)$f->cli_cod,$filtroCliente)!==false;
+            });
+        }
+        if($filtroEstado!=='') {
+            $facturas=$facturas->filter(function($f)use($filtroEstado) {
+                return $f->estado===$filtroEstado;
+            });
+        }
+        $codigosCandidatos=null;
+        if($filtroRemision!=='') {
+            $codigosCandidatos=self::entradas()->where(function($q)use($filtroRemision) {
+                $q->where('r.numero_remision','ILIKE','%'.$filtroRemision.'%')
+                  ->orWhere('r.serie','ILIKE','%'.$filtroRemision.'%');
+            })->distinct()->pluck('r.codigo')->map(function($x) {
+                return Conciliador::codigo($x);
+            })->all();
+        }
+        if($filtroOt!=='') {
+            $codigosOt=self::entradas()
+                ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
+                ->leftJoin('ot as o',function($join) {
+                    $join->on('o.id_ot','=',DB::raw('COALESCE(r.id_ot,d.id_ot)'));
                 })
-                ->whereNotNull('r.fecha_remision')
-                ->whereBetween('r.fecha_remision', [$desde, $hasta])
-                ->where(function ($q) use ($tipo, $modeloR, $mayoristaR) {
-                    if ($tipo === 'modelo') {
-                        $q->whereRaw($modeloR);
-                    } elseif ($tipo === 'mayorista') {
-                        $q->whereRaw($mayoristaR)->whereRaw('NOT ' . $modeloR);
-                    } else {
-                        $q->whereRaw('(' . $modeloR . ' OR ' . $mayoristaR . ')');
-                    }
-                });
-            if ($buscar !== '') {
-                $baseRemision->where(function ($q) use ($buscar) {
-                    $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
-                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('r.codigo', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('r.descripcion', 'ILIKE', '%' . $buscar . '%')
-                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
-                });
+                ->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?',['%'.$filtroOt.'%'])
+                ->distinct()->pluck('r.codigo')->map(function($x) {
+                    return Conciliador::codigo($x);
+                })->all();
+            $codigosCandidatos=$codigosCandidatos===null?$codigosOt:
+                array_values(array_intersect($codigosCandidatos,$codigosOt));
+        }
+        if($filtroCodigo!=='' || $codigosCandidatos!==null) {
+            $qCodigo=self::ventas()->whereBetween('v.fecha',[$desde,$hasta]);
+            if($filtroCodigo!=='') {
+                $qCodigo->where('v.codigo','ILIKE','%'.$filtroCodigo.'%');
             }
-
-            $idExp = 'COALESCE(r.id_ot, d.id_ot)';
-            // Código normalizado también para las remisiones sin OT;
-            // quedan separadas del canal de ventas hasta resolver el vínculo.
-            $baseRem = $this->baseCodigoSql('r.codigo');
-            $fechaEfectiva = ConfirmacionTupi::sql('r');
-            $agrupadas = (clone $baseRemision)
-                ->selectRaw("$idExp as id_ot, $baseRem as codigo_base, $clase as canal")
-                ->selectRaw("MAX(o.nro_ot) as nro_ot, MAX(o.codigo) as codigo_ot, MAX(o.descripcion) as descripcion_ot, MAX(r.descripcion) as descripcion_remision")
-                ->selectRaw("COALESCE(SUM(r.cantidad),0) as remitido, COALESCE(SUM(CASE WHEN $fechaEfectiva IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibido")
-                ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN r.cantidad ELSE 0 END),0) as salida_central")
-                ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN 0 ELSE r.cantidad END),0) as traslado")
-                ->selectRaw("COALESCE(SUM(r.cantidad * COALESCE(r.precio_venta,0)),0) as valor_referencial, COALESCE(SUM(r.cantidad * COALESCE(r.costo_unitario,0)),0) as costo_referencial")
-                ->selectRaw("MAX(r.fecha_remision) as ultima_remision, COUNT(*) as documentos")
-                ->groupByRaw("$idExp, $baseRem, $clase")
-                ->get();
-
-            foreach ($agrupadas as $dato) {
-                $clave = $nuevo($dato->id_ot, $dato->id_ot !== null ? ($dato->codigo_ot ?: $dato->codigo_base) : $dato->codigo_base,
-                    $dato->descripcion_ot ?: $dato->descripcion_remision, $dato->nro_ot);
-                $fila = $mapa[$clave];
-                $categoria = $dato->canal === 'MODELO MUESTRA' ? 'modelo' : 'mayorista';
-                $fila->{'remitido_' . $categoria} += (int) $dato->remitido;
-                $fila->{'recibido_' . $categoria} += (int) $dato->recibido;
-                $fila->salida_central += (int) $dato->salida_central;
-                $fila->traslado += (int) $dato->traslado;
-                $fila->valor_referencial += (float) $dato->valor_referencial;
-                $fila->costo_referencial += (float) $dato->costo_referencial;
-                $fila->documentos += (int) $dato->documentos;
-                $fila->remision_sin_ot = $dato->id_ot === null;
-                if (!$fila->ultima_remision || $dato->ultima_remision > $fila->ultima_remision) {
-                    $fila->ultima_remision = $dato->ultima_remision;
+            if($codigosCandidatos!==null) {
+                if($codigosCandidatos) {
+                    $qCodigo->whereIn(DB::raw('UPPER(BTRIM(v.codigo))'),$codigosCandidatos);
+                } else {
+                    $qCodigo->whereRaw('1 = 0');
                 }
             }
-
-            $remisiones = (clone $baseRemision)
-                ->selectRaw("$idExp as id_ot, $clase as canal")
-                ->addSelect('r.fecha_remision','r.fecha_recepcion','r.serie','r.numero_remision','r.codigo',
-                    'r.descripcion','r.cantidad','r.precio_venta','r.sucursal_salida',
-                    'r.sucursal_destino','r.sucursal_logistica','o.nro_ot')
-                ->selectRaw("$fechaEfectiva as fecha_confirmacion")
-                ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc')
-                ->paginate(30, ['*'], 'remisiones_page')
-                ->appends($request->except('remisiones_page'));
+            $clavesPermitidas=$qCodigo->distinct()
+                ->select('v.fecha','v.comprobante','v.cli_cod','v.cliente')->get()
+                ->map(function($v) {
+                    return Conciliador::claveFactura($v->fecha,$v->comprobante,$v->cli_cod,$v->cliente);
+                })->unique()->all();
+            $facturas=$facturas->filter(function($f)use($clavesPermitidas) {
+                return in_array($f->clave,$clavesPermitidas,true);
+            });
         }
+        $facturas=$facturas->values();
 
-        // Las ventas de COMERCIAL MATRIZ se integran una vez por código base.
-        // La venta NO se atribuye a MODELO MUESTRA/otro destino en particular.
-        foreach ($ventasPorCodigo as $venta) {
-            $base = (string) $venta->codigo_base;
-            $ot = $idsPorBase[$base] ?? null;
-            $clave = $nuevo($ot ? $ot->id_ot : null, $ot ? $ot->codigo : $base,
-                $ot ? $ot->descripcion : $venta->descripcion, $ot ? $ot->nro_ot : null);
-            $fila = $mapa[$clave];
-            $fila->ventas_netas += (int) $venta->prendas_netas;
-            $fila->vendidas += (int) $venta->vendidas;
-            $fila->devoluciones += (int) $venta->devoluciones;
-            $fila->venta_neta += (float) $venta->venta_neta;
-            $fila->comprobantes += (int) $venta->comprobantes;
-            $fila->venta_sin_ot = $ot === null;
+        if($request->query('exportar')==='csv') {
+            return $this->csv($facturas,$mes);
         }
-
-        // Incorporar el plan solo para OT activas en el período por
-        // ventas o remisiones; opción de auditoría para planes sin actividad.
-        if ($tablas) {
-            $idsActivos = collect($mapa)->pluck('id_ot')->filter()->unique()->values()->all();
-            if ($idsActivos || $incluirPlan) {
-                $planQuery = DB::table('ot_logistica_detalle as d')
-                    ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
-                    ->where(function ($q) use ($tipo,$modeloD,$mayoristaD) {
-                        if ($tipo === 'modelo') {
-                            $q->whereRaw($modeloD);
-                        } elseif ($tipo === 'mayorista') {
-                            $q->whereRaw($mayoristaD)->whereRaw('NOT ' . $modeloD);
-                        } else {
-                            $q->whereRaw('(' . $modeloD . ' OR ' . $mayoristaD . ')');
-                        }
-                    });
-                if (!$incluirPlan) {
-                    $planQuery->whereIn('d.id_ot',$idsActivos);
-                }
-                if ($buscar !== '') {
-                    $planQuery->where(function ($q) use ($buscar) {
-                        $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
-                            ->orWhere('o.codigo','ILIKE','%' . $buscar . '%')
-                            ->orWhere('o.descripcion','ILIKE','%' . $buscar . '%');
-                    });
-                }
-                $planes = $planQuery
-                    ->selectRaw("d.id_ot, $clasePlan as canal, MAX(o.nro_ot) as nro_ot, MAX(o.codigo) as codigo, MAX(o.descripcion) as descripcion, COALESCE(SUM(d.cantidad),0) as asignado")
-                    ->groupBy('d.id_ot')->groupByRaw($clasePlan)->get();
-                foreach ($planes as $dato) {
-                    $clave = $nuevo($dato->id_ot, $dato->codigo, $dato->descripcion, $dato->nro_ot);
-                    $categoria = $dato->canal === 'MODELO MUESTRA' ? 'modelo' : 'mayorista';
-                    $mapa[$clave]->{'plan_' . $categoria} += (int) $dato->asignado;
-                }
-            }
+        if($request->query('exportar')==='detalle') {
+            return $this->csvDetalle($facturas,$mes);
         }
-
-        $filas = collect(array_values($mapa))->map(function ($fila) use ($muestrasPorOt) {
-            $fila->plan = $fila->plan_modelo + $fila->plan_mayorista;
-            $fila->remitido = $fila->remitido_modelo + $fila->remitido_mayorista;
-            $fila->recibido = $fila->recibido_modelo + $fila->recibido_mayorista;
-            $fila->transito = max(0, $fila->remitido - $fila->recibido);
-            // Movimiento interno != mercadería adicional: separar traslado
-            // y salida original, evitando inflar KPI de stock o facturación.
-            $fila->reserva_foto = $fila->id_ot === null
-                ? null : min($muestrasPorOt, max(0, $fila->recibido_modelo));
-            $fila->recibido_venta_estimado = $fila->id_ot === null
-                ? null : max(0, $fila->recibido - $fila->reserva_foto);
-            $fila->brecha_movimientos = $fila->plan - $fila->remitido;
-            $tieneVenta = $fila->vendidas > 0 || $fila->devoluciones > 0;
-            $fila->status = $fila->id_ot === null ? 'SIN OT SEGURA'
-                : ($tieneVenta && $fila->plan === 0 && $fila->remitido === 0
-                    ? 'VENTA SIN PLAN/REMISIÓN'
-                    : ($tieneVenta && $fila->plan === 0
-                        ? 'VENTA SIN PLAN'
-                        : ($tieneVenta && $fila->remitido === 0
-                            ? 'VENTA SIN REMISIÓN'
-                            : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE'
-                            : ($fila->remitido === 0 ? 'SOLO PLAN' : 'CON DOCUMENTOS')))));
-            return $fila;
-        })->sort(function ($a,$b) {
-            $alerta = ['SIN OT SEGURA'=>0,'VENTA SIN PLAN/REMISIÓN'=>1,'VENTA SIN PLAN'=>2,'VENTA SIN REMISIÓN'=>3,'RECEPCIÓN PENDIENTE'=>4,'SOLO PLAN'=>5,'CON DOCUMENTOS'=>6];
-            $prioridad = ($alerta[$a->status] ?? 5) <=> ($alerta[$b->status] ?? 5);
-            return $prioridad ?: ($b->venta_neta <=> $a->venta_neta);
-        })->values();
-
-        $vinculadas = $filas->whereNotNull('id_ot');
-        $resumen = (object) [
-            'ot_plan' => $vinculadas->where('plan','>',0)->count(),
-            'ot_con_venta' => $vinculadas->where('comprobantes','>',0)->count(),
-            'plan' => (int) $vinculadas->sum('plan'),
-            'remitido' => (int) $filas->sum('remitido'),
-            'recibido' => (int) $filas->sum('recibido'),
-            'transito' => (int) $filas->sum('transito'),
-            'salida_central' => (int) $filas->sum('salida_central'),
-            'traslados' => (int) $filas->sum('traslado'),
-            'reserva_foto' => (int) $vinculadas->sum('reserva_foto'),
-            'recibido_venta_estimado' => (int) $vinculadas->sum('recibido_venta_estimado'),
-            'sin_ot_venta' => (int) $filas->where('venta_sin_ot',true)->sum('ventas_netas'),
-            'sin_ot_venta_importe' => (float) $filas->where('venta_sin_ot',true)->sum('venta_neta'),
-            'sin_ot_movimiento' => (int) $filas->where('remision_sin_ot',true)->sum('remitido'),
-            'con_alerta' => $filas->where('status','<>','CON DOCUMENTOS')->count(),
-        ];
-
-        $topProductos = $ventasPorCodigo->sortByDesc('venta_neta')->take(10)->values();
-
-        if ($request->query('exportar') === 'csv') {
-            return $this->csv($filas,$desde,$hasta);
-        }
-        $pagina = max(1, (int) $request->query('page',1));
-        $porPagina = 35;
-        $ordenes = new LengthAwarePaginator(
-            $filas->slice(($pagina - 1) * $porPagina,$porPagina)->values(),
-            $filas->count(),$porPagina,$pagina,
+        $pagina=max(1,(int)$request->query('page',1));
+        $facturasPaginadas=new LengthAwarePaginator(
+            $facturas->slice(($pagina-1)*30,30)->values(),
+            $facturas->count(),30,$pagina,
             ['path'=>$request->url(),'query'=>$request->query()]
         );
         return view('ventas.mayoristas',compact(
-            'desde','hasta','tipo','buscar','muestrasPorOt','incluirPlan',
-            'resumen','ventasResumen','ordenes','remisiones','ventasDias',
-            'clientes','topProductos','ventasDetalle','tablas','tieneVentas'
+            'mes','desde','hasta','resumen','emitidas','recibidas',
+            'separaciones','separacionesDetalle','saldos','sinSaldo','cierre',
+            'arrastres','planes','buscar','facturasPaginadas',
+            'muestrasPorOt','reservaFotoEstimada','planBuscar','resumenMeses',
+            'filtroFactura','filtroCliente','filtroCodigo','filtroRemision','filtroOt','filtroEstado'
         ));
     }
 
-    /**
-     * Misma normalización empleada en conciliación logística:
-     * 8 dígitos -> 0 inicial; demás códigos -> primeros 9 caracteres
-     * alfanuméricos. Menos de 8 caracteres no son atribuibles.
-     */
-    private function baseCodigoSql(string $campo): string
+    public function factura(Request $request,string $clave)
     {
-        $limpio = "REGEXP_REPLACE(UPPER(BTRIM(COALESCE($campo,''))),'[^0-9A-Z]','','g')";
-        return "(CASE WHEN $limpio ~ '^[0-9]{8}$' THEN LPAD($limpio,9,'0') "
-            . "WHEN LENGTH($limpio) >= 9 THEN LEFT($limpio,9) ELSE '' END)";
+        $mes=self::mes($request);
+        $factura=self::buscarFactura($clave,$mes);
+        $lineas=self::lineas($factura);
+        $requeridas=self::necesidades($lineas);
+        $enlaces=DB::table('mayorista_vinculos as m')
+            ->join('ot_logistica_remisiones as r','r.id','=','m.remision_id')
+            ->where('m.factura_clave',$clave)
+            ->select('m.*','r.serie','r.numero_remision','r.fecha_remision',
+                'r.sucursal_salida','r.sucursal_destino','r.cantidad as remision_total')
+            ->orderBy('m.created_at')->get();
+        $confirmadas=[];
+        foreach($enlaces as $v) {
+            $c=Conciliador::codigo($v->codigo);
+            $confirmadas[$c]=($confirmadas[$c]??0)+(int)$v->cantidad;
+        }
+        $candidatas=collect();
+        $candidatasLimitadas=false;
+        if($requeridas) {
+            $q=self::entradas()
+                ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
+                ->leftJoin('ot as o',function($join) {
+                    $join->on('o.id_ot','=',DB::raw('COALESCE(r.id_ot,d.id_ot)'));
+                })
+                ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'),array_keys($requeridas))
+                ->whereNotNull('r.fecha_remision')
+                ->where('r.fecha_remision','<=',Carbon::parse($factura->fecha)->addDays(3)->format('Y-m-d'))
+                ->select('r.id','r.codigo','r.descripcion','r.fecha_remision','r.fecha_recepcion',
+                    'r.cantidad','r.serie','r.numero_remision','r.sucursal_salida',
+                    'r.sucursal_destino','r.sucursal_logistica','o.nro_ot')
+                ->selectRaw('COALESCE(r.id_ot,d.id_ot) as id_ot_resuelta')
+                ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc');
+            $candidatasLimitadas=(clone $q)->count()>300;
+            $candidatas=$q->limit(300)->get();
+            $ids=$candidatas->pluck('id')->all();
+            $asignado=$ids?DB::table('mayorista_vinculos')
+                ->whereIn('remision_id',$ids)->select('remision_id')
+                ->selectRaw('SUM(cantidad) as cantidad')->groupBy('remision_id')
+                ->pluck('cantidad','remision_id'):collect();
+            foreach($candidatas as $c) {
+                $c->codigo_normalizado=Conciliador::codigo($c->codigo);
+                $c->disponible=max(0,(int)$c->cantidad-(int)($asignado[$c->id]??0));
+                $c->tardia=$c->fecha_remision>$factura->fecha;
+            }
+        }
+        $auditoria=DB::table('mayorista_auditoria')
+            ->where('factura_clave',$clave)
+            ->orderBy('created_at','desc')->limit(50)->get();
+        $estado=Conciliador::estado($requeridas,$confirmadas,
+            $candidatas->map(function($c) {
+                return ['codigo'=>$c->codigo,'disponible'=>$c->fecha_recepcion?$c->disponible:0];
+            })->all());
+        if ($estado==='SIN COINCIDENCIA' && $candidatasLimitadas) {
+            $estado='BÚSQUEDA INCOMPLETA';
+        } elseif($estado==='SIN COINCIDENCIA' && $candidatas->isNotEmpty()) {
+            $estado='SIN COBERTURA CONFIRMADA';
+        }
+        $porCodigo=collect($requeridas)->map(function($necesita,$codigo)use($confirmadas) {
+            $validado=(int)($confirmadas[$codigo]??0);
+            return (object)['codigo'=>$codigo,'necesita'=>$necesita,'validado'=>$validado,
+                'pendiente'=>max(0,$necesita-$validado)];
+        });
+        return view('ventas.mayoristas_factura',compact(
+            'mes','factura','lineas','requeridas','enlaces','confirmadas',
+            'candidatas','candidatasLimitadas','porCodigo','estado','auditoria'
+        ));
     }
 
-    private function csv($filas, string $desde, string $hasta)
+    private function csvDetalle($facturas,string $mes)
     {
-        return response()->streamDownload(function () use ($filas) {
-            $s = fopen('php://output','w');
-            fwrite($s,"\xEF\xBB\xBF");
-            fputcsv($s,[
-                'OT','Código','Descripción','Plan MODELO MUESTRA','Plan otros',
-                'Plan total','Remitido','Recibido','En tránsito',
-                'Salida original Central','Traslados desde locales',
-                'Reserva fotos estimada','Recibido comercial estimado',
-                'Unidades vendidas','Devoluciones','Unidades netas venta',
-                'Venta neta Gs','Comprobantes','Estado conciliación'
-            ],';');
-            $csvSeguro = function ($v) {
-                $v = (string) $v;
-                return preg_match('/^\s*[=+\-@]/u',$v) ? "'" . $v : $v;
+        return response()->streamDownload(function()use($facturas) {
+            $f=fopen('php://output','w');
+            fwrite($f,"\xEF\xBB\xBF");
+            fputcsv($f,['Mes venta','Fecha factura','Factura','Cliente','Código completo',
+                'Artículo','Unidades positivas','Devoluciones','Código remisión',
+                'Remisión','Fecha remisión','Origen','Destino','Unidades vinculadas',
+                'Unidades pendientes','Referencia auditoría','Estado documental'],';');
+            $safe=function($value) {
+                $value=(string)$value;
+                return preg_match('/^\\s*[=+\\-@]/u',$value)?"'".$value:$value;
             };
-            foreach($filas as $f) {
-                fputcsv($s,[
-                    $csvSeguro($f->nro_ot ?: 'SIN OT'),$csvSeguro($f->codigo),
-                    $csvSeguro($f->descripcion),$f->plan_modelo,$f->plan_mayorista,
-                    $f->plan,$f->remitido,$f->recibido,$f->transito,
-                    $f->salida_central,$f->traslado,$f->reserva_foto,
-                    $f->recibido_venta_estimado,$f->vendidas,$f->devoluciones,
-                    $f->ventas_netas,round($f->venta_neta,2),$f->comprobantes,
-                    $csvSeguro($f->status)
-                ],';');
+            foreach($facturas as $factura) {
+                $lineas=self::lineas($factura)->groupBy(function($v) {
+                    return Conciliador::codigo($v->codigo);
+                });
+                $vinculadas=DB::table('mayorista_vinculos as m')
+                    ->join('ot_logistica_remisiones as r','r.id','=','m.remision_id')
+                    ->where('m.factura_clave',$factura->clave)
+                    ->select('m.codigo','m.cantidad','m.observacion','r.codigo as codigo_rem',
+                        'r.serie','r.numero_remision','r.fecha_remision',
+                        'r.sucursal_salida','r.sucursal_destino')
+                    ->get()->groupBy('codigo');
+                foreach($lineas as $codigo=>$articulos) {
+                    $brutas=(int)$articulos->filter(function($v){return $v->cantidad>0;})->sum('cantidad');
+                    $devoluciones=abs((int)$articulos->filter(function($v){return $v->cantidad<0;})->sum('cantidad'));
+                    $links=$vinculadas->get($codigo,collect());
+                    $vinculado=(int)$links->sum('cantidad');
+                    $pendiente=max(0,$brutas-$vinculado);
+                    $base=[$factura->fecha?substr($factura->fecha,0,7):'',
+                        $factura->fecha,$safe($factura->comprobante),
+                        $safe($factura->cliente),$safe($codigo),
+                        $safe($articulos->first()->descripcion),$brutas,$devoluciones];
+                    if($links->isEmpty()) {
+                        fputcsv($f,array_merge($base,
+                            ['','','','','',0,$pendiente,'','SIN VÍNCULO']),';');
+                    } else {
+                        foreach($links as $link) {
+                            fputcsv($f,array_merge($base,[
+                                $safe($link->codigo_rem),
+                                $safe($link->serie.'-'.$link->numero_remision),
+                                $link->fecha_remision,
+                                $safe($link->sucursal_salida),
+                                $safe($link->sucursal_destino),
+                                $link->cantidad,$pendiente,
+                                $safe($link->observacion),
+                                $pendiente===0?'CONFIRMADA DOCUMENTALMENTE':'PARCIAL'
+                            ]),';');
+                        }
+                    }
+                }
             }
-            fclose($s);
-        },'mayoristas_comercial_matriz_'.$desde.'_'.$hasta.'.csv',[
-            'Content-Type'=>'text/csv; charset=UTF-8'
-        ]);
+            fclose($f);
+        },'mayoristas_facturas_remisiones_'.$mes.'.csv',
+        ['Content-Type'=>'text/csv; charset=UTF-8']);
+    }
+
+    private function csv($facturas,string $mes)
+    {
+        return response()->streamDownload(function()use($facturas) {
+            $f=fopen('php://output','w');
+            fwrite($f,"ï»¿");
+            fputcsv($f,['Fecha','Comprobante','Cliente','Facturadas',
+                'Devoluciones','Neto','PVTA Gs','Vinculadas','Pendientes','Estado'],';');
+            foreach($facturas as $v) {
+                $safe=function($x) {
+                    $x=(string)$x;
+                    return preg_match('/^\s*[=+\-@]/u',$x)?"'".$x:$x;
+                };
+                fputcsv($f,[$v->fecha,$safe($v->comprobante),$safe($v->cliente),
+                    $v->brutas,$v->devoluciones,$v->netas,$v->pvta,
+                    $v->vinculadas,$v->pendientes,$safe($v->estado)],';');
+            }
+            fclose($f);
+        },'mayoristas_facturas_'.$mes.'.csv',['Content-Type'=>'text/csv; charset=UTF-8']);
     }
 }

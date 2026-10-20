@@ -23,6 +23,7 @@ use App\Http\Controllers\PedidosController;
 use App\Http\Controllers\MaestroCodigoController;
 use App\Http\Controllers\VentaController;
 use App\Http\Controllers\VentaMayoristaController;
+use App\Http\Controllers\MayoristaAuditoriaController;
 
 
 /*
@@ -337,6 +338,20 @@ Route::get(
     '/ventas/mayoristas',
     [VentaMayoristaController::class, 'index']
 )->name('ventas.mayoristas.index');
+
+// Conciliación factura-remisión: cada vínculo registra responsable y evidencia.
+Route::get('/ventas/mayoristas/facturas/{clave}',
+    [VentaMayoristaController::class, 'factura'])->name('ventas.mayoristas.factura');
+Route::post('/ventas/mayoristas/facturas/{clave}/vincular',
+    [MayoristaAuditoriaController::class, 'vincular'])->name('ventas.mayoristas.vincular');
+Route::post('/ventas/mayoristas/facturas/{clave}/vinculos/{id}/desvincular',
+    [MayoristaAuditoriaController::class, 'desvincular'])->name('ventas.mayoristas.desvincular');
+Route::post('/ventas/mayoristas/separaciones',
+    [MayoristaAuditoriaController::class, 'registrarSeparacion'])->name('ventas.mayoristas.separar');
+Route::post('/ventas/mayoristas/separaciones/{id}/anular',
+    [MayoristaAuditoriaController::class, 'anularSeparacion'])->name('ventas.mayoristas.anular_sep');
+Route::post('/ventas/mayoristas/saldos-iniciales',
+    [MayoristaAuditoriaController::class, 'registrarSaldo'])->name('ventas.mayoristas.saldo');
 
 Route::get(
     '/ventas/vendedores/todos',
