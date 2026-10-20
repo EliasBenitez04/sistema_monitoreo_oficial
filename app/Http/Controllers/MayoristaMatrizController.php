@@ -292,11 +292,16 @@ class MayoristaMatrizController extends Controller
                 ->groupBy('remision_id');
             $diasHistorial = in_array($request->query('historial'), ['90','365','todo'], true)
                 ? $request->query('historial') : '90';
+            $filtroOrigen = in_array($request->query('origen'), ['todos','locales','central'], true)
+                ? $request->query('origen') : 'todos';
             $consulta = VentaMayoristaController::entradas()
                 ->leftJoinSub($usos, 'usos', 'usos.remision_id', '=', 'r.id')
                 ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'), array_keys($requeridas))
                 ->whereNotNull('r.fecha_remision')
-                ->where('r.fecha_remision', '<=', $factura->fecha)
+                // Remisiones posteriores (hasta 3 días) se muestran SOLO
+                // para investigar, sin permitir asociarlas a esta factura.
+                ->where('r.fecha_remision', '<=', Carbon::parse($factura->fecha)
+                    ->addDays(3)->format('Y-m-d'))
                 ->select('r.id','r.id_ot','r.id_logistica_detalle','r.serie','r.numero_remision',
                     'r.codigo','r.descripcion','r.cantidad','r.fecha_remision',
                     'r.fecha_recepcion','r.sucursal_salida','r.sucursal_destino',
@@ -309,6 +314,26 @@ class MayoristaMatrizController extends Controller
                             AND UPPER(COALESCE(d.sucursal,'')) LIKE '%MODELO%MUESTRA%')
                     THEN 1 ELSE 0 END AS es_modelo")
                 ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc');
+
+            if ($filtroOrigen === 'locales') {
+                $consulta->where(function ($q) {
+                    $q->whereRaw('r.cod_sucursal_salida NOT IN (1,25)')
+                      ->orWhere(function ($sinCodigo) {
+                          $sinCodigo->whereNull('r.cod_sucursal_salida')
+                              ->whereNotNull('r.sucursal_salida')
+                              ->whereRaw("UPPER(BTRIM(r.sucursal_salida)) NOT IN ('CASA CENTRAL','CENTRAL','MATRIZ','COMERCIAL MATRIZ')");
+                      });
+                });
+            } elseif ($filtroOrigen === 'central') {
+                $consulta->where(function ($q) {
+                    $q->where('r.cod_sucursal_salida',1)
+                      ->orWhere(function ($sinCodigo) {
+                          $sinCodigo->whereNull('r.cod_sucursal_salida')
+                              ->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')");
+                      });
+                });
+            }
+
             if ($diasHistorial !== 'todo') {
                 $consulta->where('r.fecha_remision','>=',Carbon::parse($factura->fecha)
                     ->subDays((int)$diasHistorial)->format('Y-m-d'));
@@ -319,6 +344,7 @@ class MayoristaMatrizController extends Controller
             $candidatas = $consulta->limit(3000)->get();
         } else {
             $diasHistorial = '90';
+            $filtroOrigen = 'todos';
             $limitadas = false;
         }
 
@@ -340,7 +366,7 @@ class MayoristaMatrizController extends Controller
 
         return view('ventas.mayoristas_matriz_factura', compact(
             'mes','factura','lineas','porCodigo','enlaces','auditoria','documentos',
-            'totales','diasHistorial'
+            'totales','diasHistorial','filtroOrigen'
         ));
     }
 }
