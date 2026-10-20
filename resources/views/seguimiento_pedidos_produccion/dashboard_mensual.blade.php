@@ -923,14 +923,14 @@
                 </span>
             </div>
             <div class="row">
-                <div class="col-xl-5">
+                <div class="col-12 mb-3">
                     <div class="card prod-section-card">
                         <div class="card-header">
-                            <strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de botella · OT en cada área</strong>
+                            <strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de botella · OT y prendas por área</strong>
                             <small class="d-block text-muted mt-1">
-                                «En el área»: última etapa registrada de todas las OT.
-                                «Pedido P»: subconjunto pendiente del pedido. Ambas cifras usan el mismo corte.
-                                No representa un conteo físico del taller. Las OT fuera de P pueden ser de otros pedidos o no tener pedido asociado.
+                                Cada OT se cuenta una vez en su última etapa, al mismo corte.
+                                Separamos OT pendientes P, otras asociaciones de pedidos y OT sin pedido vigente.
+                                Las prendas corresponden al resultado de esa etapa, no al inventario físico.
                             </small>
                         </div>
                         <div class="table-responsive">
@@ -975,7 +975,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-xl-7">
+                <div class="col-12">
                     <div class="card prod-section-card">
                         <div class="card-header"><strong><i class="fas fa-clipboard-list text-primary mr-2"></i>OT
                                 pendientes de pedidos P</strong></div>
