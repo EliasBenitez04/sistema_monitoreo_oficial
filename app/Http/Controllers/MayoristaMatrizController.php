@@ -226,11 +226,13 @@ class MayoristaMatrizController extends Controller
         $datos = $request->validate([
             'codigo' => 'nullable|integer|min:1',
             'nombre' => 'nullable|string|max:100',
+            'sin_origen' => 'nullable|in:1',
         ]);
         $codigo = isset($datos['codigo']) ? (int) $datos['codigo'] : null;
         $nombre = trim((string) ($datos['nombre'] ?? ''));
+        $sinOrigen = ($datos['sin_origen'] ?? '') === '1';
 
-        if ($codigo === null && $nombre === '') {
+        if ($codigo === null && $nombre === '' && !$sinOrigen) {
             abort(422, 'Indicá la sucursal de origen a consultar.');
         }
         if ($codigo === OrigenRemision::CODIGO_MATRIZ) {
@@ -248,16 +250,21 @@ class MayoristaMatrizController extends Controller
             ->when($codigo !== null, function ($q) use ($codigo) {
                 $q->where('r.cod_sucursal_salida', $codigo);
             })
-            ->when($codigo === null, function ($q) use ($nombre) {
+            ->when($codigo === null, function ($q) use ($nombre, $sinOrigen) {
                 // Cuando el origen no tiene código en la importación,
                 // localizarlo por su nombre, sin arrastrar otras sucursales.
                 $q->where(function ($sinCodigo) {
                     $sinCodigo->whereNull('r.cod_sucursal_salida')
                         ->orWhere('r.cod_sucursal_salida', 0);
-                })->whereRaw(
-                    "UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = ?",
-                    [mb_strtoupper($nombre, 'UTF-8')]
-                );
+                });
+                if ($sinOrigen) {
+                    $q->whereRaw("BTRIM(COALESCE(r.sucursal_salida,'')) = ''");
+                } else {
+                    $q->whereRaw(
+                        "UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = ?",
+                        [mb_strtoupper($nombre, 'UTF-8')]
+                    );
+                }
             })
             ->leftJoinSub($usoPorLinea, 'uso', 'uso.remision_id', '=', 'r.id');
 
@@ -303,10 +310,10 @@ class MayoristaMatrizController extends Controller
             ->orderBy('r.fecha_remision', 'desc')
             ->orderBy('r.numero_remision', 'desc')
             ->paginate(40)
-            ->appends($request->only(['desde','hasta','codigo','nombre']));
+            ->appends($request->only(['desde','hasta','codigo','nombre','sin_origen']));
 
         return view('ventas.mayoristas_sucursal', compact(
-            'desde','hasta','origen','codigo','nombre','totales','remisiones'
+            'desde','hasta','origen','codigo','nombre','sinOrigen','totales','remisiones'
         ));
     }
 
@@ -360,7 +367,7 @@ class MayoristaMatrizController extends Controller
             ->selectRaw('COALESCE(uso.usadas,0) as vinculadas')
             ->selectRaw('GREATEST(0,r.cantidad-COALESCE(uso.usadas,0)) as disponibles')
             ->orderBy('r.codigo')->orderBy('r.id')
-            ->paginate(100)->appends($request->only(['desde','hasta','codigo','nombre']));
+            ->paginate(100)->appends($request->only(['desde','hasta','codigo','nombre','sin_origen']));
 
         $cabecera->origen_real = OrigenRemision::nombreOrigen($cabecera);
         $cabecera->tipo_origen = OrigenRemision::tipoOrigen($cabecera);
