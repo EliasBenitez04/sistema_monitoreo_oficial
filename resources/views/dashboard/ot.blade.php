@@ -825,7 +825,7 @@
                 <div class="kpi">
 
                     <div class="kpi-label">
-                        Tiempo Total
+                        Tiempo entre registros
                     </div>
 
                     <div class="kpi-value">
@@ -833,7 +833,7 @@
                     </div>
 
                     <div class="kpi-sub">
-                        {{ $resumen['tiempo_total_dias'] }} días
+                        {{ $resumen['tiempo_total_dias'] }} días · 1er registro hasta último
                     </div>
 
                 </div>
@@ -928,24 +928,21 @@
 
                     <div class="executive-summary">
 
-                        La OT lleva
+                        Entre el primer registro y el último movimiento documentado transcurrieron
                         <strong>
                             {{ $resumen['tiempo_total_dias'] }} días
-                        </strong>
-
-                        desde su primer proceso registrado,
-
-                        equivalente a
-                        <strong>
-                            {{ number_format($resumen['tiempo_total_horas'], 2) }} horas
                         </strong>,
 
-                        con un avance de
+                        equivalentes a
+                        <strong>
+                            {{ number_format($resumen['tiempo_total_horas'], 2) }} horas
+                        </strong>. El tiempo desde el último movimiento hasta hoy se muestra por separado.
+                        La OT presenta un avance de
                         <strong>
                             {{ $resumen['avance'] }}%
                         </strong>
 
-                        y estado
+                        y su estado es
 
                         <strong>
                             {{ $resumen['estado_texto'] }}
@@ -1124,8 +1121,8 @@
 
                                         @if (!$loop->first)
                                             <div class="small text-muted mt-2">
-                                                +{{ number_format($p['duracion_horas'], 2) }}
-                                                horas
+                                                +{{ number_format($p['desde_anterior_horas'], 2) }}
+                                                h ({{ number_format($p['desde_anterior_dias'], 2) }} d) desde el anterior
                                             </div>
                                         @endif
 
@@ -1161,11 +1158,20 @@
                             </h5>
 
                             <span class="text-muted small">
-                                {{ count($procesos) }} registros
+                                {{ count($procesos) }} registros · orden por fecha
                             </span>
 
                         </div>
 
+                        <p class="small text-muted px-3 pt-2 mb-2">
+                            <i class="bi bi-info-circle"></i>
+                            Los movimientos se ordenan por fecha e ID, no por porcentaje de avance.
+                            «Desde anterior» mide la distancia al movimiento previo;
+                            «Tiempo en etapa» mide hasta el movimiento siguiente.
+                            <strong>La última etapa se calcula hasta hoy</strong>, incluso si corresponde
+                            a Logística, Revisión o una OT finalizada. Un día registrado sin hora
+                            se interpreta desde las 00:00.
+                        </p>
                         <div class="table-responsive">
 
                             <table class="table enterprise-table">
@@ -1177,7 +1183,8 @@
                                         <th>Proceso</th>
                                         <th>Resultado</th>
                                         <th>Fecha</th>
-                                        <th>Duración</th>
+                                        <th>Desde anterior</th>
+                                        <th>Tiempo en etapa</th>
                                         <th>Avance</th>
                                         @can('ot destroy')
                                             <th>Acciones</th>
@@ -1199,6 +1206,15 @@
                                                 <strong>
                                                     {{ $p['proceso'] }}
                                                 </strong>
+                                                @if ($p['flujo_no_lineal'])
+                                                    <span class="d-block small text-warning" title="La etapa tiene un orden teórico anterior al movimiento cronológicamente precedente. Puede ser un reproceso o una fecha a revisar.">
+                                                        <i class="bi bi-exclamation-triangle"></i>
+                                                        Flujo no lineal / revisar fecha
+                                                    </span>
+                                                @endif
+                                                @if ($p['fecha_futura'])
+                                                    <span class="d-block small text-danger">Fecha posterior a hoy: revisar</span>
+                                                @endif
                                             </td>
 
                                             <td>
@@ -1214,13 +1230,31 @@
                                             </td>
 
                                             <td>
+                                                @if ($loop->first)
+                                                    <span class="text-muted">Inicio</span>
+                                                @else
+                                                    <strong>{{ number_format($p['desde_anterior_horas'], 2) }} h</strong>
+                                                    <span class="d-block small text-muted">
+                                                        ({{ number_format($p['desde_anterior_dias'], 2) }} d)
+                                                    </span>
+                                                @endif
+                                            </td>
 
-                                                {{ number_format($p['duracion_horas'], 2) }} h
-
-                                                <span class="text-muted">
-                                                    ({{ $p['duracion_dias'] }} d)
+                                            <td>
+                                                <strong>{{ number_format($p['duracion_horas'], 2) }} h</strong>
+                                                <span class="d-block small text-muted">
+                                                    ({{ number_format($p['duracion_dias'], 2) }} d)
                                                 </span>
-
+                                                @if ($p['es_ultimo'])
+                                                    <span class="d-block small text-primary">
+                                                        <i class="bi bi-clock-history"></i>
+                                                        Hasta hoy · se actualiza al consultar
+                                                    </span>
+                                                @else
+                                                    <span class="d-block small text-muted">
+                                                        Hasta {{ $p['fecha_hasta']->format('d/m/Y') }}
+                                                    </span>
+                                                @endif
                                             </td>
 
                                             <td>

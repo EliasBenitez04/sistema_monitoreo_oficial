@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use App\Exports\OtLogisticaExport;
 use App\Exports\ReporteSemanalLogisticaExport;
 use App\Models\OtTrazabilidad;
+use App\Support\TiemposTrazabilidadOt;
 use App\Http\Requests\OtAtrasadasRequest;
 use App\Services\LogisticaConciliacionService;
 
@@ -360,11 +361,9 @@ class OtController extends Controller
      * Catálogo de procesos del flujo de producción y el % de avance que
      * representa cada uno cuando es el ÚLTIMO proceso registrado en la OT.
      *
-     * ⚠️ El ORDEN en que están declaradas las claves aquí es también el
-     * orden en que se mostrarán los procesos en el dashboard (no el orden
-     * por fecha). Esto es clave porque algunas OT pueden tener procesos
-     * registrados con fechas "desordenadas" o simplemente no tener todos
-     * los procesos del flujo.
+     * El orden del catálogo sirve para identificar avances y señalar
+     * retrocesos/reprocesos. El historial y los tiempos del dashboard
+     * se ordenan siempre por FECHA e ID, no por este catálogo.
      */
     private const FLUJO_PROCESOS = [
         'PEDIDO A PRODUCCION'  => 5,
@@ -675,85 +674,69 @@ class OtController extends Controller
     }
 
     /**
-     * Construye la línea de tiempo enriquecida (duración real, avance
-     * acumulado, etc.) y el resumen ejecutivo (KPIs) a partir de las
-     * trazabilidades de una OT.
+     * Calcula el historial de la OT con los registros de trazabilidad
+     * actuales, ordenados por FECHA y después ID (empates de fecha).
      *
-     * Las filas se muestran SIEMPRE en el orden del flujo de producción
-     * (FLUJO_PROCESOS), no en el orden en que fueron registradas. Si la
-     * OT no tiene un proceso, simplemente no aparece esa fila (no se
-     * inventan procesos faltantes).
+     * Duración en proceso: fecha propia -> movimiento siguiente.
+     * Último movimiento: fecha propia -> ahora (tiempo abierto, incluso
+     * si ya llegó a Logística o existe una etapa posterior).
      *
-     * @param  Collection  $trazas
-     * @return array{0: Collection, 1: array}
+     * Desde proceso anterior es una métrica independiente, presentada
+     * en el historial para verificar las transiciones. Nunca se guarda
+     * una duración calculada en PostgreSQL: al editar o borrar un evento
+     * se recomputan todos los intervalos en la próxima consulta.
      */
     private function construirReporte(Collection $trazas): array
     {
-        // 1) Ordenar por posición en el flujo real de producción y, como
-        // criterio secundario (para procesos repetidos, ej. reprocesos de
-        // COSTURA INTERNA), por fecha.
-        $trazasOrdenadas = $trazas
-            ->sortBy(function ($traza) {
-                $orden = str_pad((string) $this->ordenProceso($traza->proceso), 5, '0', STR_PAD_LEFT);
-                $fecha = Carbon::parse($traza->fecha_proceso)->format('YmdHis');
-
-                return "{$orden}-{$fecha}";
-            })
-            ->values();
-
+        $intervalos = TiemposTrazabilidadOt::calcular($trazas);
         $procesos = collect();
-        $horasAcumuladas = 0.0;
+        $horasAcumuladasCerradas = 0.0;
+        $ordenPrevio = null;
         $posicion = 0;
 
-        foreach ($trazasOrdenadas as $index => $traza) {
-
+        foreach ($intervalos as $intervalo) {
+            $traza = $intervalo['traza'];
             $posicion++;
 
-            $fecha = Carbon::parse($traza->fecha_proceso);
-
-            // Obtener el siguiente proceso
-            $siguienteTraza = $trazasOrdenadas->get($index + 1);
-
-            if ($siguienteTraza) {
-
-                $fechaSiguiente = Carbon::parse($siguienteTraza->fecha_proceso);
-
-                // Tiempo desde este proceso hasta el siguiente
-                $duracionHoras = round(
-                    $fecha->diffInMinutes($fechaSiguiente) / 60,
-                    2
-                );
-            } else {
-
-                // Último proceso no tiene siguiente proceso
-                $duracionHoras = 0.0;
+            // El tiempo desde el último registro hasta hoy se muestra en
+            // su fila, pero NO se suma al tiempo cerrado entre registros.
+            if (!$intervalo['es_ultimo']) {
+                $horasAcumuladasCerradas += $intervalo['duracion_horas'];
             }
 
-            $horasAcumuladas += $duracionHoras;
-
-            $esSuspendido = $this->normalizarProceso($traza->proceso) === self::PROCESO_SUSPENDIDO;
+            $ordenActual = $this->ordenProceso($traza->proceso);
+            $flujoNoLineal = $ordenPrevio !== null
+                && $ordenActual < $ordenPrevio;
+            $ordenPrevio = $ordenActual;
 
             $procesos->push([
-                'id_trazabilidad' => $traza->id_trazabilidad,
-                'proceso'          => $traza->proceso,
-                'resultado'        => $traza->resultado,
-                'fecha'            => $fecha,
-                'duracion_horas'   => $duracionHoras,
-                'duracion_dias'    => round($duracionHoras / 24, 2),
-                'horas_acumuladas' => round($horasAcumuladas, 2),
-                'avance_acumulado' => $this->calcularAvance($traza->proceso, $posicion),
-                'es_suspendido'    => $esSuspendido,
+                'id_trazabilidad'        => $traza->id_trazabilidad,
+                'proceso'               => $traza->proceso,
+                'resultado'             => $traza->resultado,
+                'fecha'                 => $intervalo['fecha'],
+                'fecha_hasta'           => $intervalo['fecha_hasta'],
+                'duracion_horas'        => $intervalo['duracion_horas'],
+                'duracion_dias'         => $intervalo['duracion_dias'],
+                'desde_anterior_horas'  => $intervalo['desde_anterior_horas'],
+                'desde_anterior_dias'   => $intervalo['desde_anterior_dias'],
+                'es_ultimo'             => $intervalo['es_ultimo'],
+                'fecha_futura'          => $intervalo['fecha_futura'],
+                'flujo_no_lineal'       => $flujoNoLineal,
+                'horas_acumuladas'      => round($horasAcumuladasCerradas, 2),
+                'avance_acumulado'      => $this->calcularAvance($traza->proceso, $posicion),
+                'es_suspendido'         => $this->normalizarProceso($traza->proceso)
+                    === self::PROCESO_SUSPENDIDO,
             ]);
         }
 
-        $resumen = $this->construirResumen($procesos, $horasAcumuladas);
+        $resumen = $this->construirResumen($procesos, $horasAcumuladasCerradas);
 
         return [$procesos, $resumen];
     }
 
     /**
-     * Arma el resumen ejecutivo (KPIs) a partir de la lista de procesos
-     * ya ordenada por flujo.
+     * Arma el resumen ejecutivo (KPIs) a partir de los movimientos
+     * ordenados cronológicamente.
      */
     private function construirResumen(Collection $procesos, float $horasAcumuladas): array
     {
@@ -765,7 +748,7 @@ class OtController extends Controller
 
         $estaSuspendida = $ultimoProceso['es_suspendido'];
 
-        // Si el último proceso del flujo presente es "PEDIDO SUSPENDIDO",
+        // Si el último movimiento cronológico es "PEDIDO SUSPENDIDO",
         // el avance real de la OT es el del último proceso NO suspendido
         // (para no perder de vista en qué etapa quedó antes de suspenderse).
         if ($estaSuspendida) {
@@ -786,14 +769,17 @@ class OtController extends Controller
         $diasTotales = round($fechaInicio->diffInMinutes($fechaUltimo) / 60 / 24, 2);
 
         // Días transcurridos desde el último movimiento hasta HOY (clave para detectar OTs estancadas).
-        $diasDesdeUltimoProceso = round($fechaUltimo->diffInMinutes(Carbon::now()) / 60 / 24, 2);
+        $diasDesdeUltimoProceso = $fechaUltimo->greaterThan(Carbon::now())
+            ? 0.0 : round($fechaUltimo->diffInMinutes(Carbon::now()) / 60 / 24, 2);
 
-        // Para promedios/cuellos de botella se descarta el primer registro (su duración siempre es 0).
-        $duracionesValidas = $procesos->skip(1)->pluck('duracion_horas');
+        // Cada intervalo cerrado comprende desde un evento hasta el
+        // próximo; la duración abierta del último es independiente.
+        $procesosCerrados = $procesos->filter(fn ($p) => !$p['es_ultimo']);
+        $duracionesValidas = $procesosCerrados->pluck('duracion_horas');
         $duracionPromedio = $duracionesValidas->isNotEmpty() ? round($duracionesValidas->avg(), 2) : 0.0;
 
-        $procesoMasLento = $procesos->skip(1)->sortByDesc('duracion_horas')->first();
-        $procesoMasRapido = $procesos->skip(1)->sortBy('duracion_horas')->first();
+        $procesoMasLento = $procesosCerrados->sortByDesc('duracion_horas')->first();
+        $procesoMasRapido = $procesosCerrados->sortBy('duracion_horas')->first();
 
         $estaDemorada = !$finalizada && !$estaSuspendida && $diasDesdeUltimoProceso >= self::DIAS_PARA_ALERTA;
 
