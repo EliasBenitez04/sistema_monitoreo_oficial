@@ -10,11 +10,10 @@
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
   <div class="alert alert-info small">
-    <strong>Procedimiento:</strong> 1. Verificá los códigos completos y las cantidades facturadas.
-    2. Compará talles dentro de una MISMA serie y número de remisión.
-    3. Confirmá manualmente qué cantidad de cada línea corresponde a esta factura.
-    4. El saldo disponible de esa remisión disminuirá sin duplicar unidades en otras facturas.
-    <strong>Remisión disponible ≠ stock físico acreditado en COMERCIAL MATRIZ.</strong>
+    <strong>Conciliación asistida:</strong> el sistema busca remisiones recibidas hasta la fecha de la factura
+    con el mismo código completo y propone cantidades. Revisá el origen, documento y respaldo antes de confirmar.
+    Los casos con más de una remisión posible quedan sin seleccionar. También podés hacer cruces individuales abajo.
+    <strong>Una coincidencia no demuestra por sí misma de qué remisión salió la venta.</strong>
   </div>
   <div class="row">
     <div class="col-lg-3 col-sm-6 mb-3"><div class="maym-kpi"><small>Unidades facturadas brutas</small><strong>{{ number_format($factura->brutas,0,',','.') }}</strong><span>{{ $totales->codigos }} códigos / talles</span></div></div>
@@ -36,8 +35,104 @@
     </div>
   </div>
   <div class="card mb-3 maym-card">
+    <div class="card-header bg-white">
+      <strong><i class="fas fa-check-double text-primary mr-2"></i>2. Asociación asistida · confirmar varias prendas de una vez</strong>
+      <small class="d-block text-muted">
+        Propuesta de cruce por código/talle, cantidades no utilizadas, emisión y recepción anteriores a la factura.
+        No se guardó ninguna asociación todavía. Las alternativas ambiguas requieren una revisión especial.
+      </small>
+    </div>
+    <div class="card-body">
+      @if($totales->candidatas_limitadas)
+        <div class="alert alert-warning">
+          Hay más de 3.000 líneas candidatas y la búsqueda quedó limitada.
+          No se permite confirmar en lote hasta investigar el período completo o acotar los documentos.
+        </div>
+      @endif
+      @if($propuestas['truncado'])
+        <div class="alert alert-warning">
+          Hay más de 50 líneas propuestas. Se muestran las primeras 50; las restantes podrán revisarse
+          al actualizar después de confirmar. No se considera un resultado exhaustivo.
+        </div>
+      @endif
+      @if($propuestas['filas']->isNotEmpty())
+        <div class="mb-2 small">
+          <strong>{{ number_format($propuestas['visibles'],0,',','.') }} prendas sugeridas</strong>
+          · {{ number_format($propuestas['unicas'],0,',','.') }} con una única línea candidata
+          · {{ $propuestas['ambiguas'] }} líneas con posibles alternativas
+        </div>
+        <form method="POST"
+              action="{{ route('ventas.mayoristas.vincular-propuesta',['clave'=>$factura->clave]) }}"
+              onsubmit="return confirm('¿Verificaste el origen, la factura y la evidencia de TODAS las líneas seleccionadas? Las asociaciones quedarán registradas con tu usuario.');">
+          @csrf
+          <input type="hidden" name="mes" value="{{ $mes }}">
+          <div class="table-responsive">
+            <table class="table table-sm maym-table table-hover">
+              <thead>
+                <tr>
+                  <th>Confirmar</th><th>Código / talle</th><th>Serie / Nº remisión</th><th>Origen real</th>
+                  <th>Emitida</th><th>Recibida</th>
+                  <th class="text-right">Disponible</th><th class="text-right">Propuesta</th><th>Revisión</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach($propuestas['filas'] as $p)
+                  <tr>
+                    <td>
+                      <input type="checkbox" name="asociar[{{ $p->remision_id }}]"
+                             value="{{ $p->cantidad }}" {{ !$p->ambigua ? 'checked' : '' }}
+                             aria-label="Confirmar {{ $p->cantidad }} prendas de remisión {{ $p->numero }}">
+                    </td>
+                    <td class="font-weight-bold">{{ $p->codigo }}</td>
+                    <td>{{ $p->serie }}-{{ $p->numero }}<small class="d-block text-muted">Línea #{{ $p->remision_id }}</small></td>
+                    <td>{{ $p->origen }}</td>
+                    <td>{{ date('d/m/Y',strtotime($p->fecha_remision)) }}</td>
+                    <td>{{ date('d/m/Y',strtotime($p->fecha_recepcion)) }}</td>
+                    <td class="text-right">{{ number_format($p->disponible,0,',','.') }}</td>
+                    <td class="text-right font-weight-bold">{{ number_format($p->cantidad,0,',','.') }}</td>
+                    <td>
+                      @if($p->ambigua)
+                        <span class="badge badge-warning">Revisar otras remisiones</span>
+                      @else
+                        <span class="badge badge-info">Única opción en esta búsqueda</span>
+                      @endif
+                    </td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+          <div class="d-flex align-items-end flex-wrap" style="gap:10px">
+            <div style="max-width:480px;flex:1;min-width:240px">
+              <label for="evidenciaPropuesta" class="small font-weight-bold">
+                Referencia o evidencia comprobada (obligatoria)
+              </label>
+              <input id="evidenciaPropuesta" type="text" name="referencia"
+                     class="form-control form-control-sm" minlength="5" maxlength="255"
+                     placeholder="Ej.: comprobante de recepción o control verificado" required>
+            </div>
+            <button class="btn btn-success" type="submit"
+                    {{ $totales->candidatas_limitadas ? 'disabled' : '' }}>
+              <i class="fas fa-check mr-1"></i>Confirmar asociaciones seleccionadas
+            </button>
+          </div>
+        </form>
+        <small class="d-block mt-2 text-muted">
+          Los importes no se modifican. Solo se registra el vínculo documental, con usuario y auditoría.
+          Desmarcá cualquier propuesta que no puedas justificar; el detalle individual permanece disponible abajo.
+        </small>
+      @else
+        <p class="text-muted mb-0">
+          No hay propuestas directas seguras para esta factura con los filtros actuales.
+          Puede faltar la remisión, no existir recepción anterior a la factura, haber diferencias en el código
+          o estar utilizadas las cantidades. Consultá «1 año» o «Todo» y revisá las remisiones individualmente.
+        </p>
+      @endif
+    </div>
+  </div>
+  <div class="card mb-3 maym-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
-      <div><strong>2. Remisiones hacia Matriz desde TODAS las sucursales y Modelo Muestra</strong>
+      <div><strong>3. Remisiones hacia Matriz desde TODAS las sucursales y Modelo Muestra</strong>
         <small class="d-block text-muted">Verificá los códigos y talles dentro del mismo documento. Cada remisión conserva su origen real (Multiplaza, Luque, Central, etc.). Las remisiones posteriores a la factura se muestran para investigar, pero no se pueden asignar.</small></div>
       <div class="d-flex flex-wrap align-items-center mt-2" style="gap:5px">
         <div class="btn-group btn-group-sm">
@@ -143,14 +238,14 @@
     </div>
   </div>
   <details class="card mb-3 maym-card">
-    <summary class="card-header bg-white maym-summary"><strong>3. Ventas detalladas de esta factura · artículo, código, unidades y valores</strong></summary>
+    <summary class="card-header bg-white maym-summary"><strong>4. Ventas detalladas de esta factura · artículo, código, unidades y valores</strong></summary>
     <div class="table-responsive"><table class="table table-sm maym-table mb-0">
       <thead><tr><th>Código completo</th><th>Descripción</th><th class="text-right">Cantidad</th><th class="text-right">Lista Gs</th><th class="text-right">Descuento Gs</th><th class="text-right">Venta Gs</th></tr></thead>
       <tbody>@foreach($lineas as $l)<tr><td>{{ $l->codigo }}</td><td>{{ $l->descripcion }}</td><td class="text-right">{{ $l->cantidad }}</td><td class="text-right">{{ number_format($l->p_lista,2,',','.') }}</td><td class="text-right">{{ number_format($l->descuento,2,',','.') }}</td><td class="text-right">{{ number_format($l->p_venta,2,',','.') }}</td></tr>@endforeach</tbody>
     </table></div>
   </details>
   <details class="card mb-3 maym-card">
-    <summary class="card-header bg-white maym-summary"><strong>4. Remisiones asignadas a esta factura · trazabilidad y reversión</strong></summary>
+    <summary class="card-header bg-white maym-summary"><strong>5. Remisiones asignadas a esta factura · trazabilidad y reversión</strong></summary>
     <div class="table-responsive"><table class="table table-sm maym-table mb-0">
       <thead><tr><th>Remisión</th><th>Fecha</th><th>Origen real</th><th>Código</th><th class="text-right">Asignadas</th><th>Evidencia</th><th>Revertir</th></tr></thead><tbody>
       @forelse($enlaces as $v)<tr>
