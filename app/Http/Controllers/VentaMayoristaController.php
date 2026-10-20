@@ -273,6 +273,76 @@ class VentaMayoristaController extends Controller
                     || stripos((string)$f->cli_cod,$buscar)!==false;
             })->values();
         }
+        // Filtros de investigación: nunca se convierten en vínculos
+        // confirmados. Una remisión o una OT filtra facturas por códigos
+        // candidatos, no acredita su procedencia.
+        $filtroFactura=trim((string)$request->query('factura',''));
+        $filtroCliente=trim((string)$request->query('cliente',''));
+        $filtroCodigo=trim((string)$request->query('codigo',''));
+        $filtroRemision=trim((string)$request->query('remision',''));
+        $filtroOt=trim((string)$request->query('ot',''));
+        $filtroEstado=trim((string)$request->query('estado',''));
+        if($filtroFactura!=='') {
+            $facturas=$facturas->filter(function($f)use($filtroFactura) {
+                return stripos((string)$f->comprobante,$filtroFactura)!==false;
+            });
+        }
+        if($filtroCliente!=='') {
+            $facturas=$facturas->filter(function($f)use($filtroCliente) {
+                return stripos((string)$f->cliente,$filtroCliente)!==false
+                    || stripos((string)$f->cli_cod,$filtroCliente)!==false;
+            });
+        }
+        if($filtroEstado!=='') {
+            $facturas=$facturas->filter(function($f)use($filtroEstado) {
+                return $f->estado===$filtroEstado;
+            });
+        }
+        $codigosCandidatos=null;
+        if($filtroRemision!=='') {
+            $codigosCandidatos=self::entradas()->where(function($q)use($filtroRemision) {
+                $q->where('r.numero_remision','ILIKE','%'.$filtroRemision.'%')
+                  ->orWhere('r.serie','ILIKE','%'.$filtroRemision.'%');
+            })->distinct()->pluck('r.codigo')->map(function($x) {
+                return Conciliador::codigo($x);
+            })->all();
+        }
+        if($filtroOt!=='') {
+            $codigosOt=self::entradas()
+                ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
+                ->leftJoin('ot as o',function($join) {
+                    $join->on('o.id_ot','=',DB::raw('COALESCE(r.id_ot,d.id_ot)'));
+                })
+                ->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?',['%'.$filtroOt.'%'])
+                ->distinct()->pluck('r.codigo')->map(function($x) {
+                    return Conciliador::codigo($x);
+                })->all();
+            $codigosCandidatos=$codigosCandidatos===null?$codigosOt:
+                array_values(array_intersect($codigosCandidatos,$codigosOt));
+        }
+        if($filtroCodigo!=='' || $codigosCandidatos!==null) {
+            $qCodigo=self::ventas()->whereBetween('v.fecha',[$desde,$hasta]);
+            if($filtroCodigo!=='') {
+                $qCodigo->where('v.codigo','ILIKE','%'.$filtroCodigo.'%');
+            }
+            if($codigosCandidatos!==null) {
+                if($codigosCandidatos) {
+                    $qCodigo->whereIn(DB::raw('UPPER(BTRIM(v.codigo))'),$codigosCandidatos);
+                } else {
+                    $qCodigo->whereRaw('1 = 0');
+                }
+            }
+            $clavesPermitidas=$qCodigo->distinct()
+                ->select('v.fecha','v.comprobante','v.cli_cod','v.cliente')->get()
+                ->map(function($v) {
+                    return Conciliador::claveFactura($v->fecha,$v->comprobante,$v->cli_cod,$v->cliente);
+                })->unique()->all();
+            $facturas=$facturas->filter(function($f)use($clavesPermitidas) {
+                return in_array($f->clave,$clavesPermitidas,true);
+            });
+        }
+        $facturas=$facturas->values();
+
         if($request->query('exportar')==='csv') {
             return $this->csv($facturas,$mes);
         }
@@ -289,7 +359,8 @@ class VentaMayoristaController extends Controller
             'mes','desde','hasta','resumen','emitidas','recibidas',
             'separaciones','separacionesDetalle','saldos','sinSaldo','cierre',
             'arrastres','planes','buscar','facturasPaginadas',
-            'muestrasPorOt','reservaFotoEstimada','planBuscar','resumenMeses'
+            'muestrasPorOt','reservaFotoEstimada','planBuscar','resumenMeses',
+            'filtroFactura','filtroCliente','filtroCodigo','filtroRemision','filtroOt','filtroEstado'
         ));
     }
 
