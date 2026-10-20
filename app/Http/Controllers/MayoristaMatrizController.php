@@ -34,10 +34,20 @@ class MayoristaMatrizController extends Controller
 
     private function facturasEntre(string $desde, string $hasta)
     {
-        return VentaMayoristaController::facturas(substr($desde, 0, 7))
-            ->filter(function ($factura) use ($desde, $hasta) {
-                return $factura->fecha >= $desde && $factura->fecha <= $hasta;
-            })->values();
+        // El filtro admite períodos que crucen meses; no omitir facturas
+        // silenciosamente por consultar solo el mes inicial.
+        $inicio = Carbon::parse($desde)->startOfMonth();
+        $fin = Carbon::parse($hasta)->startOfMonth();
+        $facturas = collect();
+        while ($inicio->lte($fin)) {
+            $facturas = $facturas->concat(
+                VentaMayoristaController::facturas($inicio->format('Y-m'))
+            );
+            $inicio->addMonth();
+        }
+        return $facturas->filter(function ($factura) use ($desde, $hasta) {
+            return $factura->fecha >= $desde && $factura->fecha <= $hasta;
+        })->sortByDesc('fecha')->values();
     }
 
     private function vinculos($claves)
@@ -55,6 +65,9 @@ class MayoristaMatrizController extends Controller
         }
 
         list($desde, $hasta) = $this->fechas($request);
+        if ($request->query('exportar') === 'ventas') {
+            return $this->exportarVentas($desde, $hasta);
+        }
         $facturas = $this->facturasEntre($desde, $hasta);
         $vinculadas = $this->vinculos($facturas->pluck('clave'));
 
@@ -104,6 +117,46 @@ class MayoristaMatrizController extends Controller
         ));
     }
 
+    private function exportarVentas(string $desde, string $hasta)
+    {
+        // CSV completo, independiente de la paginación visual. Las cifras
+        // proceden exclusivamente de la tabla ventas en COMERCIAL MATRIZ.
+        $campos = [
+            'id','fecha','local','comprobante','tipo_comprobante',
+            'cli_cod','cliente','vendedor','codigo','descripcion','cantidad',
+            'p_lista','descuento','p_venta','importacion_id','hash_linea',
+            'created_at','updated_at',
+        ];
+        return response()->streamDownload(function () use ($desde, $hasta, $campos) {
+            $salida = fopen('php://output', 'w');
+            fwrite($salida, "\xEF\xBB\xBF");
+            fputcsv($salida, $campos, ';');
+            VentaMayoristaController::ventas()->whereBetween('v.fecha',[$desde,$hasta])
+                ->orderBy('v.id')
+                ->select(array_map(function ($campo) {
+                    return 'v.'.$campo;
+                }, $campos))
+                ->chunkById(1000, function ($filas) use ($salida, $campos) {
+                    foreach ($filas as $fila) {
+                        $valores = [];
+                        foreach ($campos as $campo) {
+                            $valor = $fila->{$campo};
+                            // No ejecutar fórmulas al abrir textos importados
+                            // de clientes/comprobantes en Excel.
+                            if (is_string($valor) && preg_match('/^[=+@]/', trim($valor))) {
+                                $valor = "'".$valor;
+                            }
+                            $valores[] = $valor;
+                        }
+                        fputcsv($salida, $valores, ';');
+                    }
+                }, 'v.id', 'id');
+            fclose($salida);
+        }, 'ventas_comercial_matriz_'.$desde.'_al_'.$hasta.'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8'
+        ]);
+    }
+
     public function factura(Request $request, string $clave)
     {
         $mes = $request->query('mes', '');
@@ -151,6 +204,12 @@ class MayoristaMatrizController extends Controller
                     'r.fecha_recepcion','r.sucursal_salida','r.sucursal_destino',
                     'r.sucursal_logistica','r.cod_sucursal_salida','r.cod_sucursal_destino')
                 ->selectRaw('COALESCE(usos.usadas,0) as usadas')
+                ->selectRaw("CASE WHEN UPPER(COALESCE(r.sucursal_destino,'')) LIKE '%MODELO%MUESTRA%'
+                        OR UPPER(COALESCE(r.sucursal_logistica,'')) LIKE '%MODELO%MUESTRA%'
+                        OR EXISTS (SELECT 1 FROM ot_logistica_detalle d
+                          WHERE d.id=r.id_logistica_detalle
+                            AND UPPER(COALESCE(d.sucursal,'')) LIKE '%MODELO%MUESTRA%')
+                    THEN 1 ELSE 0 END AS es_modelo")
                 ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc');
             if ($diasHistorial !== 'todo') {
                 $consulta->where('r.fecha_remision','>=',Carbon::parse($factura->fecha)
@@ -173,8 +232,7 @@ class MayoristaMatrizController extends Controller
             $r->disponible = $disponible;
             $r->pendiente_factura = $porCodigo[$codigo]->pendiente ?? 0;
             $r->maximo = min($disponible, $r->pendiente_factura);
-            $r->modelo = stripos((string)$r->sucursal_destino, 'MODELO') !== false
-                || stripos((string)$r->sucursal_logistica, 'MODELO') !== false;
+            $r->modelo = (int) $r->es_modelo === 1;
             $docKey = implode('|', [$r->serie, $r->numero_remision, $r->cod_sucursal_salida,
                 $r->cod_sucursal_destino, $r->fecha_remision]);
             if (!$r->numero_remision) { $docKey .= '|LINEA-'.$r->id; }
