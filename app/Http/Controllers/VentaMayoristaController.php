@@ -240,6 +240,9 @@ class VentaMayoristaController extends Controller
         if($request->query('exportar')==='csv') {
             return $this->csv($facturas,$mes);
         }
+        if($request->query('exportar')==='detalle') {
+            return $this->csvDetalle($facturas,$mes);
+        }
         $pagina=max(1,(int)$request->query('page',1));
         $facturasPaginadas=new LengthAwarePaginator(
             $facturas->slice(($pagina-1)*30,30)->values(),
@@ -316,6 +319,64 @@ class VentaMayoristaController extends Controller
             'mes','factura','lineas','requeridas','enlaces','confirmadas',
             'candidatas','candidatasLimitadas','porCodigo','estado','auditoria'
         ));
+    }
+
+    private function csvDetalle($facturas,string $mes)
+    {
+        return response()->streamDownload(function()use($facturas) {
+            $f=fopen('php://output','w');
+            fwrite($f,"\xEF\xBB\xBF");
+            fputcsv($f,['Mes venta','Fecha factura','Factura','Cliente','Código completo',
+                'Artículo','Unidades positivas','Devoluciones','Código remisión',
+                'Remisión','Fecha remisión','Origen','Destino','Unidades vinculadas',
+                'Unidades pendientes','Referencia auditoría','Estado documental'],';');
+            $safe=function($value) {
+                $value=(string)$value;
+                return preg_match('/^\\s*[=+\\-@]/u',$value)?"'".$value:$value;
+            };
+            foreach($facturas as $factura) {
+                $lineas=self::lineas($factura)->groupBy(function($v) {
+                    return Conciliador::codigo($v->codigo);
+                });
+                $vinculadas=DB::table('mayorista_vinculos as m')
+                    ->join('ot_logistica_remisiones as r','r.id','=','m.remision_id')
+                    ->where('m.factura_clave',$factura->clave)
+                    ->select('m.codigo','m.cantidad','m.observacion','r.codigo as codigo_rem',
+                        'r.serie','r.numero_remision','r.fecha_remision',
+                        'r.sucursal_salida','r.sucursal_destino')
+                    ->get()->groupBy('codigo');
+                foreach($lineas as $codigo=>$articulos) {
+                    $brutas=(int)$articulos->filter(function($v){return $v->cantidad>0;})->sum('cantidad');
+                    $devoluciones=abs((int)$articulos->filter(function($v){return $v->cantidad<0;})->sum('cantidad'));
+                    $links=$vinculadas->get($codigo,collect());
+                    $vinculado=(int)$links->sum('cantidad');
+                    $pendiente=max(0,$brutas-$vinculado);
+                    $base=[$factura->fecha?substr($factura->fecha,0,7):'',
+                        $factura->fecha,$safe($factura->comprobante),
+                        $safe($factura->cliente),$safe($codigo),
+                        $safe($articulos->first()->descripcion),$brutas,$devoluciones];
+                    if($links->isEmpty()) {
+                        fputcsv($f,array_merge($base,
+                            ['','','','','',0,$pendiente,'','SIN VÍNCULO']),';');
+                    } else {
+                        foreach($links as $link) {
+                            fputcsv($f,array_merge($base,[
+                                $safe($link->codigo_rem),
+                                $safe($link->serie.'-'.$link->numero_remision),
+                                $link->fecha_remision,
+                                $safe($link->sucursal_salida),
+                                $safe($link->sucursal_destino),
+                                $link->cantidad,$pendiente,
+                                $safe($link->observacion),
+                                $pendiente===0?'CONFIRMADA DOCUMENTALMENTE':'PARCIAL'
+                            ]),';');
+                        }
+                    }
+                }
+            }
+            fclose($f);
+        },'mayoristas_facturas_remisiones_'.$mes.'.csv',
+        ['Content-Type'=>'text/csv; charset=UTF-8']);
     }
 
     private function csv($facturas,string $mes)
