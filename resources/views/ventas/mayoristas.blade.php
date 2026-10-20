@@ -99,7 +99,7 @@
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi may-kpi-green">
       <small>Venta neta facturada</small>
       <strong class="may-money">Gs {{ number_format($ventasResumen->importe_neto,0,',','.') }}</strong>
-      <span>PVTA neto de la importación, con NCR</span>
+      <span>PLISTA Gs {{ number_format($ventasResumen->venta_lista,0,',','.') }} · DTO Gs {{ number_format($ventasResumen->descuento,0,',','.') }}</span>
     </div></div>
     <div class="col-xl-3 col-md-6 mb-3"><div class="may-kpi">
       <small>Comprobantes de venta</small>
@@ -237,6 +237,7 @@
           <th class="text-right">Plan<br>Mayorista</th>
           <th class="text-right">De ello<br>Modelo M.</th>
           <th class="text-right">Remisiones<br>período</th>
+          <th class="text-right">Diferencia<br>Plan − Mov.</th>
           <th class="text-right">Recibido</th>
           <th class="text-right">Traslados<br>internos</th>
           <th class="text-right">Venta<br>neta unid.</th>
@@ -258,6 +259,7 @@
               <td class="text-right">{{ number_format($item->plan,0,',','.') }}</td>
               <td class="text-right">{{ number_format($item->plan_modelo,0,',','.') }}</td>
               <td class="text-right font-weight-bold">{{ number_format($item->remitido,0,',','.') }}<small class="d-block text-muted">{{ $item->ultima_remision ? date('d/m/Y',strtotime($item->ultima_remision)) : '—' }}</small></td>
+              <td class="text-right {{ $item->brecha_movimientos > 0 ? 'text-warning font-weight-bold' : 'text-muted' }}">{{ $item->brecha_movimientos > 0 ? '+' : '' }}{{ number_format($item->brecha_movimientos,0,',','.') }}<small class="d-block text-muted">No es stock</small></td>
               <td class="text-right {{ $item->transito > 0 ? 'text-warning' : 'text-success' }}">{{ number_format($item->recibido,0,',','.') }}@if($item->transito > 0)<small class="d-block">{{ number_format($item->transito,0,',','.') }} tránsito</small>@endif</td>
               <td class="text-right">{{ number_format($item->traslado,0,',','.') }}</td>
               <td class="text-right font-weight-bold {{ $item->ventas_netas < 0 ? 'text-danger' : 'text-primary' }}">{{ number_format($item->ventas_netas,0,',','.') }}<small class="d-block text-muted">{{ number_format($item->vendidas,0,',','.') }} V · {{ number_format($item->devoluciones,0,',','.') }} D</small></td>
@@ -276,7 +278,7 @@
               </td>
             </tr>
           @empty
-            <tr><td colspan="10" class="text-center text-muted p-4">No se encontraron operaciones con estos criterios.</td></tr>
+            <tr><td colspan="11" class="text-center text-muted p-4">No se encontraron operaciones con estos criterios.</td></tr>
           @endforelse
         </tbody>
       </table>
@@ -310,7 +312,7 @@
         <p class="may-note-title">Sin OT segura</p>
         <p class="small text-muted">El código de venta o remisión no corresponde inequívocamente a una sola OT. Se mantiene separado hasta verificar el vínculo.</p>
         <p class="may-note-title">Fecha del plan distinta al período de ventas</p>
-        <p class="small text-muted mb-0">El plan se toma histórico, mientras las ventas y remisiones se filtran por fecha. Por eso la diferencia plan − venta es comparativa, no una conciliación automática de inventario.</p>
+        <p class="small text-muted mb-0">El plan se toma histórico, mientras las ventas y remisiones se filtran por fecha. La columna Plan − Movimientos es solo una diferencia documental; no mide faltante ni stock. Una redistribución podría volver a mover prendas ya despachadas.</p>
       </div>
     </div></div>
   </div>
@@ -335,8 +337,8 @@
               <td>{{ $mov->canal }}</td>
               <td class="text-right font-weight-bold">{{ number_format($mov->cantidad,0,',','.') }}</td>
               <td>
-                @if($mov->fecha_recepcion)
-                  <span class="badge badge-success">{{ date('d/m/Y',strtotime($mov->fecha_recepcion)) }}</span>
+                @if($mov->fecha_confirmacion)
+                  <span class="badge badge-success">{{ date('d/m/Y',strtotime($mov->fecha_confirmacion)) }}</span>
                 @else
                   <span class="badge badge-warning">No confirmada</span>
                 @endif
