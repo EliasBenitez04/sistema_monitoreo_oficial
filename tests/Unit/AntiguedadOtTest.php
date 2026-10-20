@@ -31,6 +31,21 @@ class AntiguedadOtTest extends TestCase
         $this->assertSame($serigrafia['dias_sin_movimiento'],$costura['dias_sin_movimiento']);
     }
 
+    public function test_se_usa_el_ultimo_timestamp_real_aunque_otro_proceso_sea_mas_avanzado(): void
+    {
+        $corte=Carbon::parse('2026-09-18 17:00:00');
+        // Serigrafía tuvo el último movimiento horario, pero Costura
+        // sigue siendo la etapa vigente por jerarquía del mismo día.
+        $ultimoRegistrado=AntiguedadOt::calcular(
+            '2026-09-17 17:00:00','2026-09-01',$corte
+        );
+        $fechaEtapa=AntiguedadOt::calcular(
+            '2026-09-17 08:00:00','2026-09-01',$corte
+        );
+        $this->assertSame(1.0,$ultimoRegistrado['dias_sin_movimiento']);
+        $this->assertSame(1.38,$fechaEtapa['dias_sin_movimiento']);
+    }
+
     public function test_fecha_pedido_posterior_a_movimiento_separa_antiguedad_y_espera_p(): void
     {
         $corte=Carbon::parse('2026-10-20 00:00:00');
