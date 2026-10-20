@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\MayoristaConciliacion as Conciliador;
+use App\Support\MayoristaCruceDocumento;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -224,43 +225,10 @@ class MayoristaMatrizController extends Controller
             $limitadas = false;
         }
 
-        $documentos = [];
-        foreach ($candidatas as $r) {
-            $codigo = Conciliador::codigo($r->codigo);
-            $disponible = max(0, (int) $r->cantidad - (int) $r->usadas);
-            $r->codigo_normalizado = $codigo;
-            $r->disponible = $disponible;
-            $r->pendiente_factura = $porCodigo[$codigo]->pendiente ?? 0;
-            $r->maximo = min($disponible, $r->pendiente_factura);
-            $r->modelo = (int) $r->es_modelo === 1;
-            $docKey = implode('|', [$r->serie, $r->numero_remision, $r->cod_sucursal_salida,
-                $r->cod_sucursal_destino, $r->fecha_remision]);
-            if (!$r->numero_remision) { $docKey .= '|LINEA-'.$r->id; }
-            if (!isset($documentos[$docKey])) {
-                $documentos[$docKey] = (object) [
-                    'serie' => $r->serie, 'numero' => $r->numero_remision,
-                    'fecha' => $r->fecha_remision,'origen' => $r->sucursal_salida,
-                    'destino' => $r->sucursal_destino ?: $r->sucursal_logistica,
-                    'codigos' => [],'lineas' => collect(),
-                    'remitidas' => 0,'usadas' => 0,'disponibles' => 0,
-                    'posible' => 0, 'coincidencias' => 0,
-                ];
-            }
-            $doc = $documentos[$docKey];
-            $doc->lineas->push($r);
-            $doc->codigos[$codigo] = true;
-            $doc->remitidas += (int)$r->cantidad;
-            $doc->usadas += (int)$r->usadas;
-            $doc->disponibles += $disponible;
-            $doc->posible += $r->maximo;
-        }
-        foreach ($documentos as $doc) {
-            $doc->coincidencias = count($doc->codigos);
-            $doc->completo = $doc->coincidencias === count($requeridas);
-        }
-        $documentos = collect(array_values($documentos))
-            ->sortByDesc(function ($doc) { return ($doc->completo ? 10000000 : 0) + $doc->posible; })
-            ->values();
+        // Nunca fusionar talles procedentes de remisiones diferentes.
+        $documentos = MayoristaCruceDocumento::agrupar(
+            $candidatas, $requeridas, $porCodigo
+        );
 
         $auditoria = DB::table('mayorista_auditoria')
             ->where('factura_clave', $clave)->orderBy('created_at','desc')->limit(40)->get();
