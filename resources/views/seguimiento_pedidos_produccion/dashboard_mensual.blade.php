@@ -645,7 +645,7 @@
                         <div class="prod-kpi">
                             <div class="prod-kpi-label">OT vinculadas a P con hito IT</div>
                             <div class="prod-kpi-value">{{ $resumenGerencial->porcentaje_p_en_it !== null ? number_format($resumenGerencial->porcentaje_p_en_it,1,',','.').'%' : '—' }}</div>
-                            <div class="prod-kpi-desc">{{ number_format($resumenGerencial->ot_p_con_hito,0,',','.') }} de {{ number_format($resumenGerencial->ot_p_asociadas,0,',','.') }} OT vinculadas ya registran el hito</div>
+                            <div class="prod-kpi-desc">{{ $resumenGerencial->ot_p_con_hito === null ? 'Revisar datos' : number_format($resumenGerencial->ot_p_con_hito,0,',','.') }} de {{ number_format($resumenGerencial->ot_p_asociadas,0,',','.') }} OT vinculadas ya registran el hito</div>
                             <div class="prod-kpi-desc">Avance documental, no entrega en plazo ni cantidad completa</div>
                         </div>
                     </div>
