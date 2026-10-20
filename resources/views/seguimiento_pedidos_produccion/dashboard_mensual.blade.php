@@ -937,7 +937,7 @@
                             <table class="table prod-table mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Proceso actual</th>
+                                        <th rowspan="2">Proceso actual</th>
                                         <th title="Todas las OT cuyo último proceso registrado corresponde al área, con o sin pedido P">OT en esta área</th>
                                         <th title="OT de pedidos P todavía pendientes en esta etapa">OT de pedidos P</th>
                                         <th title="Prendas pendientes de los pedidos P; no incluye otras OT del área">Prendas de P</th>
