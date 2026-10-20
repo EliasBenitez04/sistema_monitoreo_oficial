@@ -41,8 +41,11 @@ class MayoristaOrigenRemision
 
     public static function esOrigenMatrizSql(string $alias = 'r'): string
     {
-        return "(COALESCE({$alias}.cod_sucursal_salida,0) = 25"
-            . " OR UPPER(BTRIM(COALESCE({$alias}.sucursal_salida,''))) IN ('MATRIZ','COMERCIAL MATRIZ'))";
+        // El código prevalece sobre un nombre erróneo: solo consultar
+        // el nombre cuando el código de origen no está informado.
+        return "({$alias}.cod_sucursal_salida = 25"
+            . " OR (COALESCE({$alias}.cod_sucursal_salida,0) = 0"
+            . " AND UPPER(BTRIM(COALESCE({$alias}.sucursal_salida,''))) IN ('MATRIZ','COMERCIAL MATRIZ')))";
     }
 
     public static function nombreOrigen($fila): string
