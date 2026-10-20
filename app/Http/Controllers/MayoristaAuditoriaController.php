@@ -31,7 +31,8 @@ class MayoristaAuditoriaController extends Controller
     {
         $datos=$request->validate([
             'mes'=>'required|date_format:Y-m','remision_id'=>'required|integer|min:1',
-            'cantidad'=>'required|integer|min:1','referencia'=>'required|string|min:5|max:255'
+            'cantidad'=>'required|integer|min:1','referencia'=>'required|string|min:5|max:255',
+            'confirmar_modelo'=>'nullable|in:1',
         ]);
         $factura=VentaMayoristaController::buscarFactura($clave,$datos['mes']);
         $necesidades=VentaMayoristaController::necesidades(VentaMayoristaController::lineas($factura));
@@ -50,15 +51,34 @@ class MayoristaAuditoriaController extends Controller
             if(!$r) {
                 throw ValidationException::withMessages(['remision_id'=>'La remisión no es una entrada válida a COMERCIAL MATRIZ.']);
             }
-            if(!$r->fecha_recepcion) {
-                throw ValidationException::withMessages(['remision_id'=>'La remisión aún no tiene recepción confirmada.']);
+            // MODELO MUESTRA puede documentar una separación previa a la
+            // recepción de MATRIZ. Se admite vínculo DOCUMENTAL con
+            // confirmación humana, no prueba de entrega física.
+            $modelo = (stripos((string)$r->sucursal_destino,'MODELO')!==false
+                && stripos((string)$r->sucursal_destino,'MUESTRA')!==false)
+                || (stripos((string)$r->sucursal_logistica,'MODELO')!==false
+                && stripos((string)$r->sucursal_logistica,'MUESTRA')!==false);
+            if(!$modelo && $r->id_logistica_detalle) {
+                $detalle=DB::table('ot_logistica_detalle')
+                    ->where('id',$r->id_logistica_detalle)->first();
+                $nombre=strtoupper(trim((string)($detalle->sucursal??'')));
+                $modelo=strpos($nombre,'MODELO')!==false && strpos($nombre,'MUESTRA')!==false;
+            }
+            if(!$r->fecha_recepcion && (!$modelo || ($datos['confirmar_modelo']??'')!=='1')) {
+                throw ValidationException::withMessages(['remision_id'=>
+                    'Sin recepción: solo Modelo Muestra con confirmación documental explícita y referencia puede vincularse.']);
             }
             $codigo=Conciliador::codigo($r->codigo);
             if(!isset($necesidades[$codigo])) {
                 throw ValidationException::withMessages(['remision_id'=>'El código completo de la remisión no coincide con esta factura.']);
             }
-            if($r->fecha_remision>Carbon::parse($factura->fecha)->addDays(3)->format('Y-m-d')) {
-                throw ValidationException::withMessages(['remision_id'=>'La remisión es posterior a la ventana de análisis. Requiere revisión independiente.']);
+            if(!$r->fecha_remision || $r->fecha_remision > $factura->fecha) {
+                throw ValidationException::withMessages(['remision_id'=>
+                    'La remisión debe tener fecha de emisión no posterior a la factura para poder cruzarse.']);
+            }
+            if($r->fecha_recepcion && $r->fecha_recepcion > $factura->fecha && !$modelo) {
+                throw ValidationException::withMessages(['remision_id'=>
+                    'La recepción en MATRIZ figura posterior a la factura: investigar antes de asignar.']);
             }
             if(DB::table('mayorista_vinculos')->where('factura_clave',$clave)
                 ->where('remision_id',$r->id)->exists()) {
@@ -80,7 +100,7 @@ class MayoristaAuditoriaController extends Controller
                 'created_at'=>now(),'updated_at'=>now()
             ]);
             $this->auditar($request,'VINCULAR',$clave,$r->id,$codigo,(int)$datos['cantidad'],
-                'Vínculo '.$id.' · '.$datos['referencia']);
+                'Vínculo '.$id.(!$r->fecha_recepcion ? ' · MODELO MUESTRA SIN RECEPCIÓN EN MATRIZ' : '').' · '.$datos['referencia']);
         },3);
         return redirect()->route('ventas.mayoristas.factura',['clave'=>$clave,'mes'=>$datos['mes']])
             ->with('success','Relación factura–remisión registrada con cantidades auditadas.');
