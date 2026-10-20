@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\MayoristaConciliacion as Conciliador;
 use App\Support\MayoristaCruceDocumento;
+use App\Support\MayoristaPropuestaFactura;
 use App\Support\MayoristaOrigenRemision as OrigenRemision;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -540,6 +541,11 @@ class MayoristaMatrizController extends Controller
         $documentos = MayoristaCruceDocumento::agrupar(
             $candidatas, $requeridas, $porCodigo, $factura->fecha
         );
+        // Solo sugerencias. Nunca se registran vinculos sin confirmacion.
+        // Con resultados truncados, el usuario debe ampliar la investigacion.
+        $propuestas = MayoristaPropuestaFactura::generar(
+            $candidatas, $porCodigo, $enlaces, $factura->fecha
+        );
 
         $auditoria = DB::table('mayorista_auditoria')
             ->where('factura_clave', $clave)->orderBy('created_at','desc')->limit(40)->get();
@@ -554,7 +560,7 @@ class MayoristaMatrizController extends Controller
 
         return view('ventas.mayoristas_matriz_factura', compact(
             'mes','factura','lineas','porCodigo','enlaces','auditoria','documentos',
-            'totales','diasHistorial','filtroOrigen'
+            'totales','diasHistorial','filtroOrigen','propuestas'
         ));
     }
 }
