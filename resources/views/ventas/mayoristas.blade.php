@@ -42,6 +42,30 @@
     </div>
   </div>
 
+  <div class="card may-card mb-3">
+    <div class="card-header bg-white"><strong><i class="fas fa-calendar-alt text-primary mr-2"></i>Panorama por mes · últimos seis meses hasta {{ $mes }}</strong>
+      <small class="d-block text-muted">Elegí un mes para examinar facturas y remisiones. Las cantidades son hechos del período y no deben sumarse entre categorías.</small></div>
+    <div class="table-responsive">
+      <table class="table table-sm may-table mb-0">
+        <thead><tr><th>Mes</th><th class="text-right">Separadas con evidencia</th><th class="text-right">Remitidas</th>
+        <th class="text-right">Recibidas</th><th class="text-right">Facturadas netas</th><th>Saldo documental al cierre</th><th></th></tr></thead>
+        <tbody>
+        @foreach($resumenMeses as $filaMes)
+          <tr class="{{ $filaMes->es_actual ? 'table-primary' : '' }}">
+            <td><strong>{{ $filaMes->mes }}</strong></td>
+            <td class="text-right">{{ number_format($filaMes->separadas,0,',','.') }}</td>
+            <td class="text-right">{{ number_format($filaMes->emitidas,0,',','.') }}</td>
+            <td class="text-right">{{ number_format($filaMes->recibidas,0,',','.') }}</td>
+            <td class="text-right">{{ number_format($filaMes->facturadas,0,',','.') }}</td>
+            <td>{{ $filaMes->es_actual ? ($filaMes->cierre===null ? 'NO DETERMINADO' : number_format($filaMes->cierre,0,',','.').' (estimado)') : 'Consultar mes' }}</td>
+            <td><a href="{{ route('ventas.mayoristas.index',['mes'=>$filaMes->mes]) }}" class="btn btn-sm btn-outline-primary">Ver detalle</a></td>
+          </tr>
+        @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="may-section">
     <div><h3>1. Resumen documental de {{ ucfirst(\Carbon\Carbon::parse($mes.'-01')->locale('es')->translatedFormat('F Y')) }}</h3>
       <p>Las fechas corresponden a hechos distintos: separación validada, emisión, recepción y factura. No deben sumarse como si fueran prendas diferentes.</p></div>
