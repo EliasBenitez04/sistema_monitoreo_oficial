@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
+use App\Support\ConfirmacionTupi;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -206,10 +207,11 @@ class VentaMayoristaController extends Controller
             // Código normalizado también para las remisiones sin OT;
             // quedan separadas del canal de ventas hasta resolver el vínculo.
             $baseRem = $this->baseCodigoSql('r.codigo');
+            $fechaEfectiva = ConfirmacionTupi::sql('r');
             $agrupadas = (clone $baseRemision)
                 ->selectRaw("$idExp as id_ot, $baseRem as codigo_base, $clase as canal")
                 ->selectRaw("MAX(o.nro_ot) as nro_ot, MAX(o.codigo) as codigo_ot, MAX(o.descripcion) as descripcion_ot, MAX(r.descripcion) as descripcion_remision")
-                ->selectRaw("COALESCE(SUM(r.cantidad),0) as remitido, COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibido")
+                ->selectRaw("COALESCE(SUM(r.cantidad),0) as remitido, COALESCE(SUM(CASE WHEN $fechaEfectiva IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibido")
                 ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN r.cantidad ELSE 0 END),0) as salida_central")
                 ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN 0 ELSE r.cantidad END),0) as traslado")
                 ->selectRaw("COALESCE(SUM(r.cantidad * COALESCE(r.precio_venta,0)),0) as valor_referencial, COALESCE(SUM(r.cantidad * COALESCE(r.costo_unitario,0)),0) as costo_referencial")
@@ -240,6 +242,7 @@ class VentaMayoristaController extends Controller
                 ->addSelect('r.fecha_remision','r.fecha_recepcion','r.serie','r.numero_remision','r.codigo',
                     'r.descripcion','r.cantidad','r.precio_venta','r.sucursal_salida',
                     'r.sucursal_destino','r.sucursal_logistica','o.nro_ot')
+                ->selectRaw("$fechaEfectiva as fecha_confirmacion")
                 ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc')
                 ->paginate(30, ['*'], 'remisiones_page')
                 ->appends($request->except('remisiones_page'));
@@ -311,9 +314,9 @@ class VentaMayoristaController extends Controller
                 ? null : max(0, $fila->recibido - $fila->reserva_foto);
             $fila->brecha_movimientos = $fila->plan - $fila->remitido;
             $fila->status = $fila->id_ot === null ? 'SIN OT SEGURA'
-                : ($fila->ventas_netas > 0 && $fila->plan === 0 && $fila->remitido === 0
+                : ($fila->comprobantes > 0 && $fila->plan === 0 && $fila->remitido === 0
                     ? 'VENTA SIN PLAN/REMISIÓN'
-                    : ($fila->ventas_netas > 0 && $fila->remitido === 0
+                    : ($fila->comprobantes > 0 && $fila->remitido === 0
                         ? 'VENTA SIN REMISIÓN'
                         : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE'
                             : ($fila->remitido === 0 ? 'SOLO PLAN' : 'CON DOCUMENTOS'))));
