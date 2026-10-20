@@ -120,22 +120,39 @@
   </div>
 
   <div class="may-section"><div><h3>2. Facturas mayoristas del mes</h3>
-    <p>La factura es el punto de entrada de la auditoría. Seleccioná <strong>Revisar</strong> para ver artículos, remisiones candidatas y vínculos confirmados.</p></div></div>
+    <p>Separé las <strong>unidades realmente vinculadas</strong> de las <strong>coincidencias posibles</strong> para que puedas priorizar qué facturas auditar.</p></div></div>
+  <div class="alert alert-info small mb-3">
+    <strong><i class="fas fa-search mr-1"></i>Interpretación de las nuevas columnas:</strong>
+    «Líneas candidatas» busca remisiones de entrada a COMERCIAL MATRIZ por
+    <strong>código completo</strong>, emitidas y recibidas hasta la fecha de la factura,
+    con cantidades que aún no fueron vinculadas.
+    «Posible cobertura» indica cuántas prendas de esa factura podrían estar respaldadas
+    con esos documentos. <strong>No son confirmaciones</strong>: una misma remisión candidata
+    podría aparecer para varias facturas, por lo que no se suman estas coberturas entre comprobantes.
+    Para confirmar el origen, abrí <strong>Revisar</strong> y asigná cada documento con evidencia.
+  </div>
   <div class="card may-card mb-3">
     <div class="table-responsive">
       <table class="table table-sm may-table table-hover mb-0">
         <thead><tr>
           <th>Fecha</th><th>Comprobante</th><th>Cliente mayorista</th>
-          <th class="text-right">Artículos</th><th class="text-right">Prendas brutas</th>
+          <th class="text-right" title="Códigos completos distintos del comprobante; no es la cantidad de prendas">Códigos</th><th class="text-right">Prendas brutas</th>
           <th class="text-right">Devoluciones</th><th class="text-right">Neto</th>
           <th class="text-right">Importe Gs</th><th class="text-right">Vinculadas</th>
-          <th class="text-right">Pendientes</th><th>Estado</th><th></th>
+          <th class="text-right">Sin vínculo</th>
+          <th class="text-right">Líneas candidatas</th>
+          <th class="text-right">Posible cobertura</th>
+          <th>Estado documental</th><th></th>
         </tr></thead>
         <tbody>
         @forelse($facturasPaginadas as $factura)
           <tr>
             <td>{{ date('d/m/Y',strtotime($factura->fecha)) }}</td>
-            <td><strong>{{ $factura->comprobante }}</strong><small class="d-block text-muted">{{ $factura->tipo_comprobante }}</small></td>
+            <td><strong>{{ $factura->comprobante }}</strong>
+              @if($factura->tipo_comprobante && stripos($factura->comprobante,$factura->tipo_comprobante) === false)
+                <small class="d-block text-muted">{{ $factura->tipo_comprobante }}</small>
+              @endif
+            </td>
             <td>{{ $factura->cliente ?: 'Cliente sin identificar' }}</td>
             <td class="text-right">{{ $factura->articulos }}</td>
             <td class="text-right font-weight-bold">{{ number_format($factura->brutas,0,',','.') }}</td>
@@ -144,11 +161,28 @@
             <td class="text-right">Gs {{ number_format($factura->pvta,0,',','.') }}</td>
             <td class="text-right text-success">{{ number_format($factura->vinculadas,0,',','.') }}</td>
             <td class="text-right {{ $factura->pendientes > 0 ? 'text-warning font-weight-bold' : '' }}">{{ number_format($factura->pendientes,0,',','.') }}</td>
-            <td><span class="badge {{ $factura->estado==='CONFIRMADA DOCUMENTALMENTE' ? 'badge-success' : ($factura->estado==='PARCIAL' ? 'badge-info' : 'badge-warning') }}">{{ $factura->estado }}</span></td>
+            <td class="text-right">
+              {{ $factura->brutas > 0 ? number_format($factura->lineas_candidatas,0,',','.') : '—' }}
+            </td>
+            <td class="text-right">
+              @if($factura->brutas > 0)
+                <strong class="{{ $factura->cobertura_candidata > 0 ? 'text-primary' : 'text-muted' }}">{{ number_format($factura->cobertura_candidata,0,',','.') }}</strong>
+                <small class="d-block text-muted">de {{ number_format($factura->pendientes,0,',','.') }} sin vínculo</small>
+                <small class="d-block {{ $factura->pendiente_sin_candidata>0 ? 'text-warning':'text-success' }}">{{ number_format($factura->pendiente_sin_candidata,0,',','.') }} sin cobertura previa</small>
+              @else
+                —
+              @endif
+            </td>
+            <td>
+              <span class="badge {{ $factura->estado==='CONFIRMADA DOCUMENTALMENTE' ? 'badge-success' : ($factura->estado==='PARCIAL' ? 'badge-info' : 'badge-warning') }}">{{ $factura->estado }}</span>
+              @if($factura->brutas > 0 && $factura->pendientes > 0)
+                <small class="d-block mt-1 {{ $factura->cobertura_candidata>0 ? 'text-primary':'text-muted' }}">{{ $factura->situacion_busqueda }}</small>
+              @endif
+            </td>
             <td><a class="btn btn-sm btn-outline-primary" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes]) }}">Revisar <i class="fas fa-arrow-right ml-1"></i></a></td>
           </tr>
         @empty
-          <tr><td colspan="12" class="text-center text-muted p-4">No hay facturas de COMERCIAL MATRIZ para este mes y filtro.</td></tr>
+          <tr><td colspan="14" class="text-center text-muted p-4">No hay facturas de COMERCIAL MATRIZ para este mes y filtro.</td></tr>
         @endforelse
         </tbody>
       </table>
