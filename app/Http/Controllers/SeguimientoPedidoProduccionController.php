@@ -407,7 +407,10 @@ class SeguimientoPedidoProduccionController extends Controller
                     $q->where('p.fecha_pedido', '<=', $cortePendientes->format('Y-m-d'))
                       ->orWhere(function ($sinFecha) use ($cortePendientes) {
                           $sinFecha->whereNull('p.fecha_pedido')
-                              ->where('p.created_at', '<=', $cortePendientes->format('Y-m-d H:i:s'));
+                              ->where(function ($sinCreacion) use ($cortePendientes) {
+                                  $sinCreacion->whereNull('p.created_at')
+                                      ->orWhere('p.created_at', '<=', $cortePendientes->format('Y-m-d H:i:s'));
+                              });
                       });
                 })
                 ->whereNotExists(function ($q) use ($cortePendientes) {
