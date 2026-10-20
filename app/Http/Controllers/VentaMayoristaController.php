@@ -171,7 +171,7 @@ class VentaMayoristaController extends Controller
         $cierre=$saldos->isNotEmpty() && $sinSaldo===0?$saldos->sum('cierre'):null;
 
         $arrastres=self::entradas()->where('r.fecha_remision','<',$desde)
-            ->whereNotNull('r.fecha_recepcion')
+            ->whereNotNull('r.fecha_recepcion')->where('r.fecha_recepcion','<',$desde)
             ->select('r.id','r.fecha_remision','r.codigo','r.cantidad','r.serie','r.numero_remision')
             ->orderBy('r.fecha_remision','desc')->limit(100)->get();
         $ids=$arrastres->pluck('id')->all();
@@ -266,6 +266,9 @@ class VentaMayoristaController extends Controller
                 $c->tardia=$c->fecha_remision>$factura->fecha;
             }
         }
+        $auditoria=DB::table('mayorista_auditoria')
+            ->where('factura_clave',$clave)
+            ->orderBy('created_at','desc')->limit(50)->get();
         $estado=Conciliador::estado($requeridas,$confirmadas,
             $candidatas->map(function($c) {
                 return ['codigo'=>$c->codigo,'disponible'=>$c->fecha_recepcion?$c->disponible:0];
@@ -277,7 +280,7 @@ class VentaMayoristaController extends Controller
         });
         return view('ventas.mayoristas_factura',compact(
             'mes','factura','lineas','requeridas','enlaces','confirmadas',
-            'candidatas','candidatasLimitadas','porCodigo','estado'
+            'candidatas','candidatasLimitadas','porCodigo','estado','auditoria'
         ));
     }
 
