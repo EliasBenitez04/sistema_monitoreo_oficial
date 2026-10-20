@@ -29,6 +29,7 @@ class ConteoEtapasPedido
                 };
 
                 return (object) [
+                    'etapa_muestra' => $registros->first()->proceso,
                     'ot_total' => $sumar('ots'),
                     'prendas_total' => $sumar('prendas_registradas'),
                     'faltan_total' => $sumar('sin_cantidad'),
@@ -44,7 +45,16 @@ class ConteoEtapasPedido
         $pendientesPorArea = $pendientesP->groupBy(function ($fila) {
             return UltimoProcesoOt::normalizar($fila->etapa);
         });
+        // Reportar todas las áreas del flujo de PRODUCCIÓN, incluso si
+        // hoy tienen 0 OT P. Excluir estados finales y Logística con
+        // cientos de OT históricas, que no son áreas productivas activas.
+        // Mantener aparte cualquier etapa que sí tenga OT pendiente P.
         $claves = $consolidados->keys()
+            ->filter(function ($area) use ($pendientesPorArea) {
+                $nivel = UltimoProcesoOt::prioridad($area);
+                return ($nivel >= 10 && $nivel <= 85)
+                    || $pendientesPorArea->has($area);
+            })
             ->merge($pendientesPorArea->keys())
             ->unique()
             ->values();
@@ -82,7 +92,9 @@ class ConteoEtapasPedido
             $faltanArea = $base ? $base->faltan_total : 0;
 
             return (object) [
-                'etapa' => $items->first()->etapa ?? $area,
+                'etapa' => $items->isNotEmpty()
+                    ? $items->first()->etapa
+                    : ($base ? $base->etapa_muestra : $area),
                 'ots' => $cantidadP,
                 'prendas' => $prendasP,
                 'prendas_p_faltantes' => $faltanP,
