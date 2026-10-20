@@ -44,10 +44,17 @@ class MayoristaCruceDocumento
                 || in_array(strtoupper(trim((string) $r->sucursal_destino)), ['MATRIZ','COMERCIAL MATRIZ'], true)
                 || in_array(strtoupper(trim((string) ($r->sucursal_logistica ?? ''))), ['MATRIZ','COMERCIAL MATRIZ'], true);
 
+            // No fusionar remisiones de dos sucursales distintas cuando
+            // el importador haya omitido cod_sucursal_salida.
+            $claveOrigen = $r->cod_sucursal_salida
+                ? 'COD:'.$r->cod_sucursal_salida
+                : 'NOM:'.mb_strtoupper(trim((string) $r->sucursal_salida), 'UTF-8');
+            $claveDestino = $r->cod_sucursal_destino
+                ? 'COD:'.$r->cod_sucursal_destino
+                : 'NOM:'.mb_strtoupper(trim((string) $r->sucursal_destino), 'UTF-8');
             $clave = implode('|', [
                 $r->serie, $r->numero_remision,
-                $r->cod_sucursal_salida, $r->cod_sucursal_destino,
-                $r->fecha_remision,
+                $claveOrigen, $claveDestino, $r->fecha_remision,
             ]);
             if (!$r->numero_remision) {
                 $clave .= '|LINEA-'.$r->id;
