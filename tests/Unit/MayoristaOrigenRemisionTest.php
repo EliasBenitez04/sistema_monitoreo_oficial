@@ -71,6 +71,40 @@ class MayoristaOrigenRemisionTest extends TestCase
         $this->assertSame('MODELO MUESTRA · LOCAL', Origen::clasificar($r));
     }
 
+    public function test_el_codigo_multiplaza_con_nombre_central_se_advierte(): void
+    {
+        $contradictorio = $this->fila(9,'CASA CENTRAL');
+        $this->assertTrue(Origen::origenDiscordante($contradictorio));
+        $this->assertSame('MULTIPLAZA',Origen::nombreOrigen($contradictorio));
+        $this->assertSame('LOCAL',Origen::tipoOrigen($contradictorio));
+
+        $centralErroneo = $this->fila(1,'MULTIPLAZA');
+        $this->assertTrue(Origen::origenDiscordante($centralErroneo));
+        $this->assertSame('CENTRAL',Origen::tipoOrigen($centralErroneo));
+
+        $normal = $this->fila(9,'MULTIPLAZA');
+        $this->assertFalse(Origen::origenDiscordante($normal));
+    }
+
+    public function test_remision_posterior_se_muestra_pero_no_se_puede_asignar(): void
+    {
+        $base = $this->fila(9,'MULTIPLAZA');
+        $reg = (object) array_merge((array) $base, [
+            'id'=>103,'serie'=>'1','numero_remision'=>'50101',
+            'fecha_remision'=>'2026-10-19','codigo'=>'AZ01',
+            'cantidad'=>8,'usadas'=>0,
+        ]);
+        $docs = MayoristaCruceDocumento::agrupar(
+            collect([$reg]),['AZ01'=>2],
+            collect(['AZ01'=>(object)['pendiente'=>2]]),
+            '2026-10-17'
+        );
+        $this->assertCount(1,$docs);
+        $this->assertTrue($docs[0]->lineas[0]->posterior);
+        $this->assertSame(0,$docs[0]->lineas[0]->maximo);
+        $this->assertSame(8,$docs[0]->disponibles);
+    }
+
     public function test_la_remision_agrupada_y_sus_talles_conservan_el_origen_local(): void
     {
         $r = (object) array_merge((array) $this->fila(9,'MULTIPLAZA'), [
