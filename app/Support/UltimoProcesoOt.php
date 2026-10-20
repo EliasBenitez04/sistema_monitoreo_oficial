@@ -63,6 +63,27 @@ class UltimoProcesoOt
     }
 
     /**
+     * Expresión PostgreSQL 9.5 equivalente a prioridad() para seleccionar
+     * la etapa vigente de CADA OT por fecha calendario y orden de proceso.
+     * La columna es un identificador SQL fijo definido por el servidor,
+     * nunca una entrada del usuario.
+     */
+    public static function prioridadSql(string $columna = 't.proceso'): string
+    {
+        $nombre = "UPPER(BTRIM(CASE"
+            . " WHEN STRPOS(COALESCE({$columna}, ''), ' - ') > 0"
+            . " THEN SPLIT_PART({$columna}, ' - ', 2)"
+            . " ELSE COALESCE({$columna}, '') END))";
+        $casos = [];
+        foreach (self::PRIORIDADES as $proceso => $prioridad) {
+            $casos[] = "WHEN '" . str_replace("'", "''", $proceso)
+                . "' THEN " . (int) $prioridad;
+        }
+
+        return '(CASE ' . $nombre . ' ' . implode(' ', $casos) . ' ELSE 0 END)';
+    }
+
+    /**
      * Recibe ot_trazabilidad, sin requerir orden previo de consulta.
      * Si coinciden fecha y proceso, decide hora y luego ID.
      *
