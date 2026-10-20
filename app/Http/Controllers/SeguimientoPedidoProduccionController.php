@@ -12,6 +12,7 @@ use App\Support\PromedioDiarioProduccion;
 use App\Support\UltimoProcesoOt;
 use App\Support\ConteoEtapasPedido;
 use App\Support\AntiguedadOt;
+use App\Support\ResumenGerencialProduccion;
 
 class SeguimientoPedidoProduccionController extends Controller
 {
@@ -453,20 +454,19 @@ class SeguimientoPedidoProduccionController extends Controller
         $ultimoIngreso = $ultimoDia ? (int) $ultimoDia->prendas : null;
         $promedioHastaUltimo = $ultimoDia && $ultimoDia->promedio !== null
             ? (float) $ultimoDia->promedio : null;
-        $desviacionIngreso = $ultimoIngreso !== null
-            && $promedioHastaUltimo !== null && $promedioHastaUltimo > 0
-                ? round(($ultimoIngreso / $promedioHastaUltimo - 1) * 100, 1)
-                : null;
+        $desviacionIngreso = ResumenGerencialProduccion::desviacionDiaria(
+            $ultimoIngreso, $promedioHastaUltimo
+        );
         // "Alcanzó IT" es avance DOCUMENTAL de OT activas vinculadas a P,
         // nunca significa pedido cumplido en fecha ni prendas completas.
         $otPAsociadas = $vinculos->pluck('nro_ot')->filter()->unique()->count();
-        $otPConHito = max(0, $otPAsociadas - $pendientes->count());
+        $avanceP = ResumenGerencialProduccion::avanceOtP(
+            $otPAsociadas, $pendientes->count()
+        );
         $resumenGerencial = (object) [
             'ot_p_asociadas' => $otPAsociadas,
-            'ot_p_con_hito' => $otPConHito,
-            'porcentaje_p_en_it' => $otPAsociadas > 0
-                ? round(100 * $otPConHito / $otPAsociadas, 1)
-                : null,
+            'ot_p_con_hito' => $avanceP['con_hito'],
+            'porcentaje_p_en_it' => $avanceP['porcentaje'],
             'ultimo_dia_fecha' => $ultimoDia->fecha ?? null,
             'ultimo_dia_prendas' => $ultimoIngreso,
             'desviacion_vs_promedio' => $desviacionIngreso,
