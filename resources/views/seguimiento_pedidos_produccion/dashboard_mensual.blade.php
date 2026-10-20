@@ -585,8 +585,8 @@
                     <div class="mb-2 mb-md-0">
                         <h2 class="prod-section-title mb-1">Resumen ·
                             {{ ucfirst($mes->locale('es')->translatedFormat('F Y')) }}</h2>
-                        <small class="text-muted"><i class="far fa-calendar-check mr-1"></i>Fecha de corte:
-                            <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin movimientos del período' }}</strong></small>
+                        <small class="text-muted"><i class="far fa-calendar-check mr-1"></i>Corte del calendario y proyección (último hito IT):
+                            <strong>{{ $indicadores->fecha_corte ? $indicadores->fecha_corte->format('d/m/Y') : 'Sin hitos registrados del período' }}</strong></small>
                     </div>
                     <div class="btn-group btn-group-sm" aria-label="Navegar meses">
                         <a class="btn btn-outline-primary"
@@ -594,6 +594,9 @@
                             title="Mes anterior"><i class="fas fa-chevron-left"></i></a>
                         <a class="btn btn-outline-primary"
                             href="{{ route('seguimiento-produccion.dashboard-mensual') }}">Último mes cargado</a>
+                        <a class="btn btn-outline-success"
+                            href="{{ route('seguimiento-produccion.dashboard-mensual', ['mes' => now()->format('Y-m')]) }}"
+                            title="Consultar pendientes hasta el momento actual">Pendientes a hoy</a>
                         <a class="btn btn-outline-primary"
                             href="{{ route('seguimiento-produccion.dashboard-mensual', ['mes' => $mes->copy()->addMonth()->format('Y-m')]) }}"
                             title="Mes siguiente"><i class="fas fa-chevron-right"></i></a>
@@ -903,6 +906,22 @@
                 @endif
             @endforeach
 
+            <div class="alert {{ $indicadores->pendientes_en_vivo ? 'alert-info' : 'alert-secondary' }} mb-3">
+                <i class="fas fa-clock mr-1"></i>
+                <strong>{{ $indicadores->pendientes_en_vivo ? 'Pendientes vigentes' : 'Pendientes al corte histórico' }}:</strong>
+                @if($indicadores->fecha_corte_pendientes)
+                    calculados hasta el
+                    <strong>{{ $indicadores->fecha_corte_pendientes->format('d/m/Y H:i') }}</strong>.
+                @else
+                    no se calculan pendientes para meses futuros.
+                @endif
+                <span class="d-block small mt-1">
+                    Este corte es independiente del último hito de Producción.
+                    «Sin movimiento» mide desde el registro más reciente de la OT;
+                    la prioridad mide la espera desde la fecha posterior entre pedido P y movimiento.
+                    No confundir 25 días de un corte anterior con los días actuales.
+                </span>
+            </div>
             <div class="row">
                 <div class="col-xl-5">
                     <div class="card prod-section-card">
@@ -942,19 +961,23 @@
                                 <div class="col-4"><small class="text-muted">OT pendientes</small>
                                     <h3>{{ number_format($indicadores->pendientes, 0, ',', '.') }}</h3>
                                 </div>
-                                <div class="col-4"><small class="text-muted">Prendas según último proceso</small>
+                                <div class="col-4"><small class="text-muted">Prendas según etapa vigente</small>
                                     <h3>{{ number_format($indicadores->prendas_pendientes, 0, ',', '.') }}</h3>
                                 </div>
-                                <div class="col-4"><small class="text-muted">Urgentes · 15 días o más</small>
+                                <div class="col-4"><small class="text-muted">Urgentes · 15 días o más de espera P</small>
                                     <h3 class="text-danger">{{ number_format($indicadores->urgentes, 0, ',', '.') }}</h3>
                                 </div>
                             </div>
-                            <p class="small text-muted mb-0">La espera se cuenta desde la fecha de pedido o el último
-                                movimiento, lo que sea posterior. Normal: 0 a 7 días; revisar: 8 a 14 días; urgente: 15 días
-                                o más. Sin datos: no puede clasificarse por falta de fecha. Una OT deja de estar pendiente
-                                cuando registra TERMINACION - INGRESO TERMINACION, aunque la cantidad ingresada difiera de
-                                la cantidad ordenada. Para OT sin ese hito, las prendas pendientes se basan en el resultado
-                                del último movimiento disponible, sin depender de CORTE.</p>
+                            <p class="small text-muted mb-0">
+                                Los días sin movimiento real se calculan desde la fecha y hora de la última trazabilidad
+                                hasta la fecha de corte indicada arriba. La espera del pedido P comienza en la fecha
+                                posterior entre pedido y movimiento. Prioridad: normal menos de 8 días;
+                                revisar desde 8 hasta menos de 15 días; urgente 15 días o más de espera.
+                                Una OT deja de estar pendiente al registrar
+                                TERMINACION - INGRESO TERMINACION, aunque cambie la cantidad.
+                                Las prendas mostradas corresponden al resultado de la etapa vigente
+                                seleccionada por fecha y jerarquía de producción.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -963,8 +986,10 @@
             <div class="card prod-section-card">
                 <div class="card-header"><strong><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Prioridades
                         y pendientes para intervenir</strong>
-                    <div class="small text-muted font-weight-normal mt-1">Ordenadas por días sin movimiento, de mayor a
-                        menor.</div>
+                    <div class="small text-muted font-weight-normal mt-1">
+                        Ordenadas por días de espera P, de mayor a menor.
+                        Corte: {{ $indicadores->fecha_corte_pendientes ? $indicadores->fecha_corte_pendientes->format('d/m/Y H:i') : 'no disponible' }}.
+                    </div>
                 </div>
                 <div class="table-responsive" style="max-height:540px;overflow:auto">
                     <table class="table table-hover prod-table mb-0">
@@ -975,10 +1000,10 @@
                                 <th>Descripción</th>
                                 <th>Etapa actual</th>
                                 <th>Última actividad</th>
-                                <th>Sin movimiento</th>
+                                <th>Sin movimiento real</th>
                                 <th>Prendas OT</th>
                                 <th>Ingresadas a IT</th>
-                                <th>Cant. último proceso</th>
+                                <th>Cant. etapa vigente</th>
                                 <th>Prioridad</th>
                             </tr>
                         </thead>
@@ -990,7 +1015,19 @@
                                     <td>{{ $fila->descripcion }}</td>
                                     <td>{{ $fila->etapa }}</td>
                                     <td>{{ $fila->ultima_fecha ? date('d/m/Y', strtotime($fila->ultima_fecha)) : '-' }}</td>
-                                    <td>{{ $fila->dias_quieto !== null ? $fila->dias_quieto . ' días' : 'Sin datos' }}</td>
+                                    <td>
+                                        @if($fila->dias_sin_movimiento !== null)
+                                            <strong>{{ number_format($fila->dias_sin_movimiento, 2, ',', '.') }} días</strong>
+                                            @if($fila->dias_quieto !== null && abs($fila->dias_quieto - $fila->dias_sin_movimiento) >= 0.01)
+                                                <small class="d-block text-muted">Espera P: {{ number_format($fila->dias_quieto, 2, ',', '.') }} días</small>
+                                            @endif
+                                        @elseif($fila->dias_quieto !== null)
+                                            <span class="text-muted">Sin trazabilidad</span>
+                                            <small class="d-block text-muted">Espera P: {{ number_format($fila->dias_quieto, 2, ',', '.') }} días</small>
+                                        @else
+                                            <span class="text-muted">Sin datos</span>
+                                        @endif
+                                    </td>
                                     <td>{{ number_format($fila->cantidad, 0, ',', '.') }}</td>
                                     <td>{{ number_format($fila->cantidad_ingresada, 0, ',', '.') }}</td>
                                     <td><strong>{{ number_format($fila->cantidad_pendiente, 0, ',', '.') }}</strong></td>

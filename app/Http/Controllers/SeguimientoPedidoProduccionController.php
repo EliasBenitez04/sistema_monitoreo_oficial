@@ -10,6 +10,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use App\Support\PromedioDiarioProduccion;
 use App\Support\UltimoProcesoOt;
+use App\Support\AntiguedadOt;
 
 class SeguimientoPedidoProduccionController extends Controller
 {
@@ -148,7 +149,6 @@ class SeguimientoPedidoProduccionController extends Controller
         $corteMes = $mes->lt($corte->copy()->startOfMonth())
             ? $fin->copy()->startOfDay()
             : ($esActual ? $corte->copy() : null);
-        $fechaLimite = $corteMes ? $corteMes->copy()->endOfDay() : null;
 
         // Se toma TODA la salida registrada del hito, incluso OT sin pedido P.
         $salidas = DB::table('ot_trazabilidad as t')
@@ -245,24 +245,40 @@ class SeguimientoPedidoProduccionController extends Controller
         $ultimoDia = $diasProcesados->last();
         $escalaProyecciones = max(1, (float) $diasProcesados->max('proyeccion'));
 
+        /*
+         * Son dos cortes diferentes y no deben confundirse:
+         *
+         * - $corteMes: último día procesado en el módulo del hito IT.
+         *   Solo se usa para estadísticas, proyecciones y calendario
+         *   de producción (no inventar días sin salidas).
+         *
+         * - $cortePendientes: foto documental de los pendientes P.
+         *   Para el mes vigente es AHORA, aunque el último hito
+         *   se haya importado hace varios días. Para meses anteriores
+         *   es el cierre de aquel mes y para meses futuros no hay corte.
+         */
+        $ahoraPendientes = Carbon::now();
+        $mesVigente = $mes->format('Y-m') === $ahoraPendientes->format('Y-m');
+        $cortePendientes = AntiguedadOt::cortePendientesDelMes($mes, $ahoraPendientes);
+
         // Pedidos P activos y trazabilidad de su etapa actual.
         $vinculos = DB::table('seguimiento_pedido_detalle as d')
             ->join('seguimiento_pedido as p', 'p.id', '=', 'd.seguimiento_pedido_id')
             ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
             ->where('p.nro_pedido', 'ILIKE', 'P%')
-            ->when($fechaLimite, function ($q) use ($fechaLimite) {
-                $q->whereDate('p.fecha_pedido', '<=', $fechaLimite->format('Y-m-d'));
+            ->when($cortePendientes, function ($q) use ($cortePendientes) {
+                $q->whereDate('p.fecha_pedido', '<=', $cortePendientes->format('Y-m-d'));
             })
             ->select('p.id as pedido_id', 'p.nro_pedido', 'p.fecha_pedido',
                 'o.id_ot', 'o.nro_ot', 'o.descripcion', 'o.cantidad_orden')->get();
-        if (!$fechaLimite) {
+        if (!$cortePendientes) {
             $vinculos = collect();
         }
         // Aplicar anulaciones únicamente si ya existían en la fecha de corte.
-        $cambiosAnulados = $fechaLimite
+        $cambiosAnulados = $cortePendientes
             ? DB::table('pedido_ot_cambios')
                 ->whereIn('accion', ['ANULAR', 'REEMPLAZAR'])
-                ->where('created_at', '<=', $fechaLimite->format('Y-m-d H:i:s'))
+                ->where('created_at', '<=', $cortePendientes->format('Y-m-d H:i:s'))
                 ->select('pedido_id', 'ot_anterior')
                 ->get()
                 ->mapWithKeys(function ($c) {
@@ -278,7 +294,7 @@ class SeguimientoPedidoProduccionController extends Controller
         $movimientos = empty($numerosOt) ? collect() : DB::table('ot_trazabilidad as t')
             ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
             ->whereIn('o.nro_ot', $numerosOt)
-            ->whereDate('t.fecha_proceso', '<=', $corteMes->format('Y-m-d'))
+            ->where('t.fecha_proceso', '<=', $cortePendientes->format('Y-m-d H:i:s'))
             ->select('o.nro_ot', 't.proceso', 't.resultado', 't.fecha_proceso', 't.id_trazabilidad')
             ->orderBy('t.fecha_proceso')->orderBy('t.id_trazabilidad')
             ->get()->groupBy('nro_ot');
@@ -286,7 +302,7 @@ class SeguimientoPedidoProduccionController extends Controller
         // Corte histórico: una anulación posterior no elimina una OT del
         // análisis de una fecha anterior. La asociación P del pedido sí
         // debe estar solicitada hasta la fecha de corte.
-        $pendientes = $vinculos->groupBy('nro_ot')->map(function ($registros, $nroOt) use ($movimientos, $corteMes) {
+        $pendientes = $vinculos->groupBy('nro_ot')->map(function ($registros, $nroOt) use ($movimientos, $cortePendientes) {
             $historial = collect($movimientos->get($nroOt, collect()));
             $base = $registros->first();
             $cantidadOrden = max(0, (int) $base->cantidad_orden);
@@ -305,26 +321,34 @@ class SeguimientoPedidoProduccionController extends Controller
             // flujo, no por id/importación ni por hora cuando son etapas
             // distintas. Ej.: SERIGRAFIA (55) → COSTURA INTERNA (70).
             $ultimo = UltimoProcesoOt::ultimo($historial);
-            // Para OT todavía pendientes, tomar el resultado del último
-            // movimiento disponible, sea cual sea el proceso (sin exigir CORTE).
+            // Etapa vigente y última ACTIVIDAD no tienen por qué ser la
+            // misma fila: con igual día se elige la etapa más avanzada,
+            // pero la antigüedad usa el timestamp más reciente de todos
+            // los registros reales de la OT (no la fila elegida por rango).
+            $fechaUltimaActividad = $historial->pluck('fecha_proceso')->filter()->max();
+
+            // Para OT todavía pendientes, tomar el resultado del proceso
+            // vigente seleccionado por fecha y jerarquía de producción.
             $cantidadIngresada = 0;
             $cantidadPendiente = $ultimo && $ultimo->resultado !== null
                 ? max(0, (int) $ultimo->resultado)
                 : $cantidadOrden;
-            $fechaMovimiento = $ultimo ? Carbon::parse($ultimo->fecha_proceso)->startOfDay() : null;
-
-            // La espera nunca comienza antes de solicitar la OT.
+            // Los días SIN movimiento miden desde el movimiento real,
+            // con hora y minuto. La espera P nunca empieza antes de
+            // pedir las prendas y puede tener otra fecha de inicio.
             $fechaPedido = $registros
                 ->pluck('fecha_pedido')
                 ->filter()
                 ->map(function ($fecha) { return Carbon::parse($fecha)->startOfDay(); })
                 ->sort()
                 ->first();
-            $inicioEspera = $fechaPedido;
-            if ($fechaMovimiento && (!$inicioEspera || $fechaMovimiento->gt($inicioEspera))) {
-                $inicioEspera = $fechaMovimiento;
-            }
-            $diasQuieto = $inicioEspera ? max(0, $inicioEspera->diffInDays($corteMes, false)) : null;
+            $antiguedad = AntiguedadOt::calcular(
+                $fechaUltimaActividad,
+                $fechaPedido,
+                $cortePendientes
+            );
+            $diasQuieto = $antiguedad['dias_espera_pedido'];
+            $diasSinMovimiento = $antiguedad['dias_sin_movimiento'];
             $etapa = $ultimo ? trim((string) $ultimo->proceso) : 'SIN MOVIMIENTO REGISTRADO';
 
             return (object) [
@@ -334,10 +358,12 @@ class SeguimientoPedidoProduccionController extends Controller
                 'cantidad_pendiente' => $cantidadPendiente,
                 'pedidos' => $registros->pluck('nro_pedido')->unique()->implode(', '),
                 'etapa' => $etapa,
-                'ultima_fecha' => $ultimo ? $ultimo->fecha_proceso : null,
+                'ultima_fecha' => $fechaUltimaActividad,
+                'fecha_etapa_actual' => $ultimo ? $ultimo->fecha_proceso : null,
                 'dias_quieto' => $diasQuieto,
+                'dias_sin_movimiento' => $diasSinMovimiento,
                 'prioridad' => $diasQuieto === null ? 'SIN DATOS'
-                    : ($diasQuieto > 14 ? 'URGENTE' : ($diasQuieto > 7 ? 'REVISAR' : 'NORMAL')),
+                    : ($diasQuieto >= 15 ? 'URGENTE' : ($diasQuieto >= 8 ? 'REVISAR' : 'NORMAL')),
             ];
         })->filter()->values();
 
@@ -351,7 +377,9 @@ class SeguimientoPedidoProduccionController extends Controller
         $proyeccion = $ultimoDia->proyeccion ?? null;
 
         $indicadores = (object) [
-            'fecha_corte' => $corteMes,
+            'fecha_corte' => $corteMes, // Corte de producción por último hito
+            'fecha_corte_pendientes' => $cortePendientes,
+            'pendientes_en_vivo' => $mesVigente && $cortePendientes !== null,
             'ot_dia' => $salidas->count(),
             'prendas' => $total, 'con' => $con, 'sin' => $sin,
             'ots_con_pedido' => $otsConPedido,
