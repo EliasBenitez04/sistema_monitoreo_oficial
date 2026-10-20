@@ -82,6 +82,26 @@ class MayoristaOrigenRemision
         return 'LOCAL';
     }
 
+    /**
+     * Detecta contradicciones explícitas entre código y nombre importado.
+     * NO reescribe el registro: se advierte en la auditoría para que el
+     * operador revise cuál dato proviene del sistema original.
+     */
+    public static function origenDiscordante($fila): bool
+    {
+        $codigo = isset($fila->cod_sucursal_salida) ? (int) $fila->cod_sucursal_salida : 0;
+        $nombre = strtoupper(trim((string) ($fila->sucursal_salida ?? '')));
+        if ($nombre === '' || $codigo <= 0) {
+            return false;
+        }
+        if ($codigo === self::CODIGO_CENTRAL) {
+            return strpos($nombre, 'MULTIPLAZA') !== false
+                || strpos($nombre, 'LUQUE') !== false
+                || strpos($nombre, 'PINEDO') !== false;
+        }
+        return strpos($nombre, 'CASA CENTRAL') !== false;
+    }
+
     public static function clasificar($fila): string
     {
         $tipo = self::tipoOrigen($fila);
