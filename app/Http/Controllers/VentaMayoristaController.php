@@ -183,6 +183,42 @@ class VentaMayoristaController extends Controller
         })->count();
         $cierre=$saldos->isNotEmpty() && $sinSaldo===0?$saldos->sum('cierre'):null;
 
+        // Comparación de los seis meses anteriores hasta el seleccionado.
+        // Las columnas son hechos fechados independientes, no stock acumulado.
+        $mesesComparacion=collect(range(0,5))->map(function($i)use($mes) {
+            return Carbon::parse($mes.'-01')->subMonths($i)->format('Y-m');
+        });
+        list($inicioComparacion,)=self::rango($mesesComparacion->last());
+        $mesSepSql="TO_CHAR(fecha_separacion::timestamp,'YYYY-MM')";
+        $separadosMes=DB::table('mayorista_separaciones')
+            ->whereBetween('fecha_separacion',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesSepSql as mes, SUM(cantidad) as prendas")
+            ->groupByRaw($mesSepSql)->pluck('prendas','mes');
+        $mesEmitSql="TO_CHAR(r.fecha_remision::timestamp,'YYYY-MM')";
+        $emitidosMes=self::entradas()->whereBetween('r.fecha_remision',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesEmitSql as mes, SUM(r.cantidad) as prendas")
+            ->groupByRaw($mesEmitSql)->pluck('prendas','mes');
+        $mesRecepSql="TO_CHAR(r.fecha_recepcion::timestamp,'YYYY-MM')";
+        $recibidosMes=self::entradas()->whereBetween('r.fecha_recepcion',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesRecepSql as mes, SUM(r.cantidad) as prendas")
+            ->groupByRaw($mesRecepSql)->pluck('prendas','mes');
+        $mesVentaSql="TO_CHAR(v.fecha::timestamp,'YYYY-MM')";
+        $ventasMes=self::ventas()->whereBetween('v.fecha',[$inicioComparacion,$hasta])
+            ->selectRaw("$mesVentaSql as mes, SUM(v.cantidad) as prendas")
+            ->groupByRaw($mesVentaSql)->pluck('prendas','mes');
+        $resumenMeses=$mesesComparacion->map(function($mesFila)use(
+            $separadosMes,$emitidosMes,$recibidosMes,$ventasMes,$mes,$cierre) {
+            return (object)[
+                'mes'=>$mesFila,
+                'separadas'=>(int)($separadosMes[$mesFila]??0),
+                'emitidas'=>(int)($emitidosMes[$mesFila]??0),
+                'recibidas'=>(int)($recibidosMes[$mesFila]??0),
+                'facturadas'=>(int)($ventasMes[$mesFila]??0),
+                'cierre'=>$mesFila===$mes?$cierre:null,
+                'es_actual'=>$mesFila===$mes
+            ];
+        });
+
         $arrastres=self::entradas()
             ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
             ->leftJoin('ot as o',function($join) {
@@ -253,7 +289,7 @@ class VentaMayoristaController extends Controller
             'mes','desde','hasta','resumen','emitidas','recibidas',
             'separaciones','separacionesDetalle','saldos','sinSaldo','cierre',
             'arrastres','planes','buscar','facturasPaginadas',
-            'muestrasPorOt','reservaFotoEstimada','planBuscar'
+            'muestrasPorOt','reservaFotoEstimada','planBuscar','resumenMeses'
         ));
     }
 
