@@ -158,6 +158,11 @@ class VentaMayoristaController extends Controller
                 (int)$uso->prendas;
         }
 
+        // Clave de documento físico: las remisiones tienen muchas líneas
+        // por artículo/talle, que no deben mostrarse como documentos distintos.
+        $claveRemisionSql="COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')"
+            ." || '|' || COALESCE(CAST(r.cod_sucursal_salida AS TEXT),'')"
+            ." || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')";
         $usadasRemision=DB::table('mayorista_vinculos')
             ->select('remision_id')->selectRaw('SUM(cantidad) as usadas')
             ->groupBy('remision_id');
@@ -173,9 +178,9 @@ class VentaMayoristaController extends Controller
                 ->where('r.fecha_recepcion','<=',$hasta)
                 ->selectRaw('UPPER(BTRIM(r.codigo)) as codigo')
                 ->addSelect('r.fecha_remision','r.fecha_recepcion')
+                ->selectRaw("$claveRemisionSql as clave_remision")
                 ->selectRaw('SUM(GREATEST(0,r.cantidad - COALESCE(usos.usadas,0))) as prendas_disponibles')
-                ->selectRaw('COUNT(*) FILTER (WHERE GREATEST(0,r.cantidad - COALESCE(usos.usadas,0)) > 0) as lineas_remision')
-                ->groupByRaw('UPPER(BTRIM(r.codigo)), r.fecha_remision, r.fecha_recepcion')
+                ->groupByRaw("UPPER(BTRIM(r.codigo)), r.fecha_remision, r.fecha_recepcion, $claveRemisionSql")
                 ->get();
             foreach($resultados as $grupo) {
                 if((int)$grupo->prendas_disponibles <= 0) continue;
@@ -184,31 +189,51 @@ class VentaMayoristaController extends Controller
         }
 
         foreach($facturas as $factura) {
-            $factura->lineas_candidatas=0;
+            $factura->documentos_recientes=0;
+            $factura->documentos_historicos=0;
+            $factura->cobertura_reciente=0;
+            $factura->cobertura_historica=0;
             $factura->cobertura_candidata=0;
             $factura->pendiente_sin_candidata=0;
             $requeridas=$necesidadesPorFactura[$factura->clave]??[];
+            $corteRecientes=Carbon::parse($factura->fecha)->subDays(30)->format('Y-m-d');
+            $docsRecientes=[];
+            $docsHistoricos=[];
             foreach($requeridas as $codigo=>$cantidad) {
                 $pendienteCodigo=max(0,$cantidad-
                     (int)($usosPorFactura[$factura->clave][$codigo]??0));
                 if($pendienteCodigo===0) continue;
-                $disponibles=0;
+                $recientes=0;
+                $historicas=0;
                 foreach(($candidatasPorCodigo[$codigo]??[]) as $grupo) {
                     if($grupo->fecha_remision > $factura->fecha
                         || $grupo->fecha_recepcion > $factura->fecha) continue;
-                    $disponibles+=(int)$grupo->prendas_disponibles;
-                    $factura->lineas_candidatas+=(int)$grupo->lineas_remision;
+                    if($grupo->fecha_remision >= $corteRecientes) {
+                        $recientes+=(int)$grupo->prendas_disponibles;
+                        $docsRecientes[$grupo->clave_remision]=true;
+                    } else {
+                        $historicas+=(int)$grupo->prendas_disponibles;
+                        $docsHistoricos[$grupo->clave_remision]=true;
+                    }
                 }
-                $factura->cobertura_candidata+=min($pendienteCodigo,$disponibles);
-                $factura->pendiente_sin_candidata+=max(0,$pendienteCodigo-$disponibles);
+                $recienteCubierta=min($pendienteCodigo,$recientes);
+                $historicaCubierta=min(max(0,$pendienteCodigo-$recienteCubierta),$historicas);
+                $factura->cobertura_reciente+=$recienteCubierta;
+                $factura->cobertura_historica+=$historicaCubierta;
+                $factura->cobertura_candidata+=$recienteCubierta+$historicaCubierta;
+                $factura->pendiente_sin_candidata+=max(0,$pendienteCodigo-$recienteCubierta-$historicaCubierta);
             }
+            $factura->documentos_recientes=count($docsRecientes);
+            $factura->documentos_historicos=count($docsHistoricos);
             $factura->situacion_busqueda=$factura->pendientes===0
                 ? 'CONCILIADA'
-                :($factura->cobertura_candidata >= $factura->pendientes
-                    ? 'COBERTURA POSIBLE'
-                    :($factura->cobertura_candidata>0
-                        ? 'COBERTURA PARCIAL'
-                        : 'SIN CANDIDATAS PREVIAS'));
+                :($factura->cobertura_reciente >= $factura->pendientes
+                    ? 'COBERTURA RECIENTE POSIBLE'
+                    :($factura->cobertura_candidata >= $factura->pendientes
+                        ? 'REQUIERE HISTORIAL'
+                        :($factura->cobertura_candidata>0
+                            ? 'COBERTURA PARCIAL'
+                            : 'SIN CANDIDATAS PREVIAS')));
         }
 
         $resumen=(object)[
