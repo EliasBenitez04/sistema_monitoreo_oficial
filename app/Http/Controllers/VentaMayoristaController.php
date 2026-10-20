@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\MayoristaConciliacion as Conciliador;
+use App\Support\MayoristaOrigenRemision as OrigenRemision;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -18,16 +19,22 @@ class VentaMayoristaController extends Controller
     }
 
     /**
-     * Remisiones que documentan entrada a MATRIZ o destino MODELO MUESTRA.
-     * Una remisión a MODELO MUESTRA NO demuestra por sí sola que ingresó
-     * físicamente a COMERCIAL MATRIZ; esta distinción se mantiene en UI.
+     * Remisiones cuyo DESTINO es COMERCIAL MATRIZ (código 25 / MATRIZ /
+     * COMERCIAL MATRIZ), desde cualquier sucursal de origen, incluidas
+     * las transferencias LOCAL -> MATRIZ (ej. MULTIPLAZA código 9).
+     *
+     * Se incluyen aparte remisiones de MODELO MUESTRA para conciliación
+     * documental, sin afirmar recepción física en Matriz.
+     *
+     * IMPORTANTE: sucursal_logistica indica el DESTINO normalizado por
+     * el importador, NO el origen. La fuente de verdad de salida es
+     * cod_sucursal_salida / sucursal_salida.
      */
     public static function entradas()
     {
         return DB::table('ot_logistica_remisiones as r')
             ->where(function ($q) {
-                $q->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = 'COMERCIAL MATRIZ'")
-                  ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) = 'COMERCIAL MATRIZ'")
+                $q->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
                   ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) LIKE '%MODELO%MUESTRA%'")
                   ->orWhereRaw("UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) LIKE '%MODELO%MUESTRA%'")
                   ->orWhereExists(function ($sub) {
@@ -36,9 +43,7 @@ class VentaMayoristaController extends Controller
                           ->whereRaw("UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MODELO%MUESTRA%'");
                   });
             })
-            // Conservar la restricción anterior: una remisión que SALE
-            // de COMERCIAL MATRIZ no constituye mercadería de entrada.
-            ->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) <> 'COMERCIAL MATRIZ'");
+            ->whereRaw('NOT '.OrigenRemision::esOrigenMatrizSql('r'));
     }
 
     public static function ventas()
@@ -293,11 +298,11 @@ class VentaMayoristaController extends Controller
 
         $emitidas=self::entradas()->whereBetween('r.fecha_remision',[$desde,$hasta])
             ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
-            ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
+            ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida=1 OR (r.cod_sucursal_salida IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')) THEN r.cantidad ELSE 0 END),0) as central")
             ->first();
         $recibidas=self::entradas()->whereBetween('r.fecha_recepcion',[$desde,$hasta])
             ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
-            ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
+            ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida=1 OR (r.cod_sucursal_salida IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')) THEN r.cantidad ELSE 0 END),0) as central")
             ->first();
 
         $separaciones=DB::table('mayorista_separaciones')

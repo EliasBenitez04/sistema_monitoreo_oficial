@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\MayoristaConciliacion as Conciliador;
 use App\Support\MayoristaCruceDocumento;
+use App\Support\MayoristaOrigenRemision as OrigenRemision;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -122,8 +123,91 @@ class MayoristaMatrizController extends Controller
             ->groupByRaw('UPPER(BTRIM(v.codigo))')
             ->orderByRaw('SUM(v.cantidad) DESC')->get();
 
+        // Las transferencias de LOCALES a MATRIZ forman parte de los
+        // documentos de entrada; no confundir asignación logística con
+        // asignación a factura, que exige vínculo y evidencia.
+        // Solo destino MATRIZ (cod. 25 o alias): MODELO MUESTRA con otro
+        // destino se investiga en la ficha de factura por separado.
+        $usosRemision = DB::table('mayorista_vinculos')
+            ->select('remision_id')->selectRaw('SUM(cantidad) as usadas')
+            ->groupBy('remision_id');
+        $baseTransferencias = VentaMayoristaController::entradas()
+            ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
+            ->whereBetween('r.fecha_remision', [$desde, $hasta])
+            ->leftJoinSub($usosRemision, 'uso', 'uso.remision_id', '=', 'r.id');
+
+        $claveDocumento = "COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')"
+            . " || '|' || COALESCE(CAST(r.cod_sucursal_salida AS TEXT),'')"
+            . " || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')"
+            . " || '|' || COALESCE(CAST(r.fecha_remision AS TEXT),'')";
+
+        // Agrupar por código, no por variante textual del nombre.
+        // Con código NULL, el nombre de origen permite diferenciar locales.
+        $claveOrigen = "COALESCE(CAST(NULLIF(r.cod_sucursal_salida,0) AS TEXT),"
+            . " UPPER(BTRIM(COALESCE(r.sucursal_salida,''))))";
+        $agrupadasOrigen = (clone $baseTransferencias)
+            ->selectRaw('MAX(r.cod_sucursal_salida) as cod_sucursal_salida')
+            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
+            ->selectRaw("COUNT(DISTINCT $claveDocumento) as documentos")
+            ->selectRaw('COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as unidades')
+            ->selectRaw("COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibidas")
+            ->selectRaw('COALESCE(SUM(COALESCE(uso.usadas,0)),0) as vinculadas')
+            ->selectRaw('COALESCE(SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))),0) as saldo')
+            ->groupByRaw($claveOrigen)->get();
+
+        // Un mismo local puede tener nombres alternativos en distintas
+        // importaciones; consolidar siempre por código de salida.
+        $transferenciasOrigen = $agrupadasOrigen
+            ->groupBy(function ($fila) {
+                return OrigenRemision::nombreOrigen($fila);
+            })->map(function ($filas, $nombre) {
+                $primera = $filas->first();
+                return (object) [
+                    'nombre' => $nombre,
+                    'tipo' => OrigenRemision::tipoOrigen($primera),
+                    'documentos' => (int) $filas->sum('documentos'),
+                    'lineas' => (int) $filas->sum('lineas'),
+                    'unidades' => (int) $filas->sum('unidades'),
+                    'recibidas' => (int) $filas->sum('recibidas'),
+                    'vinculadas' => (int) $filas->sum('vinculadas'),
+                    'saldo' => (int) $filas->sum('saldo'),
+                ];
+            })->sortByDesc('unidades')->values();
+
+        $transferenciasResumen = (object) [
+            'locales' => $transferenciasOrigen->where('tipo','LOCAL')->sum('unidades'),
+            'central' => $transferenciasOrigen->where('tipo','CENTRAL')->sum('unidades'),
+            'sin_origen' => $transferenciasOrigen->where('tipo','NO IDENTIFICADO')->sum('unidades'),
+            'remitidas' => $transferenciasOrigen->sum('unidades'),
+            'recibidas' => $transferenciasOrigen->sum('recibidas'),
+        ];
+
+        $remisionesDocumentos = (clone $baseTransferencias)
+            ->select('r.serie','r.numero_remision','r.cod_sucursal_salida',
+                'r.cod_sucursal_destino','r.fecha_remision')
+            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
+            ->selectRaw('MAX(r.sucursal_destino) as sucursal_destino')
+            ->selectRaw('COUNT(*) as lineas, SUM(r.cantidad) as unidades')
+            ->selectRaw('SUM(COALESCE(uso.usadas,0)) as vinculadas')
+            ->selectRaw('SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))) as saldo')
+            ->selectRaw('COUNT(*) FILTER (WHERE r.fecha_recepcion IS NOT NULL) as lineas_recibidas')
+            ->groupBy('r.serie','r.numero_remision','r.cod_sucursal_salida',
+                'r.cod_sucursal_destino','r.fecha_remision')
+            ->orderBy('r.fecha_remision','desc')
+            ->orderBy('r.numero_remision','desc')
+            ->paginate(30,['*'],'remisiones_page')
+            ->appends($request->only(['desde','hasta','page']));
+
+        $remisionesDocumentos->getCollection()->transform(function ($doc) {
+            $doc->origen_real = OrigenRemision::nombreOrigen($doc);
+            $doc->tipo_origen = OrigenRemision::tipoOrigen($doc);
+            $doc->origen_discordante = OrigenRemision::origenDiscordante($doc);
+            return $doc;
+        });
+
         return view('ventas.mayoristas_matriz', compact(
-            'desde','hasta','facturas','resumen','ventasDetalle','porCodigo'
+            'desde','hasta','facturas','resumen','ventasDetalle','porCodigo',
+            'transferenciasOrigen','transferenciasResumen','remisionesDocumentos'
         ));
     }
 
@@ -180,9 +264,15 @@ class MayoristaMatrizController extends Controller
             ->join('ot_logistica_remisiones as r','r.id','=','m.remision_id')
             ->where('m.factura_clave',$clave)
             ->select('m.*','r.serie','r.numero_remision','r.fecha_remision',
-                'r.sucursal_salida','r.sucursal_destino', 'r.sucursal_logistica')
+                'r.sucursal_salida','r.cod_sucursal_salida',
+                'r.sucursal_destino','r.cod_sucursal_destino','r.sucursal_logistica')
             ->orderBy('m.id')->get();
 
+        $enlaces->each(function ($v) {
+            $v->origen_real = OrigenRemision::nombreOrigen($v);
+            $v->tipo_origen = OrigenRemision::tipoOrigen($v);
+            $v->origen_discordante = OrigenRemision::origenDiscordante($v);
+        });
         $confirmadas = [];
         foreach ($enlaces as $v) {
             $codigo = Conciliador::codigo($v->codigo);
@@ -204,11 +294,16 @@ class MayoristaMatrizController extends Controller
                 ->groupBy('remision_id');
             $diasHistorial = in_array($request->query('historial'), ['90','365','todo'], true)
                 ? $request->query('historial') : '90';
+            $filtroOrigen = in_array($request->query('origen'), ['todos','locales','central'], true)
+                ? $request->query('origen') : 'todos';
             $consulta = VentaMayoristaController::entradas()
                 ->leftJoinSub($usos, 'usos', 'usos.remision_id', '=', 'r.id')
                 ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'), array_keys($requeridas))
                 ->whereNotNull('r.fecha_remision')
-                ->where('r.fecha_remision', '<=', $factura->fecha)
+                // Remisiones posteriores (hasta 3 días) se muestran SOLO
+                // para investigar, sin permitir asociarlas a esta factura.
+                ->where('r.fecha_remision', '<=', Carbon::parse($factura->fecha)
+                    ->addDays(3)->format('Y-m-d'))
                 ->select('r.id','r.id_ot','r.id_logistica_detalle','r.serie','r.numero_remision',
                     'r.codigo','r.descripcion','r.cantidad','r.fecha_remision',
                     'r.fecha_recepcion','r.sucursal_salida','r.sucursal_destino',
@@ -221,6 +316,30 @@ class MayoristaMatrizController extends Controller
                             AND UPPER(COALESCE(d.sucursal,'')) LIKE '%MODELO%MUESTRA%')
                     THEN 1 ELSE 0 END AS es_modelo")
                 ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc');
+
+            if ($filtroOrigen === 'locales') {
+                // Esta pestaña es específicamente transferencia LOCAL
+                // con DESTINO MATRIZ. Las remisiones a MODELO MUESTRA
+                // fuera de Matriz siguen visibles en "Todas".
+                $consulta->whereRaw(OrigenRemision::expresionDestinoMatriz('r'));
+                $consulta->where(function ($q) {
+                    $q->whereRaw('r.cod_sucursal_salida NOT IN (1,25)')
+                      ->orWhere(function ($sinCodigo) {
+                          $sinCodigo->whereNull('r.cod_sucursal_salida')
+                              ->whereNotNull('r.sucursal_salida')
+                              ->whereRaw("UPPER(BTRIM(r.sucursal_salida)) NOT IN ('CASA CENTRAL','CENTRAL','MATRIZ','COMERCIAL MATRIZ')");
+                      });
+                });
+            } elseif ($filtroOrigen === 'central') {
+                $consulta->where(function ($q) {
+                    $q->where('r.cod_sucursal_salida',1)
+                      ->orWhere(function ($sinCodigo) {
+                          $sinCodigo->whereNull('r.cod_sucursal_salida')
+                              ->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')");
+                      });
+                });
+            }
+
             if ($diasHistorial !== 'todo') {
                 $consulta->where('r.fecha_remision','>=',Carbon::parse($factura->fecha)
                     ->subDays((int)$diasHistorial)->format('Y-m-d'));
@@ -231,12 +350,13 @@ class MayoristaMatrizController extends Controller
             $candidatas = $consulta->limit(3000)->get();
         } else {
             $diasHistorial = '90';
+            $filtroOrigen = 'todos';
             $limitadas = false;
         }
 
         // Nunca fusionar talles procedentes de remisiones diferentes.
         $documentos = MayoristaCruceDocumento::agrupar(
-            $candidatas, $requeridas, $porCodigo
+            $candidatas, $requeridas, $porCodigo, $factura->fecha
         );
 
         $auditoria = DB::table('mayorista_auditoria')
@@ -252,7 +372,7 @@ class MayoristaMatrizController extends Controller
 
         return view('ventas.mayoristas_matriz_factura', compact(
             'mes','factura','lineas','porCodigo','enlaces','auditoria','documentos',
-            'totales','diasHistorial'
+            'totales','diasHistorial','filtroOrigen'
         ));
     }
 }

@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  */
 class MayoristaCruceDocumento
 {
-    public static function agrupar(Collection $candidatas, array $requeridas, Collection $porCodigo): Collection
+    public static function agrupar(Collection $candidatas, array $requeridas, Collection $porCodigo, ?string $fechaFactura = null): Collection
     {
         $documentos = [];
         foreach ($candidatas as $r) {
@@ -24,6 +24,25 @@ class MayoristaCruceDocumento
             $r->pendiente_factura = $porCodigo[$codigo]->pendiente ?? 0;
             $r->maximo = min($disponible, $r->pendiente_factura);
             $r->modelo = (int) ($r->es_modelo ?? 0) === 1;
+            $r->origen_real = MayoristaOrigenRemision::nombreOrigen($r);
+            $r->tipo_origen = MayoristaOrigenRemision::tipoOrigen($r);
+            $r->origen_discordante = MayoristaOrigenRemision::origenDiscordante($r);
+            $r->canal = MayoristaOrigenRemision::clasificar($r);
+            $r->posterior = $fechaFactura !== null
+                && $r->fecha_remision > $fechaFactura;
+            $r->recepcion_posterior = $fechaFactura !== null
+                && !empty($r->fecha_recepcion)
+                && $r->fecha_recepcion > $fechaFactura;
+            // Documento posterior a factura: sólo consulta. Para traslados
+            // a Matriz sin Modelo Muestra, recepción tardía tampoco habilita
+            // asignación; el backend valida nuevamente la misma regla.
+            if ($r->posterior || ($r->recepcion_posterior && !$r->modelo)) {
+                $r->maximo = 0;
+            }
+
+            $r->es_destino_matriz = (int) ($r->cod_sucursal_destino ?? 0) === 25
+                || in_array(strtoupper(trim((string) $r->sucursal_destino)), ['MATRIZ','COMERCIAL MATRIZ'], true)
+                || in_array(strtoupper(trim((string) ($r->sucursal_logistica ?? ''))), ['MATRIZ','COMERCIAL MATRIZ'], true);
 
             $clave = implode('|', [
                 $r->serie, $r->numero_remision,
@@ -36,8 +55,14 @@ class MayoristaCruceDocumento
             if (!isset($documentos[$clave])) {
                 $documentos[$clave] = (object) [
                     'serie' => $r->serie, 'numero' => $r->numero_remision,
-                    'fecha' => $r->fecha_remision, 'origen' => $r->sucursal_salida,
-                    'destino' => $r->sucursal_destino ?: $r->sucursal_logistica,
+                    'fecha' => $r->fecha_remision,
+                    'origen' => $r->origen_real,
+                    'tipo_origen' => $r->tipo_origen,
+                    'origen_discordante' => $r->origen_discordante,
+                    'origen_importado' => $r->sucursal_salida,
+                    'canal' => $r->canal,
+                    'destino' => $r->es_destino_matriz ? 'COMERCIAL MATRIZ'
+                        : ($r->sucursal_destino ?: $r->sucursal_logistica),
                     'codigos' => [], 'lineas' => collect(),
                     'remitidas' => 0, 'usadas' => 0, 'disponibles' => 0,
                     'posible' => 0, 'coincidencias' => 0, 'completo' => false,
