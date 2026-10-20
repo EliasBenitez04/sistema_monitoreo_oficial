@@ -24,6 +24,12 @@ class MayoristaCruceDocumento
             $r->pendiente_factura = $porCodigo[$codigo]->pendiente ?? 0;
             $r->maximo = min($disponible, $r->pendiente_factura);
             $r->modelo = (int) ($r->es_modelo ?? 0) === 1;
+            $r->origen_real = MayoristaOrigenRemision::nombreOrigen($r);
+            $r->tipo_origen = MayoristaOrigenRemision::tipoOrigen($r);
+            $r->canal = MayoristaOrigenRemision::clasificar($r);
+            $r->es_destino_matriz = (int) ($r->cod_sucursal_destino ?? 0) === 25
+                || in_array(strtoupper(trim((string) $r->sucursal_destino)), ['MATRIZ','COMERCIAL MATRIZ'], true)
+                || in_array(strtoupper(trim((string) ($r->sucursal_logistica ?? ''))), ['MATRIZ','COMERCIAL MATRIZ'], true);
 
             $clave = implode('|', [
                 $r->serie, $r->numero_remision,
@@ -36,8 +42,12 @@ class MayoristaCruceDocumento
             if (!isset($documentos[$clave])) {
                 $documentos[$clave] = (object) [
                     'serie' => $r->serie, 'numero' => $r->numero_remision,
-                    'fecha' => $r->fecha_remision, 'origen' => $r->sucursal_salida,
-                    'destino' => $r->sucursal_destino ?: $r->sucursal_logistica,
+                    'fecha' => $r->fecha_remision,
+                    'origen' => $r->origen_real,
+                    'tipo_origen' => $r->tipo_origen,
+                    'canal' => $r->canal,
+                    'destino' => $r->es_destino_matriz ? 'COMERCIAL MATRIZ'
+                        : ($r->sucursal_destino ?: $r->sucursal_logistica),
                     'codigos' => [], 'lineas' => collect(),
                     'remitidas' => 0, 'usadas' => 0, 'disponibles' => 0,
                     'posible' => 0, 'coincidencias' => 0, 'completo' => false,
