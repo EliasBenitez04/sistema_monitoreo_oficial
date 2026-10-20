@@ -343,6 +343,21 @@ class MayoristaMatrizController extends Controller
             ->where('r.fecha_remision', $cabecera->fecha_remision)
             ->where('r.cod_sucursal_salida', $cabecera->cod_sucursal_salida)
             ->where('r.cod_sucursal_destino', $cabecera->cod_sucursal_destino)
+            // Si el importador no entregó código, el nombre de origen
+            // y destino también forma parte de la identidad documental.
+            // Evita mezclar dos sucursales sin código con mismo número.
+            ->when(!$cabecera->cod_sucursal_salida, function ($q) use ($cabecera) {
+                $q->whereRaw(
+                    "UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = ?",
+                    [mb_strtoupper(trim((string) $cabecera->sucursal_salida), 'UTF-8')]
+                );
+            })
+            ->when(!$cabecera->cod_sucursal_destino, function ($q) use ($cabecera) {
+                $q->whereRaw(
+                    "UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = ?",
+                    [mb_strtoupper(trim((string) $cabecera->sucursal_destino), 'UTF-8')]
+                );
+            })
             ->leftJoinSub(
                 DB::table('mayorista_vinculos')
                     ->select('remision_id')
