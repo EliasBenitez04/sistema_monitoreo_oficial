@@ -594,6 +594,9 @@
                             title="Mes anterior"><i class="fas fa-chevron-left"></i></a>
                         <a class="btn btn-outline-primary"
                             href="{{ route('seguimiento-produccion.dashboard-mensual') }}">Último mes cargado</a>
+                        <a class="btn btn-outline-success"
+                            href="{{ route('seguimiento-produccion.dashboard-mensual', ['mes' => now()->format('Y-m')]) }}"
+                            title="Consultar pendientes hasta el momento actual">Pendientes a hoy</a>
                         <a class="btn btn-outline-primary"
                             href="{{ route('seguimiento-produccion.dashboard-mensual', ['mes' => $mes->copy()->addMonth()->format('Y-m')]) }}"
                             title="Mes siguiente"><i class="fas fa-chevron-right"></i></a>
