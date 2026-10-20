@@ -162,12 +162,15 @@
     <div class="card-header bg-white"><strong>Documentos anteriores con cantidades aún no vinculadas a facturas</strong></div>
     <div class="table-responsive may-scroll">
       <table class="table table-sm may-table mb-0">
-        <thead><tr><th>Remisión</th><th>Fecha original</th><th>Código completo</th><th class="text-right">Prendas sin vincular</th></tr></thead>
+        <thead><tr><th>Remisión</th><th>Mes original</th><th>OT / Origen</th><th>Código completo</th><th class="text-right">Prendas sin vincular</th></tr></thead>
         <tbody>
           @forelse($arrastres as $r)
-            <tr><td>{{ $r->serie }}-{{ $r->numero_remision }}</td><td>{{ date('d/m/Y',strtotime($r->fecha_remision)) }}</td><td>{{ $r->codigo }}</td><td class="text-right font-weight-bold">{{ number_format($r->sin_vincular,0,',','.') }}</td></tr>
+            <tr><td>{{ $r->serie }}-{{ $r->numero_remision }}</td>
+              <td>{{ date('m/Y',strtotime($r->fecha_remision)) }}<small class="d-block text-muted">{{ date('d/m',strtotime($r->fecha_remision)) }}</small></td>
+              <td>{{ $r->nro_ot ? 'OT '.$r->nro_ot : 'Sin OT' }}<small class="d-block text-muted">{{ $r->sucursal_salida }}</small></td>
+              <td>{{ $r->codigo }}</td><td class="text-right font-weight-bold">{{ number_format($r->sin_vincular,0,',','.') }}</td></tr>
           @empty
-            <tr><td colspan="4" class="text-center text-muted p-3">No hay remisiones pendientes en esta muestra.</td></tr>
+            <tr><td colspan="5" class="text-center text-muted p-3">No hay remisiones pendientes en esta muestra.</td></tr>
           @endforelse
         </tbody>
       </table>
@@ -192,6 +195,9 @@
           <option value="{{ $n }}" {{ $n===$muestrasPorOt ? 'selected' : '' }}>{{ $n }}</option>
         @endforeach
       </select>
+      @if($muestrasPorOt > 5)
+        <input type="hidden" name="muestras_por_ot" value="{{ $muestrasPorOt }}">
+      @endif
       <button class="btn btn-sm btn-outline-primary">Aplicar</button>
     </form>
   </div>
@@ -200,7 +206,14 @@
     <p>El plan logístico muestra lo asignado, pero su fecha de creación no demuestra cuándo se separaron las prendas. Confirmá la fecha efectiva contra un documento.</p></div></div>
   <div class="row">
     <div class="col-xl-6 mb-3"><div class="card may-card h-100">
-      <div class="card-header bg-white"><strong>Planes pendientes de documentar · últimas 60 asignaciones</strong></div>
+      <div class="card-header bg-white">
+        <strong>Planes pendientes de documentar · hasta 60 resultados</strong>
+        <form method="GET" action="{{ route('ventas.mayoristas.index') }}" class="d-flex mt-2">
+          <input type="hidden" name="mes" value="{{ $mes }}">
+          <input name="ot_plan" class="form-control form-control-sm mr-2" value="{{ $planBuscar }}" placeholder="Buscar OT o código antiguo" aria-label="Buscar plan por OT o código">
+          <button class="btn btn-sm btn-outline-primary">Buscar plan</button>
+        </form>
+      </div>
       <div class="table-responsive may-scroll">
         <table class="table table-sm may-table mb-0">
           <thead><tr><th>OT</th><th>Destino</th><th class="text-right">Pendiente registrar</th><th>Validar separación</th></tr></thead>
