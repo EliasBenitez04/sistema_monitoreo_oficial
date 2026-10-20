@@ -310,6 +310,11 @@ class VentaMayoristaController extends Controller
             $candidatas->map(function($c) {
                 return ['codigo'=>$c->codigo,'disponible'=>$c->fecha_recepcion?$c->disponible:0];
             })->all());
+        if ($estado==='SIN COINCIDENCIA' && $candidatasLimitadas) {
+            $estado='BÚSQUEDA INCOMPLETA';
+        } elseif($estado==='SIN COINCIDENCIA' && $candidatas->isNotEmpty()) {
+            $estado='SIN COBERTURA CONFIRMADA';
+        }
         $porCodigo=collect($requeridas)->map(function($necesita,$codigo)use($confirmadas) {
             $validado=(int)($confirmadas[$codigo]??0);
             return (object)['codigo'=>$codigo,'necesita'=>$necesita,'validado'=>$validado,
