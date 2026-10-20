@@ -934,13 +934,13 @@
                             </small>
                         </div>
                         <div class="table-responsive">
-                            <table class="table prod-table mb-0">
+                            <table class="table prod-table table-bordered mb-0" style="white-space:nowrap">
                                 <thead>
                                     <tr>
                                         <th rowspan="2">Proceso actual</th>
                                         <th colspan="2">Total del área</th>
                                         <th colspan="2">Pendientes P</th>
-                                        <th colspan="2">Con otro pedido vigente</th><th colspan="2">Sin pedido asignado</th>
+                                        <th colspan="2">Con pedido fuera de P pendiente</th><th colspan="2">Sin pedido vigente</th>
                                     </tr>
                                     <tr>
                                         <th>OT</th><th>Prendas</th>
@@ -963,11 +963,17 @@
                                             <td class="{{ ($fila->prendas_sin_pedido ?? 0)>0 ? 'text-danger font-weight-bold':'' }}">{{ $fila->prendas_sin_pedido === null ? 'SIN DATO' : number_format($fila->prendas_sin_pedido,0,',','.') }}</td>
                                         </tr>
                                     @empty<tr>
-                                            <td colspan="4" class="text-muted">Sin OT pendientes de pedidos P para este corte</td>
+                                            <td colspan="9" class="text-muted text-center">Sin OT en estas etapas al corte seleccionado.</td>
                                         </tr>
                                     @endforelse
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="card-footer bg-white small text-muted">
+                            Total área = P pendientes + con pedido fuera de P pendiente + sin pedido vigente.
+                            Cada OT cuenta una vez, usando la última etapa registrada.
+                            Prendas = resultado del último proceso; SIN DATO significa resultado incompleto.
+                            No es un conteo físico. Se excluyen asociaciones anuladas o reemplazadas.
                         </div>
                     </div>
                 </div>
