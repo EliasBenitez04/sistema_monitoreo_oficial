@@ -925,26 +925,49 @@
             <div class="row">
                 <div class="col-xl-5">
                     <div class="card prod-section-card">
-                        <div class="card-header"><strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de
-                                botella · etapa de OT pendientes</strong></div>
+                        <div class="card-header">
+                            <strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de botella · OT en cada área</strong>
+                            <small class="d-block text-muted mt-1">
+                                «En el área»: última etapa registrada de todas las OT.
+                                «Pedido P»: subconjunto pendiente del pedido. Ambas cifras usan el mismo corte.
+                                No representa un conteo físico del taller.
+                            </small>
+                        </div>
                         <div class="table-responsive">
                             <table class="table prod-table mb-0">
                                 <thead>
                                     <tr>
                                         <th>Proceso actual</th>
-                                        <th>OT</th>
-                                        <th>Prendas</th>
+                                        <th title="Todas las OT cuyo último proceso registrado corresponde al área, con o sin pedido P">OT en esta área</th>
+                                        <th title="OT de pedidos P todavía pendientes en esta etapa">OT de pedidos P</th>
+                                        <th title="Prendas pendientes de los pedidos P; no incluye otras OT del área">Prendas de P</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @forelse($porEtapa as $fila)
                                         <tr>
                                             <td>{{ $fila->etapa }}</td>
-                                            <td>{{ $fila->ots }}</td>
+                                            <td>
+                                                @if($fila->conteo_inconsistente)
+                                                    <span class="text-warning font-weight-bold" title="El total de etapas no cubre todas las OT pendientes P de este grupo. Revisar las trazabilidades.">REVISAR</span>
+                                                @elseif($fila->ots_en_area === null)
+                                                    <span class="text-muted">Sin etapa</span>
+                                                @else
+                                                    <strong>{{ number_format($fila->ots_en_area, 0, ',', '.') }}</strong>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                <strong>{{ number_format($fila->ots, 0, ',', '.') }}</strong>
+                                                @if($fila->ots_fuera_p !== null && $fila->ots_fuera_p > 0)
+                                                    <small class="d-block text-muted">
+                                                        {{ number_format($fila->ots_fuera_p, 0, ',', '.') }} fuera de pedidos P
+                                                    </small>
+                                                @endif
+                                            </td>
                                             <td>{{ number_format($fila->prendas, 0, ',', '.') }}</td>
                                         </tr>
                                     @empty<tr>
-                                            <td colspan="3" class="text-muted">Sin OT pendientes</td>
+                                            <td colspan="4" class="text-muted">Sin OT pendientes de pedidos P para este corte</td>
                                         </tr>
                                     @endforelse
                                 </tbody>
