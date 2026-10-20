@@ -174,7 +174,7 @@ class VentaMayoristaController extends Controller
                 ->selectRaw('UPPER(BTRIM(r.codigo)) as codigo')
                 ->addSelect('r.fecha_remision','r.fecha_recepcion')
                 ->selectRaw('SUM(GREATEST(0,r.cantidad - COALESCE(usos.usadas,0))) as prendas_disponibles')
-                ->selectRaw('COUNT(*) as lineas_remision')
+                ->selectRaw('COUNT(*) FILTER (WHERE GREATEST(0,r.cantidad - COALESCE(usos.usadas,0)) > 0) as lineas_remision')
                 ->groupByRaw('UPPER(BTRIM(r.codigo)), r.fecha_remision, r.fecha_recepcion')
                 ->get();
             foreach($resultados as $grupo) {
