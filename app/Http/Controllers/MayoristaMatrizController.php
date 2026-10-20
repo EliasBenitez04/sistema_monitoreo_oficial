@@ -138,7 +138,8 @@ class MayoristaMatrizController extends Controller
 
         $claveDocumento = "COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')"
             . " || '|' || COALESCE(CAST(r.cod_sucursal_salida AS TEXT),'')"
-            . " || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')";
+            . " || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')"
+            . " || '|' || COALESCE(CAST(r.fecha_remision AS TEXT),'')";
 
         // Agrupar por código, no por variante textual del nombre.
         // Con código NULL, el nombre de origen permite diferenciar locales.
