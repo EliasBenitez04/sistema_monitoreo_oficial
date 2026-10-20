@@ -350,7 +350,7 @@ class MayoristaMatrizController extends Controller
 
         // Nunca fusionar talles procedentes de remisiones diferentes.
         $documentos = MayoristaCruceDocumento::agrupar(
-            $candidatas, $requeridas, $porCodigo
+            $candidatas, $requeridas, $porCodigo, $factura->fecha
         );
 
         $auditoria = DB::table('mayorista_auditoria')
