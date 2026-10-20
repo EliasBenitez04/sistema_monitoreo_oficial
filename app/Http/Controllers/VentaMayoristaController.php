@@ -247,6 +247,36 @@ class VentaMayoristaController extends Controller
             'facturas_pendientes'=>$facturas->where('pendientes','>',0)->count()
         ];
 
+        // Resumen ejecutivo para mostrar avance comprobable y definir qué
+        // facturas auditar primero. Las coberturas candidatas NO se suman
+        // como prendas asignadas: podrían usar el mismo documento.
+        $facturasVenta=$facturas->filter(function($f) {
+            return (int)$f->brutas>0;
+        });
+        $facturasPrioridad=$facturasVenta->sortByDesc('brutas')->take(5)->values();
+        $prioritariasDos=$facturasPrioridad->take(2);
+        $avanceGerencial=(object)[
+            'facturas_venta'=>$facturasVenta->count(),
+            'notas_credito'=>$facturas->count()-$facturasVenta->count(),
+            'facturas_confirmadas'=>$facturasVenta->filter(function($f) {
+                return $f->estado==='CONFIRMADA DOCUMENTALMENTE';
+            })->count(),
+            'facturas_parciales'=>$facturasVenta->filter(function($f) {
+                return $f->estado==='PARCIAL';
+            })->count(),
+            'facturas_sin_validar'=>$facturasVenta->filter(function($f) {
+                return $f->estado==='SIN VALIDAR';
+            })->count(),
+            'facturas_cobertura_reciente'=>$facturasVenta->filter(function($f) {
+                return $f->cobertura_reciente>0;
+            })->count(),
+            'top_dos_prendas'=>(int)$prioritariasDos->sum('brutas'),
+            'top_dos_porcentaje'=>$resumen->brutas>0
+                ? round($prioritariasDos->sum('brutas')*100/$resumen->brutas,1) : 0,
+            'avance_porcentaje'=>$resumen->brutas>0
+                ? round($resumen->vinculadas*100/$resumen->brutas,1) : null,
+        ];
+
         $emitidas=self::entradas()->whereBetween('r.fecha_remision',[$desde,$hasta])
             ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
             ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
@@ -492,7 +522,8 @@ class VentaMayoristaController extends Controller
             'arrastres','planes','buscar','facturasPaginadas',
             'muestrasPorOt','reservaFotoEstimada','planBuscar','resumenMeses',
             'filtroFactura','filtroCliente','filtroCodigo','filtroRemision','filtroOt','filtroEstado',
-            'saldosVisibles','verTodosSaldos','cantidadDiferencias'
+            'saldosVisibles','verTodosSaldos','cantidadDiferencias',
+            'avanceGerencial','facturasPrioridad'
         ));
     }
 
