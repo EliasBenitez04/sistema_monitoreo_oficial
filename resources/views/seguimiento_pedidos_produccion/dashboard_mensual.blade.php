@@ -952,25 +952,15 @@
                                 <tbody>
                                     @forelse($porEtapa as $fila)
                                         <tr>
-                                            <td>{{ $fila->etapa }}</td>
-                                            <td>
-                                                @if($fila->conteo_inconsistente)
-                                                    <span class="text-warning font-weight-bold" title="El total de etapas no cubre todas las OT pendientes P de este grupo. Revisar las trazabilidades.">REVISAR</span>
-                                                @elseif($fila->ots_en_area === null)
-                                                    <span class="text-muted">Sin etapa</span>
-                                                @else
-                                                    <strong>{{ number_format($fila->ots_en_area, 0, ',', '.') }}</strong>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                <strong>{{ number_format($fila->ots, 0, ',', '.') }}</strong>
-                                                @if($fila->ots_fuera_p !== null && $fila->ots_fuera_p > 0)
-                                                    <small class="d-block text-muted">
-                                                        {{ number_format($fila->ots_fuera_p, 0, ',', '.') }} fuera de pendientes P
-                                                    </small>
-                                                @endif
-                                            </td>
-                                            <td>{{ number_format($fila->prendas, 0, ',', '.') }}</td>
+                                            <td class="font-weight-bold">{{ $fila->etapa }}</td>
+                                            <td>{{ $fila->ots_en_area === null ? 'REVISAR' : number_format($fila->ots_en_area,0,',','.') }}</td>
+                                            <td>{{ $fila->prendas_en_area === null ? 'SIN DATO' : number_format($fila->prendas_en_area,0,',','.') }}</td>
+                                            <td class="font-weight-bold">{{ number_format($fila->ots,0,',','.') }}</td>
+                                            <td>{{ $fila->prendas === null ? 'SIN DATO' : number_format($fila->prendas,0,',','.') }}</td>
+                                            <td>{{ $fila->ots_con_otro_pedido === null ? 'REVISAR' : number_format($fila->ots_con_otro_pedido,0,',','.') }}</td>
+                                            <td>{{ $fila->prendas_con_otro_pedido === null ? 'SIN DATO' : number_format($fila->prendas_con_otro_pedido,0,',','.') }}</td>
+                                            <td class="{{ ($fila->ots_sin_pedido ?? 0)>0 ? 'text-danger font-weight-bold':'' }}">{{ $fila->ots_sin_pedido === null ? 'REVISAR' : number_format($fila->ots_sin_pedido,0,',','.') }}</td>
+                                            <td class="{{ ($fila->prendas_sin_pedido ?? 0)>0 ? 'text-danger font-weight-bold':'' }}">{{ $fila->prendas_sin_pedido === null ? 'SIN DATO' : number_format($fila->prendas_sin_pedido,0,',','.') }}</td>
                                         </tr>
                                     @empty<tr>
                                             <td colspan="4" class="text-muted">Sin OT pendientes de pedidos P para este corte</td>
