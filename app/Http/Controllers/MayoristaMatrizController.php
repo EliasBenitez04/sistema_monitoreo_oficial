@@ -140,14 +140,19 @@ class MayoristaMatrizController extends Controller
             . " || '|' || COALESCE(CAST(r.cod_sucursal_salida AS TEXT),'')"
             . " || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')";
 
+        // Agrupar por código, no por variante textual del nombre.
+        // Con código NULL, el nombre de origen permite diferenciar locales.
+        $claveOrigen = "COALESCE(CAST(NULLIF(r.cod_sucursal_salida,0) AS TEXT),"
+            . " UPPER(BTRIM(COALESCE(r.sucursal_salida,''))))";
         $agrupadasOrigen = (clone $baseTransferencias)
-            ->select('r.cod_sucursal_salida','r.sucursal_salida')
+            ->selectRaw('MAX(r.cod_sucursal_salida) as cod_sucursal_salida')
+            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
             ->selectRaw("COUNT(DISTINCT $claveDocumento) as documentos")
             ->selectRaw('COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as unidades')
             ->selectRaw("COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibidas")
             ->selectRaw('COALESCE(SUM(COALESCE(uso.usadas,0)),0) as vinculadas')
             ->selectRaw('COALESCE(SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))),0) as saldo')
-            ->groupBy('r.cod_sucursal_salida','r.sucursal_salida')->get();
+            ->groupByRaw($claveOrigen)->get();
 
         // Un mismo local puede tener nombres alternativos en distintas
         // importaciones; consolidar siempre por código de salida.
@@ -178,14 +183,15 @@ class MayoristaMatrizController extends Controller
 
         $remisionesDocumentos = (clone $baseTransferencias)
             ->select('r.serie','r.numero_remision','r.cod_sucursal_salida',
-                'r.sucursal_salida','r.cod_sucursal_destino','r.sucursal_destino',
-                'r.fecha_remision')
+                'r.cod_sucursal_destino','r.fecha_remision')
+            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
+            ->selectRaw('MAX(r.sucursal_destino) as sucursal_destino')
             ->selectRaw('COUNT(*) as lineas, SUM(r.cantidad) as unidades')
             ->selectRaw('SUM(COALESCE(uso.usadas,0)) as vinculadas')
             ->selectRaw('SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))) as saldo')
             ->selectRaw('COUNT(*) FILTER (WHERE r.fecha_recepcion IS NOT NULL) as lineas_recibidas')
             ->groupBy('r.serie','r.numero_remision','r.cod_sucursal_salida',
-                'r.sucursal_salida','r.cod_sucursal_destino','r.sucursal_destino','r.fecha_remision')
+                'r.cod_sucursal_destino','r.fecha_remision')
             ->orderBy('r.fecha_remision','desc')
             ->orderBy('r.numero_remision','desc')
             ->paginate(30,['*'],'remisiones_page')
