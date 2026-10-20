@@ -140,6 +140,16 @@ class VentaMayoristaController extends Controller
         $separaciones=DB::table('mayorista_separaciones')
             ->whereBetween('fecha_separacion',[$desde,$hasta])
             ->selectRaw('COUNT(*) as registros, COALESCE(SUM(cantidad),0) as prendas')->first();
+        $muestrasPorOt=min(20,max(0,(int)$request->query('muestras_por_ot',1)));
+        $fotoPorOt=DB::table('mayorista_separaciones as s')
+            ->join('ot_logistica_detalle as d','d.id','=','s.logistica_detalle_id')
+            ->whereBetween('s.fecha_separacion',[$desde,$hasta])
+            ->whereRaw("UPPER(BTRIM(d.sucursal)) LIKE '%MODELO%MUESTRA%'")
+            ->select('s.id_ot')->selectRaw('SUM(s.cantidad) as cantidad')
+            ->groupBy('s.id_ot')->get();
+        $reservaFotoEstimada=$fotoPorOt->sum(function($ot)use($muestrasPorOt) {
+            return min($muestrasPorOt,(int)$ot->cantidad);
+        });
         $separacionesDetalle=DB::table('mayorista_separaciones as s')
             ->leftJoin('ot as o','o.id_ot','=','s.id_ot')
             ->whereBetween('s.fecha_separacion',[$desde,$hasta])
@@ -167,7 +177,9 @@ class VentaMayoristaController extends Controller
                 'cierre'=>Conciliador::saldoDocumental($apertura,$entrada,$venta)
             ];
         })->sortBy('codigo')->values();
-        $sinSaldo=$saldos->whereNull('inicial')->count();
+        $sinSaldo=$saldos->filter(function($fila) {
+            return $fila->inicial===null;
+        })->count();
         $cierre=$saldos->isNotEmpty() && $sinSaldo===0?$saldos->sum('cierre'):null;
 
         $arrastres=self::entradas()->where('r.fecha_remision','<',$desde)
@@ -222,7 +234,8 @@ class VentaMayoristaController extends Controller
         return view('ventas.mayoristas',compact(
             'mes','desde','hasta','resumen','emitidas','recibidas',
             'separaciones','separacionesDetalle','saldos','sinSaldo','cierre',
-            'arrastres','planes','buscar','facturasPaginadas'
+            'arrastres','planes','buscar','facturasPaginadas',
+            'muestrasPorOt','reservaFotoEstimada'
         ));
     }
 
@@ -246,12 +259,18 @@ class VentaMayoristaController extends Controller
         $candidatas=collect();
         $candidatasLimitadas=false;
         if($requeridas) {
-            $q=self::entradas()->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'),array_keys($requeridas))
+            $q=self::entradas()
+                ->leftJoin('ot_logistica_detalle as d','d.id','=','r.id_logistica_detalle')
+                ->leftJoin('ot as o',function($join) {
+                    $join->on('o.id_ot','=',DB::raw('COALESCE(r.id_ot,d.id_ot)'));
+                })
+                ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'),array_keys($requeridas))
                 ->whereNotNull('r.fecha_remision')
                 ->where('r.fecha_remision','<=',Carbon::parse($factura->fecha)->addDays(3)->format('Y-m-d'))
                 ->select('r.id','r.codigo','r.descripcion','r.fecha_remision','r.fecha_recepcion',
                     'r.cantidad','r.serie','r.numero_remision','r.sucursal_salida',
-                    'r.sucursal_destino','r.sucursal_logistica')
+                    'r.sucursal_destino','r.sucursal_logistica','o.nro_ot')
+                ->selectRaw('COALESCE(r.id_ot,d.id_ot) as id_ot_resuelta')
                 ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc');
             $candidatasLimitadas=(clone $q)->count()>300;
             $candidatas=$q->limit(300)->get();
