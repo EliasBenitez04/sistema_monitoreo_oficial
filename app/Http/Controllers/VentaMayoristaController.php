@@ -248,11 +248,11 @@ class VentaMayoristaController extends Controller
         ];
 
         $emitidas=self::entradas()->whereBetween('r.fecha_remision',[$desde,$hasta])
-            ->selectRaw('COUNT(*) as documentos, COALESCE(SUM(r.cantidad),0) as prendas')
+            ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
             ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
             ->first();
         $recibidas=self::entradas()->whereBetween('r.fecha_recepcion',[$desde,$hasta])
-            ->selectRaw('COUNT(*) as documentos, COALESCE(SUM(r.cantidad),0) as prendas')
+            ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
             ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
             ->first();
 
@@ -300,6 +300,18 @@ class VentaMayoristaController extends Controller
         $sinSaldo=$saldos->filter(function($fila) {
             return $fila->inicial===null;
         })->count();
+        // Las diferencias del período ayudan a priorizar una investigación,
+        // pero nunca equivalen a faltante físico o saldo final confirmado.
+        $conDiferencia=$saldos->filter(function($fila) {
+            return (int)$fila->entrada !== (int)$fila->venta;
+        })->sortByDesc(function($fila) {
+            return abs((int)$fila->entrada-(int)$fila->venta);
+        })->values();
+        $verTodosSaldos=$request->query('ver_saldos')==='todos';
+        $saldosVisibles=$verTodosSaldos ? $saldos : (
+            $conDiferencia->isNotEmpty() ? $conDiferencia->take(40) : $saldos->take(40)
+        );
+        $cantidadDiferencias=$conDiferencia->count();
         $cierre=$saldos->isNotEmpty() && $sinSaldo===0?$saldos->sum('cierre'):null;
 
         // Comparación de los seis meses anteriores hasta el seleccionado.
@@ -479,7 +491,8 @@ class VentaMayoristaController extends Controller
             'separaciones','separacionesDetalle','saldos','sinSaldo','cierre',
             'arrastres','planes','buscar','facturasPaginadas',
             'muestrasPorOt','reservaFotoEstimada','planBuscar','resumenMeses',
-            'filtroFactura','filtroCliente','filtroCodigo','filtroRemision','filtroOt','filtroEstado'
+            'filtroFactura','filtroCliente','filtroCodigo','filtroRemision','filtroOt','filtroEstado',
+            'saldosVisibles','verTodosSaldos','cantidadDiferencias'
         ));
     }
 
