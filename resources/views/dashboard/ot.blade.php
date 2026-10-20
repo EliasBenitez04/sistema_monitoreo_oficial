@@ -936,14 +936,13 @@
                         equivalentes a
                         <strong>
                             {{ number_format($resumen['tiempo_total_horas'], 2) }} horas
-                        </strong>. El tiempo desde el último movimiento hasta hoy se muestra por separado,
-
-                        con un avance de
+                        </strong>. El tiempo desde el último movimiento hasta hoy se muestra por separado.
+                        La OT presenta un avance de
                         <strong>
                             {{ $resumen['avance'] }}%
                         </strong>
 
-                        y estado
+                        y su estado es
 
                         <strong>
                             {{ $resumen['estado_texto'] }}
