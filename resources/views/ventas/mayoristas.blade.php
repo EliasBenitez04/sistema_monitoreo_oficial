@@ -32,10 +32,22 @@
     <div class="card-body py-3">
       <form method="GET" action="{{ route('ventas.mayoristas.index') }}" class="d-flex align-items-end flex-wrap may-filter">
         <div><label for="mesMay" class="may-label">Mes de consulta</label><input id="mesMay" type="month" class="form-control" name="mes" value="{{ $mes }}" required></div>
-        <div><label for="buscarMay" class="may-label">Buscar factura o cliente</label><input id="buscarMay" class="form-control" name="buscar" value="{{ $buscar }}" placeholder="Comprobante / cliente"></div>
+        <div><label for="buscarMay" class="may-label">Búsqueda general</label><input id="buscarMay" class="form-control" name="buscar" value="{{ $buscar }}" placeholder="Factura / cliente"></div>
+        <div><label for="mayFactura" class="may-label">Número factura</label><input id="mayFactura" class="form-control" name="factura" value="{{ $filtroFactura }}" placeholder="Factura"></div>
+        <div><label for="mayCliente" class="may-label">Cliente mayorista</label><input id="mayCliente" class="form-control" name="cliente" value="{{ $filtroCliente }}" placeholder="Cliente / CI"></div>
+        <div><label for="mayCodigo" class="may-label">Código completo</label><input id="mayCodigo" class="form-control" name="codigo" value="{{ $filtroCodigo }}" placeholder="Código / talle"></div>
+        <div><label for="mayRemision" class="may-label">Remisión candidata</label><input id="mayRemision" class="form-control" name="remision" value="{{ $filtroRemision }}" placeholder="Nº remisión"></div>
+        <div><label for="mayOt" class="may-label">OT candidata</label><input id="mayOt" class="form-control" name="ot" value="{{ $filtroOt }}" placeholder="Nº OT"></div>
+        <div><label for="mayEstado" class="may-label">Conciliación</label><select class="form-control" id="mayEstado" name="estado">
+          <option value="">Todos los estados</option>
+          @foreach(['CONFIRMADA DOCUMENTALMENTE','PARCIAL','SIN VALIDAR','NOTA DE CRÉDITO'] as $estadoOpcion)
+            <option value="{{ $estadoOpcion }}" {{ $filtroEstado===$estadoOpcion ? 'selected' : '' }}>{{ $estadoOpcion }}</option>
+          @endforeach
+        </select></div>
         <button type="submit" class="btn btn-primary"><i class="fas fa-search mr-1"></i>Consultar</button>
         <a class="btn btn-outline-secondary" href="{{ route('ventas.mayoristas.index',['mes'=>$mesPrevio]) }}"><i class="fas fa-chevron-left mr-1"></i>Mes anterior</a>
         <a class="btn btn-outline-secondary" href="{{ route('ventas.mayoristas.index',['mes'=>$mesProximo]) }}">Mes siguiente<i class="fas fa-chevron-right ml-1"></i></a>
+        <a class="btn btn-outline-secondary" href="{{ route('ventas.mayoristas.index',['mes'=>$mes]) }}">Limpiar filtros</a>
         <a class="btn btn-outline-success ml-auto" href="{{ route('ventas.mayoristas.index',array_merge(request()->query(),['exportar'=>'csv'])) }}"><i class="fas fa-file-csv mr-1"></i>Resumen CSV</a>
         <a class="btn btn-outline-success" href="{{ route('ventas.mayoristas.index',array_merge(request()->query(),['exportar'=>'detalle'])) }}"><i class="fas fa-list-alt mr-1"></i>Detalle factura–remisión CSV</a>
       </form>
@@ -66,6 +78,11 @@
     </div>
   </div>
 
+  <p class="small text-muted mb-2">
+    Los indicadores de arriba corresponden a <strong>todo el mes seleccionado</strong>.
+    Los filtros adicionales actúan sobre la lista de facturas y sus exportaciones.
+    Buscar por OT o remisión muestra <strong>facturas candidatas por código</strong>, no vínculos comprobados.
+  </p>
   <div class="may-section">
     <div><h3>1. Resumen documental de {{ ucfirst(\Carbon\Carbon::parse($mes.'-01')->locale('es')->translatedFormat('F Y')) }}</h3>
       <p>Las fechas corresponden a hechos distintos: separación validada, emisión, recepción y factura. No deben sumarse como si fueran prendas diferentes.</p></div>
