@@ -249,8 +249,11 @@
     </div></div>
   </div>
 
-  <div class="card may-card mb-3">
-    <div class="card-header bg-white"><strong>Documentos anteriores con cantidades aún no vinculadas a facturas</strong></div>
+  <details class="card may-card mb-3">
+    <summary class="card-header bg-white" style="cursor:pointer">
+      <strong><i class="fas fa-history text-primary mr-2"></i>Mostrar remisiones históricas sin vínculo</strong>
+      <small class="d-block text-muted">Hasta {{ $arrastres->count() }} líneas documentales de meses anteriores; no son prendas comprobadas en stock</small>
+    </summary>
     <div class="table-responsive may-scroll">
       <table class="table table-sm may-table mb-0">
         <thead><tr><th>Remisión</th><th>Mes original</th><th>OT / Origen</th><th>Código completo</th><th class="text-right">Prendas sin vincular</th></tr></thead>
@@ -266,8 +269,8 @@
         </tbody>
       </table>
     </div>
-    <div class="card-footer bg-white small text-muted">Esta lista es una muestra de remisiones antiguas. «Sin vincular» no significa necesariamente que sigan físicamente disponibles: pueden existir facturas de períodos anteriores aún no conciliadas.</div>
-  </div>
+    <div class="card-footer bg-white small text-muted">Esta lista es una muestra de líneas de remisión antiguas. «Sin vincular» no significa necesariamente que sigan físicamente disponibles: pueden existir facturas de períodos anteriores aún no conciliadas.</div>
+  </details>
 
   <div class="alert alert-light border small">
     <strong>MODELO MUESTRA · fotografía:</strong>
@@ -295,6 +298,16 @@
 
   <div class="may-section"><div><h3>4. Separaciones del plan mayorista</h3>
     <p>El plan logístico muestra lo asignado, pero su fecha de creación no demuestra cuándo se separaron las prendas. Confirmá la fecha efectiva contra un documento.</p></div></div>
+  <div class="alert alert-light border small">
+    <strong>Plan existente por validar:</strong> se muestran {{ $planes->count() }} asignaciones históricas,
+    con {{ number_format($planes->sum('pendiente'),0,',','.') }} prendas pendientes de registrar dentro de esta muestra.
+    <strong>No significa que correspondan a octubre.</strong> Se necesita la fecha real para incorporarlas al mes.
+  </div>
+  <details class="card may-card mb-3" {{ $planBuscar!=='' ? 'open' : '' }}>
+    <summary class="card-header bg-white" style="cursor:pointer"><strong><i class="fas fa-boxes mr-2 text-primary"></i>Ver asignaciones y registrar separaciones con evidencia</strong>
+      <small class="d-block text-muted">Registro documental opcional; no se presupone la fecha de separación</small>
+    </summary>
+    <div class="card-body">
   <div class="row">
     <div class="col-xl-6 mb-3"><div class="card may-card h-100">
       <div class="card-header bg-white">
@@ -318,7 +331,7 @@
                   <form method="POST" action="{{ route('ventas.mayoristas.separar') }}" class="may-inline-form">
                     @csrf
                     <input type="hidden" name="logistica_detalle_id" value="{{ $p->id }}">
-                    <input type="date" name="fecha_separacion" value="{{ $desde }}" required title="Fecha efectiva de separación">
+                    <input type="date" name="fecha_separacion" required title="Ingresá la fecha real documentada, no se presupone el primer día del mes">
                     <input type="number" name="cantidad" value="{{ $p->pendiente }}" min="1" max="{{ $p->pendiente }}" required title="Prendas">
                     <input type="text" name="referencia" maxlength="255" required placeholder="Evidencia">
                     <button class="btn btn-sm btn-outline-success" title="Confirmar separación"><i class="fas fa-check"></i></button>
@@ -361,6 +374,8 @@
       </div>
     </div></div>
   </div>
+    </div>
+  </details>
 
   <div class="card may-card mb-4">
     <div class="card-header bg-white"><strong><i class="fas fa-clipboard-list mr-2 text-primary"></i>5. Estado del cierre mensual</strong></div>
