@@ -166,7 +166,8 @@ class VentaMayoristaController extends Controller
         $ventasCodigo=self::ventas()->whereBetween('v.fecha',[$desde,$hasta])
             ->selectRaw('UPPER(BTRIM(v.codigo)) as codigo, SUM(v.cantidad) as prendas')
             ->groupByRaw('UPPER(BTRIM(v.codigo))')->pluck('prendas','codigo');
-        $codigos=$entradasCodigo->keys()->merge($ventasCodigo->keys())->unique()->filter();
+        $codigos=$entradasCodigo->keys()->merge($ventasCodigo->keys())
+            ->merge($aperturas->keys())->unique()->filter();
         $saldos=$codigos->map(function($codigo)use($aperturas,$entradasCodigo,$ventasCodigo) {
             $apertura=$aperturas->has($codigo)?(int)$aperturas[$codigo]->cantidad:null;
             $entrada=(int)($entradasCodigo[$codigo]??0);
