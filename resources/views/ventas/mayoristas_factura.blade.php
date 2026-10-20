@@ -92,7 +92,8 @@
             $maximoAsignable=min($pendienteFactura,$r->disponible);
           @endphp
           <tr>
-            <td><strong>{{ $r->serie }}-{{ $r->numero_remision }}</strong><small class="d-block text-muted">ID {{ $r->id }}</small></td>
+            <td><strong>{{ $r->serie }}-{{ $r->numero_remision }}</strong>
+               <small class="d-block text-muted">ID {{ $r->id }} · {{ $r->nro_ot ? 'OT '.$r->nro_ot : 'Sin OT vinculada' }}</small></td>
             <td>{{ date('d/m/Y',strtotime($r->fecha_remision)) }}</td>
             <td>{{ $r->sucursal_salida ?: '—' }} <i class="fas fa-long-arrow-alt-right text-muted"></i> {{ $r->sucursal_destino ?: $r->sucursal_logistica ?: '—' }}</td>
             <td><strong>{{ $r->codigo }}</strong><small class="d-block text-muted">{{ $r->descripcion }}</small></td>
