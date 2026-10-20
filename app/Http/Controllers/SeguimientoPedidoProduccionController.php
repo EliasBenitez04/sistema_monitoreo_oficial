@@ -322,8 +322,14 @@ class SeguimientoPedidoProduccionController extends Controller
             // flujo, no por id/importación ni por hora cuando son etapas
             // distintas. Ej.: SERIGRAFIA (55) → COSTURA INTERNA (70).
             $ultimo = UltimoProcesoOt::ultimo($historial);
-            // Para OT todavía pendientes, tomar el resultado del último
-            // movimiento disponible, sea cual sea el proceso (sin exigir CORTE).
+            // Etapa vigente y última ACTIVIDAD no tienen por qué ser la
+            // misma fila: con igual día se elige la etapa más avanzada,
+            // pero la antigüedad usa el timestamp más reciente de todos
+            // los registros reales de la OT (no la fila elegida por rango).
+            $fechaUltimaActividad = $historial->pluck('fecha_proceso')->filter()->max();
+
+            // Para OT todavía pendientes, tomar el resultado del proceso
+            // vigente seleccionado por fecha y jerarquía de producción.
             $cantidadIngresada = 0;
             $cantidadPendiente = $ultimo && $ultimo->resultado !== null
                 ? max(0, (int) $ultimo->resultado)
@@ -338,7 +344,7 @@ class SeguimientoPedidoProduccionController extends Controller
                 ->sort()
                 ->first();
             $antiguedad = AntiguedadOt::calcular(
-                $ultimo ? $ultimo->fecha_proceso : null,
+                $fechaUltimaActividad,
                 $fechaPedido,
                 $cortePendientes
             );
@@ -353,7 +359,8 @@ class SeguimientoPedidoProduccionController extends Controller
                 'cantidad_pendiente' => $cantidadPendiente,
                 'pedidos' => $registros->pluck('nro_pedido')->unique()->implode(', '),
                 'etapa' => $etapa,
-                'ultima_fecha' => $ultimo ? $ultimo->fecha_proceso : null,
+                'ultima_fecha' => $fechaUltimaActividad,
+                'fecha_etapa_actual' => $ultimo ? $ultimo->fecha_proceso : null,
                 'dias_quieto' => $diasQuieto,
                 'dias_sin_movimiento' => $diasSinMovimiento,
                 'prioridad' => $diasQuieto === null ? 'SIN DATOS'
