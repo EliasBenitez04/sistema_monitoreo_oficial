@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\MayoristaConciliacion as Conciliador;
+use App\Support\MayoristaOrigenRemision as OrigenRemision;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +105,135 @@ class MayoristaAuditoriaController extends Controller
         },3);
         return redirect()->route('ventas.mayoristas.factura',['clave'=>$clave,'mes'=>$datos['mes']])
             ->with('success','Relación factura–remisión registrada con cantidades auditadas.');
+    }
+
+    /**
+     * Asocia en una sola transaccion las lineas que el usuario selecciono.
+     * La propuesta visual no es evidencia de procedencia; esta accion
+     * exige verificacion y referencia. Ningun error deja vinculos parciales.
+     */
+    public function vincularPropuesta(Request $request, string $clave)
+    {
+        $datos = $request->validate([
+            'mes' => 'required|date_format:Y-m',
+            'referencia' => 'required|string|min:5|max:255',
+            'asociar' => 'required|array|min:1|max:50',
+            'asociar.*' => 'required|integer|min:1',
+        ]);
+        $cantidades = [];
+        foreach ($datos['asociar'] as $id => $cantidad) {
+            if (!preg_match('/^[1-9][0-9]*$/D', (string) $id)) {
+                throw ValidationException::withMessages(['asociar' =>
+                    'Una de las lineas de remision no tiene identificador valido.']);
+            }
+            $cantidades[(int) $id] = (int) $cantidad;
+        }
+        $ids = array_keys($cantidades);
+        sort($ids, SORT_NUMERIC);
+
+        $factura = VentaMayoristaController::buscarFactura($clave, $datos['mes']);
+        $necesidades = VentaMayoristaController::necesidades(
+            VentaMayoristaController::lineas($factura)
+        );
+        $totalConfirmado = 0;
+
+        DB::transaction(function () use (
+            $request, $clave, $datos, $ids, $cantidades,
+            $factura, $necesidades, &$totalConfirmado
+        ) {
+            // El bloqueo de la factura se comparte con la vinculacion
+            // individual: evita excedentes con solicitudes concurrentes.
+            $filaFactura = VentaMayoristaController::ventas()
+                ->where('v.fecha', $factura->fecha)
+                ->where('v.comprobante', $factura->comprobante)
+                ->whereRaw("COALESCE(BTRIM(v.cli_cod),'') = ?", [trim((string) $factura->cli_cod)])
+                ->whereRaw("COALESCE(BTRIM(v.cliente),'') = ?", [trim((string) $factura->cliente)])
+                ->orderBy('v.id')->lockForUpdate()->first();
+            if (!$filaFactura) {
+                throw ValidationException::withMessages(['asociar' => 'Factura no encontrada para el cruce.']);
+            }
+
+            $remisiones = VentaMayoristaController::entradas()
+                ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
+                ->whereIn('r.id', $ids)
+                ->orderBy('r.id')->lockForUpdate()->get()->keyBy('id');
+
+            $porCodigo = DB::table('mayorista_vinculos')
+                ->where('factura_clave', $clave)
+                ->select('codigo')->selectRaw('SUM(cantidad) as vinculadas')
+                ->groupBy('codigo')->pluck('vinculadas', 'codigo')->all();
+
+            foreach ($ids as $id) {
+                $r = $remisiones->get($id);
+                if (!$r) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'La linea de remision #'.$id.' ya no es una entrada valida hacia Matriz.']);
+                }
+                $fechaFactura = substr((string) $factura->fecha, 0, 10);
+                $emision = substr((string) $r->fecha_remision, 0, 10);
+                $recepcion = substr((string) $r->fecha_recepcion, 0, 10);
+                if ($emision === '' || $recepcion === ''
+                    || $emision > $fechaFactura || $recepcion > $fechaFactura) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'Remision #'.$id.': emision o recepcion no validas para la fecha de factura.']);
+                }
+                $nombreModelo = mb_strtoupper(trim((string) ($r->sucursal_destino ?? '')).' '.
+                    trim((string) ($r->sucursal_logistica ?? '')), 'UTF-8');
+                if (!empty($r->id_logistica_detalle)) {
+                    $destinoPlan = DB::table('ot_logistica_detalle')
+                        ->where('id', $r->id_logistica_detalle)->value('sucursal');
+                    $nombreModelo .= ' '.mb_strtoupper((string) $destinoPlan, 'UTF-8');
+                }
+                if (strpos($nombreModelo, 'MODELO') !== false
+                    && strpos($nombreModelo, 'MUESTRA') !== false) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'La remision #'.$id.' corresponde a Modelo Muestra. Revisala individualmente.']);
+                }
+                if (OrigenRemision::origenDiscordante($r) || empty($r->numero_remision)) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'Remision #'.$id.' sin identificacion de origen/documento confiable.']);
+                }
+                $codigo = Conciliador::codigo($r->codigo);
+                if (!isset($necesidades[$codigo])) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'La linea #'.$id.' no coincide con el codigo completo de esta factura.']);
+                }
+                if (DB::table('mayorista_vinculos')->where('factura_clave', $clave)
+                    ->where('remision_id', $id)->exists()) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'La remision #'.$id.' ya fue asociada a esta factura. Actualiza la pantalla.']);
+                }
+                $ocupadas = (int) DB::table('mayorista_vinculos')
+                    ->where('remision_id', $id)->sum('cantidad');
+                $maximo = Conciliador::capacidad(
+                    (int) $necesidades[$codigo] - (int) ($porCodigo[$codigo] ?? 0),
+                    (int) $r->cantidad - $ocupadas
+                );
+                $cantidad = $cantidades[$id];
+                if ($cantidad > $maximo) {
+                    throw ValidationException::withMessages(['asociar' =>
+                        'La remision #'.$id.' excede el disponible actual (maximo '.$maximo.'). Revisar propuestas.']);
+                }
+                $vinculoId = DB::table('mayorista_vinculos')->insertGetId([
+                    'factura_clave' => $clave,
+                    'comprobante' => $factura->comprobante,
+                    'fecha_factura' => $factura->fecha,
+                    'codigo' => $codigo,
+                    'remision_id' => $id,
+                    'cantidad' => $cantidad,
+                    'usuario_id' => $request->user()->id,
+                    'observacion' => $datos['referencia'],
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $this->auditar($request, 'VINCULAR', $clave, $id, $codigo, $cantidad,
+                    'Cruce asistido confirmado por usuario. Vinculo '.$vinculoId.' · '.$datos['referencia']);
+                $porCodigo[$codigo] = (int) ($porCodigo[$codigo] ?? 0) + $cantidad;
+                $totalConfirmado += $cantidad;
+            }
+        }, 3);
+
+        return back()->with('success', 'Se asociaron '.$totalConfirmado.
+            ' prendas con validacion de codigo, fechas, saldo y auditoria.');
     }
 
     public function desvincular(Request $request,string $clave,int $id)
