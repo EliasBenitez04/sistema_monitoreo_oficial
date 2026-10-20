@@ -149,7 +149,6 @@ class SeguimientoPedidoProduccionController extends Controller
         $corteMes = $mes->lt($corte->copy()->startOfMonth())
             ? $fin->copy()->startOfDay()
             : ($esActual ? $corte->copy() : null);
-        $fechaLimite = $corteMes ? $corteMes->copy()->endOfDay() : null;
 
         // Se toma TODA la salida registrada del hito, incluso OT sin pedido P.
         $salidas = DB::table('ot_trazabilidad as t')
