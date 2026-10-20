@@ -184,8 +184,13 @@ class VentaMayoristaController extends Controller
                 ->whereNotNull('r.fecha_remision')
                 ->whereBetween('r.fecha_remision', [$desde, $hasta])
                 ->where(function ($q) use ($tipo, $modeloR, $mayoristaR) {
-                    if ($tipo !== 'mayorista') $q->orWhereRaw($modeloR);
-                    if ($tipo !== 'modelo') $q->orWhereRaw($mayoristaR);
+                    if ($tipo === 'modelo') {
+                        $q->whereRaw($modeloR);
+                    } elseif ($tipo === 'mayorista') {
+                        $q->whereRaw($mayoristaR)->whereRaw('NOT ' . $modeloR);
+                    } else {
+                        $q->whereRaw('(' . $modeloR . ' OR ' . $mayoristaR . ')');
+                    }
                 });
             if ($buscar !== '') {
                 $baseRemision->where(function ($q) use ($buscar) {
@@ -264,8 +269,13 @@ class VentaMayoristaController extends Controller
                 $planQuery = DB::table('ot_logistica_detalle as d')
                     ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
                     ->where(function ($q) use ($tipo,$modeloD,$mayoristaD) {
-                        if ($tipo !== 'mayorista') $q->orWhereRaw($modeloD);
-                        if ($tipo !== 'modelo') $q->orWhereRaw($mayoristaD);
+                        if ($tipo === 'modelo') {
+                            $q->whereRaw($modeloD);
+                        } elseif ($tipo === 'mayorista') {
+                            $q->whereRaw($mayoristaD)->whereRaw('NOT ' . $modeloD);
+                        } else {
+                            $q->whereRaw('(' . $modeloD . ' OR ' . $mayoristaD . ')');
+                        }
                     });
                 if (!$incluirPlan) {
                     $planQuery->whereIn('d.id_ot',$idsActivos);
@@ -305,10 +315,11 @@ class VentaMayoristaController extends Controller
                     ? 'VENTA SIN PLAN/REMISIÓN'
                     : ($fila->ventas_netas > 0 && $fila->remitido === 0
                         ? 'VENTA SIN REMISIÓN'
-                        : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE' : 'CON DOCUMENTOS')));
+                        : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE'
+                            : ($fila->remitido === 0 ? 'SOLO PLAN' : 'CON DOCUMENTOS'))));
             return $fila;
         })->sort(function ($a,$b) {
-            $alerta = ['SIN OT SEGURA'=>0,'VENTA SIN PLAN/REMISIÓN'=>1,'VENTA SIN REMISIÓN'=>2,'RECEPCIÓN PENDIENTE'=>3,'CON DOCUMENTOS'=>4];
+            $alerta = ['SIN OT SEGURA'=>0,'VENTA SIN PLAN/REMISIÓN'=>1,'VENTA SIN REMISIÓN'=>2,'RECEPCIÓN PENDIENTE'=>3,'SOLO PLAN'=>4,'CON DOCUMENTOS'=>5];
             $prioridad = ($alerta[$a->status] ?? 5) <=> ($alerta[$b->status] ?? 5);
             return $prioridad ?: ($b->venta_neta <=> $a->venta_neta);
         })->values();
@@ -326,9 +337,12 @@ class VentaMayoristaController extends Controller
             'reserva_foto' => (int) $vinculadas->sum('reserva_foto'),
             'recibido_venta_estimado' => (int) $vinculadas->sum('recibido_venta_estimado'),
             'sin_ot_venta' => (int) $filas->where('venta_sin_ot',true)->sum('ventas_netas'),
+            'sin_ot_venta_importe' => (float) $filas->where('venta_sin_ot',true)->sum('venta_neta'),
             'sin_ot_movimiento' => (int) $filas->where('remision_sin_ot',true)->sum('remitido'),
             'con_alerta' => $filas->where('status','<>','CON DOCUMENTOS')->count(),
         ];
+
+        $topProductos = $ventasPorCodigo->sortByDesc('venta_neta')->take(10)->values();
 
         if ($request->query('exportar') === 'csv') {
             return $this->csv($filas,$desde,$hasta);
@@ -343,7 +357,7 @@ class VentaMayoristaController extends Controller
         return view('ventas.mayoristas',compact(
             'desde','hasta','tipo','buscar','muestrasPorOt','incluirPlan',
             'resumen','ventasResumen','ordenes','remisiones','ventasDias',
-            'clientes','tablas','tieneVentas'
+            'clientes','topProductos','tablas','tieneVentas'
         ));
     }
 
