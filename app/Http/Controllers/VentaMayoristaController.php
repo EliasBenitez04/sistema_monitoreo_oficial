@@ -35,7 +35,10 @@ class VentaMayoristaController extends Controller
                           ->whereColumn('d.id', 'r.id_logistica_detalle')
                           ->whereRaw("UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MODELO%MUESTRA%'");
                   });
-            });
+            })
+            // Conservar la restricción anterior: una remisión que SALE
+            // de COMERCIAL MATRIZ no constituye mercadería de entrada.
+            ->whereRaw("UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) <> 'COMERCIAL MATRIZ'");
     }
 
     public static function ventas()
