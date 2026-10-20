@@ -298,11 +298,11 @@ class VentaMayoristaController extends Controller
 
         $emitidas=self::entradas()->whereBetween('r.fecha_remision',[$desde,$hasta])
             ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
-            ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
+            ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida=1 OR (r.cod_sucursal_salida IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')) THEN r.cantidad ELSE 0 END),0) as central")
             ->first();
         $recibidas=self::entradas()->whereBetween('r.fecha_recepcion',[$desde,$hasta])
             ->selectRaw("COUNT(DISTINCT $claveRemisionSql) as documentos, COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as prendas")
-            ->selectRaw("COALESCE(SUM(CASE WHEN UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') OR r.cod_sucursal_salida=1 THEN r.cantidad ELSE 0 END),0) as central")
+            ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida=1 OR (r.cod_sucursal_salida IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')) THEN r.cantidad ELSE 0 END),0) as central")
             ->first();
 
         $separaciones=DB::table('mayorista_separaciones')
