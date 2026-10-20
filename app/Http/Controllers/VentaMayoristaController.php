@@ -117,6 +117,100 @@ class VentaMayoristaController extends Controller
                     :($f->vinculadas>0?'PARCIAL':'SIN VALIDAR'));
         }
 
+        /*
+         * Detección masiva de candidatas, solo para orientación en el
+         * listado: NUNCA reserva ni vincula automáticamente una remisión.
+         * No se suman estas coberturas entre facturas, porque diferentes
+         * compradores pueden estar viendo la misma mercadería candidata.
+         *
+         * Se exige código COMPLETO, remisión emitida y recepción
+         * no posteriores a la fecha de la factura. Los movimientos
+         * posteriores se investigan en la ficha detallada.
+         */
+        $necesidadesPorFactura = [];
+        $codigosMes = [];
+        $lineasParaCruce = self::ventas()
+            ->whereBetween('v.fecha',[$desde,$hasta])
+            ->where('v.cantidad','>',0)
+            ->select('v.fecha','v.comprobante','v.cli_cod','v.cliente','v.codigo')
+            ->selectRaw('SUM(v.cantidad) as prendas')
+            ->groupBy('v.fecha','v.comprobante','v.cli_cod','v.cliente','v.codigo')
+            ->get();
+        foreach($lineasParaCruce as $linea) {
+            $clave=Conciliador::claveFactura($linea->fecha,$linea->comprobante,
+                $linea->cli_cod,$linea->cliente);
+            $codigo=Conciliador::codigo($linea->codigo);
+            if($codigo==='') continue;
+            if(!isset($necesidadesPorFactura[$clave])) $necesidadesPorFactura[$clave]=[];
+            $necesidadesPorFactura[$clave][$codigo]=
+                ($necesidadesPorFactura[$clave][$codigo]??0)+(int)$linea->prendas;
+            $codigosMes[$codigo]=true;
+        }
+
+        $usosPorFactura=[];
+        $usadosPorCodigo=$claves?DB::table('mayorista_vinculos')
+            ->whereIn('factura_clave',$claves)
+            ->select('factura_clave','codigo')
+            ->selectRaw('SUM(cantidad) as prendas')
+            ->groupBy('factura_clave','codigo')->get():collect();
+        foreach($usadosPorCodigo as $uso) {
+            $usosPorFactura[$uso->factura_clave][Conciliador::codigo($uso->codigo)]=
+                (int)$uso->prendas;
+        }
+
+        $usadasRemision=DB::table('mayorista_vinculos')
+            ->select('remision_id')->selectRaw('SUM(cantidad) as usadas')
+            ->groupBy('remision_id');
+        $candidatasPorCodigo=[];
+        $codigosCruce=array_keys($codigosMes);
+        foreach(array_chunk($codigosCruce,250) as $loteCodigos) {
+            $resultados=self::entradas()
+                ->leftJoinSub($usadasRemision,'usos','usos.remision_id','=','r.id')
+                ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'),$loteCodigos)
+                ->whereNotNull('r.fecha_remision')
+                ->whereNotNull('r.fecha_recepcion')
+                ->where('r.fecha_remision','<=',$hasta)
+                ->where('r.fecha_recepcion','<=',$hasta)
+                ->selectRaw('UPPER(BTRIM(r.codigo)) as codigo')
+                ->addSelect('r.fecha_remision','r.fecha_recepcion')
+                ->selectRaw('SUM(GREATEST(0,r.cantidad - COALESCE(usos.usadas,0))) as prendas_disponibles')
+                ->selectRaw('COUNT(*) as lineas_remision')
+                ->groupByRaw('UPPER(BTRIM(r.codigo)), r.fecha_remision, r.fecha_recepcion')
+                ->get();
+            foreach($resultados as $grupo) {
+                if((int)$grupo->prendas_disponibles <= 0) continue;
+                $candidatasPorCodigo[$grupo->codigo][]=$grupo;
+            }
+        }
+
+        foreach($facturas as $factura) {
+            $factura->lineas_candidatas=0;
+            $factura->cobertura_candidata=0;
+            $factura->pendiente_sin_candidata=0;
+            $requeridas=$necesidadesPorFactura[$factura->clave]??[];
+            foreach($requeridas as $codigo=>$cantidad) {
+                $pendienteCodigo=max(0,$cantidad-
+                    (int)($usosPorFactura[$factura->clave][$codigo]??0));
+                if($pendienteCodigo===0) continue;
+                $disponibles=0;
+                foreach(($candidatasPorCodigo[$codigo]??[]) as $grupo) {
+                    if($grupo->fecha_remision > $factura->fecha
+                        || $grupo->fecha_recepcion > $factura->fecha) continue;
+                    $disponibles+=(int)$grupo->prendas_disponibles;
+                    $factura->lineas_candidatas+=(int)$grupo->lineas_remision;
+                }
+                $factura->cobertura_candidata+=min($pendienteCodigo,$disponibles);
+                $factura->pendiente_sin_candidata+=max(0,$pendienteCodigo-$disponibles);
+            }
+            $factura->situacion_busqueda=$factura->pendientes===0
+                ? 'CONCILIADA'
+                :($factura->cobertura_candidata >= $factura->pendientes
+                    ? 'COBERTURA POSIBLE'
+                    :($factura->cobertura_candidata>0
+                        ? 'COBERTURA PARCIAL'
+                        : 'SIN CANDIDATAS PREVIAS'));
+        }
+
         $resumen=(object)[
             'facturas'=>$facturas->count(),
             'brutas'=>$facturas->sum('brutas'),
