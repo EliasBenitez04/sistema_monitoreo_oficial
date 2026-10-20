@@ -6,33 +6,19 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * Intervalos calculados desde la trazabilidad ACTUAL de una OT.
+ * Recalcula únicamente las duraciones, SIN cambiar el orden del flujo de
+ * producción definido por el dashboard. El controlador entrega las filas
+ * ya ordenadas por proceso y fecha (y por ID en caso de empate).
  *
- * El orden de operaciones de producción no siempre coincide con la fecha
- * ingresada: para medir tiempo no se puede ordenar por avance del flujo.
- * Ante fechas iguales se utiliza id_trazabilidad para un orden estable.
- *
- * Duración de una etapa = su fecha -> próxima fecha cronológica,
- * o fecha actual si es la última. Distancia desde proceso anterior
- * se informa separadamente para no confundir dos métricas distintas.
+ * Cada fila mide desde su fecha hasta la fecha de la siguiente fila del
+ * flujo; la última llega hasta hoy. Nunca se guarda el tiempo en BD.
  */
 class TiemposTrazabilidadOt
 {
     public static function calcular(Collection $trazas, ?Carbon $ahora = null): Collection
     {
         $corte = $ahora ? $ahora->copy() : Carbon::now();
-
-        $ordenadas = $trazas->sort(function ($a, $b) {
-            $fechaA = Carbon::parse($a->fecha_proceso);
-            $fechaB = Carbon::parse($b->fecha_proceso);
-            $cmp = $fechaA->getTimestamp() <=> $fechaB->getTimestamp();
-
-            if ($cmp !== 0) {
-                return $cmp;
-            }
-
-            return ((int) $a->id_trazabilidad) <=> ((int) $b->id_trazabilidad);
-        })->values();
+        $ordenadas = $trazas->values(); // Conservar exactamente el flujo recibido.
 
         return $ordenadas->map(function ($traza, $indice) use ($ordenadas, $corte) {
             $fecha = Carbon::parse($traza->fecha_proceso);
@@ -43,11 +29,15 @@ class TiemposTrazabilidadOt
             $esUltimo = $siguiente === null;
             $hasta = $esUltimo ? $corte : Carbon::parse($siguiente->fecha_proceso);
 
-            // Una fecha futura no produce tiempos negativos.
-            $horas = $hasta->greaterThan($fecha)
+            // Puede existir una fecha cargada fuera de secuencia, por
+            // ejemplo DISEÑO GRÁFICO 02/09 y TIZADAS 31/08 en la misma OT.
+            // Eso no representa -2 ni +2 días reales: se debe revisar el
+            // dato y NO inventar una duración positiva tomando el absoluto.
+            $fechaInvertida = $hasta->lessThan($fecha);
+            $horas = !$fechaInvertida
                 ? round($fecha->diffInMinutes($hasta) / 60, 2)
                 : 0.0;
-            $horasDesdeAnterior = $anterior && $fecha->greaterThan($anterior)
+            $horasAnterior = $anterior && !$fecha->lessThan($anterior)
                 ? round($anterior->diffInMinutes($fecha) / 60, 2)
                 : 0.0;
 
@@ -56,11 +46,12 @@ class TiemposTrazabilidadOt
                 'fecha' => $fecha,
                 'fecha_hasta' => $hasta->copy(),
                 'es_ultimo' => $esUltimo,
+                'fecha_invertida' => $fechaInvertida,
                 'fecha_futura' => $fecha->greaterThan($corte),
                 'duracion_horas' => $horas,
                 'duracion_dias' => round($horas / 24, 2),
-                'desde_anterior_horas' => $horasDesdeAnterior,
-                'desde_anterior_dias' => round($horasDesdeAnterior / 24, 2),
+                'desde_anterior_horas' => $horasAnterior,
+                'desde_anterior_dias' => round($horasAnterior / 24, 2),
             ];
         });
     }
