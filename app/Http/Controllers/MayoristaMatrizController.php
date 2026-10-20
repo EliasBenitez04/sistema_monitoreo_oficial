@@ -26,8 +26,17 @@ class MayoristaMatrizController extends Controller
     {
         $ultima = VentaMayoristaController::ventas()->max('v.fecha');
         $base = $ultima ? Carbon::parse($ultima) : Carbon::today();
+        $mesAnterior = (string) $request->query('mes', '');
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mesAnterior)) {
+            $base = Carbon::parse($mesAnterior.'-01');
+            $finDefecto = $base->format('Y-m') === Carbon::today()->format('Y-m')
+                ? Carbon::today()->format('Y-m-d')
+                : $base->copy()->endOfMonth()->format('Y-m-d');
+        } else {
+            $finDefecto = $base->format('Y-m-d');
+        }
         $inicio = $request->query('desde', $base->copy()->startOfMonth()->format('Y-m-d'));
-        $fin = $request->query('hasta', $base->format('Y-m-d'));
+        $fin = $request->query('hasta', $finDefecto);
         $request->merge(['desde' => $inicio, 'hasta' => $fin]);
         $request->validate(['desde' => 'required|date_format:Y-m-d', 'hasta' => 'required|date_format:Y-m-d|after_or_equal:desde']);
         return [$inicio, $fin];
