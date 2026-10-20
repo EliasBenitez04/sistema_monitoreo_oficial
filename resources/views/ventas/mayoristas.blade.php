@@ -36,7 +36,8 @@
         <button type="submit" class="btn btn-primary"><i class="fas fa-search mr-1"></i>Consultar</button>
         <a class="btn btn-outline-secondary" href="{{ route('ventas.mayoristas.index',['mes'=>$mesPrevio]) }}"><i class="fas fa-chevron-left mr-1"></i>Mes anterior</a>
         <a class="btn btn-outline-secondary" href="{{ route('ventas.mayoristas.index',['mes'=>$mesProximo]) }}">Mes siguiente<i class="fas fa-chevron-right ml-1"></i></a>
-        <a class="btn btn-outline-success ml-auto" href="{{ route('ventas.mayoristas.index',array_merge(request()->query(),['exportar'=>'csv'])) }}"><i class="fas fa-file-csv mr-1"></i>Exportar CSV</a>
+        <a class="btn btn-outline-success ml-auto" href="{{ route('ventas.mayoristas.index',array_merge(request()->query(),['exportar'=>'csv'])) }}"><i class="fas fa-file-csv mr-1"></i>Resumen CSV</a>
+        <a class="btn btn-outline-success" href="{{ route('ventas.mayoristas.index',array_merge(request()->query(),['exportar'=>'detalle'])) }}"><i class="fas fa-list-alt mr-1"></i>Detalle factura–remisión CSV</a>
       </form>
     </div>
   </div>
