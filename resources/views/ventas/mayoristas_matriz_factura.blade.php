@@ -37,7 +37,7 @@
   </div>
   <div class="card mb-3 maym-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
-      <div><strong>2. Remisiones por documento · Modelo Muestra / Matriz</strong>
+      <div><strong>2. Remisiones hacia Matriz desde TODAS las sucursales y Modelo Muestra</strong>
         <small class="d-block text-muted">Verificá los códigos y talles de una misma OT dentro del documento; nunca se juntan distintas remisiones para simular una coincidencia completa.</small></div>
       <div class="btn-group btn-group-sm mt-2">
         <a class="btn btn-{{ $diasHistorial==='90'?'primary':'outline-primary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'90']) }}">90 días</a>
@@ -56,7 +56,11 @@
               <div>
                 <strong>Remisión {{ $doc->serie }}-{{ $doc->numero }}</strong>
                 <span class="small text-muted ml-2">{{ date('d/m/Y',strtotime($doc->fecha)) }}</span>
-                <small class="d-block text-muted">{{ $doc->origen ?: 'Origen no informado' }} → {{ $doc->destino ?: 'Destino no informado' }}</small>
+                <small class="d-block text-muted">
+                  <strong>Origen: {{ $doc->origen }}</strong>
+                  <span class="mx-1">→</span> Destino: {{ $doc->destino ?: 'No informado' }}
+                  <span class="badge badge-{{ $doc->tipo_origen==='LOCAL'?'info':($doc->tipo_origen==='CENTRAL'?'secondary':'warning') }} ml-2">{{ $doc->canal }}</span>
+                </small>
               </div>
               <div class="small">
                 <span class="badge badge-{{ $doc->completo ? 'success':'secondary' }}">{{ $doc->coincidencias }} de {{ $totales->codigos }} códigos de la factura</span>
@@ -76,7 +80,13 @@
                 @foreach($doc->lineas as $r)
                   <tr>
                     <td class="font-weight-bold">{{ $r->codigo }}</td>
-                    <td>{{ $r->descripcion }}<small class="d-block text-muted">Línea #{{ $r->id }}</small></td>
+                    <td>
+                      {{ $r->descripcion }}
+                      <small class="d-block text-muted">
+                        Línea #{{ $r->id }} · origen {{ $r->origen_real }}
+                        @if($r->cod_sucursal_salida) (cód. {{ $r->cod_sucursal_salida }}) @endif
+                      </small>
+                    </td>
                     <td>
                       @if($r->fecha_recepcion)<span class="text-success">{{ date('d/m/Y',strtotime($r->fecha_recepcion)) }}</span>
                       @else<span class="text-warning">Sin recepción</span>@endif
@@ -127,15 +137,16 @@
   <details class="card mb-3 maym-card">
     <summary class="card-header bg-white maym-summary"><strong>4. Remisiones asignadas a esta factura · trazabilidad y reversión</strong></summary>
     <div class="table-responsive"><table class="table table-sm maym-table mb-0">
-      <thead><tr><th>Remisión</th><th>Fecha</th><th>Código</th><th class="text-right">Asignadas</th><th>Evidencia</th><th>Revertir</th></tr></thead><tbody>
+      <thead><tr><th>Remisión</th><th>Fecha</th><th>Origen real</th><th>Código</th><th class="text-right">Asignadas</th><th>Evidencia</th><th>Revertir</th></tr></thead><tbody>
       @forelse($enlaces as $v)<tr>
-        <td>{{ $v->serie }}-{{ $v->numero_remision }}</td><td>{{ $v->fecha_remision }}</td><td>{{ $v->codigo }}</td>
+        <td>{{ $v->serie }}-{{ $v->numero_remision }}</td><td>{{ $v->fecha_remision }}</td>
+        <td><strong>{{ $v->origen_real }}</strong><small class="d-block text-muted">{{ $v->tipo_origen }}</small></td><td>{{ $v->codigo }}</td>
         <td class="text-right font-weight-bold">{{ $v->cantidad }}</td><td>{{ $v->observacion }}</td>
         <td><form method="POST" class="maym-form" action="{{ route('ventas.mayoristas.desvincular',['clave'=>$factura->clave,'id'=>$v->id]) }}">
           @csrf<input type="hidden" name="mes" value="{{ $mes }}"><input name="motivo" class="form-control form-control-sm" minlength="5" maxlength="255" required placeholder="Motivo de reversión">
           <button class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Revertir vínculo con auditoría?')">Desvincular</button>
         </form></td>
-      </tr>@empty<tr><td colspan="6" class="text-muted text-center">Todavía no hay asignaciones confirmadas.</td></tr>@endforelse
+      </tr>@empty<tr><td colspan="7" class="text-muted text-center">Todavía no hay asignaciones confirmadas.</td></tr>@endforelse
       </tbody></table></div>
     @if($auditoria->isNotEmpty())
       <div class="px-3 py-2 small text-muted">Últimos movimientos de auditoría:</div>
