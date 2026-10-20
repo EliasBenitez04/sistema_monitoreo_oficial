@@ -590,9 +590,65 @@ class VentaMayoristaController extends Controller
             return (object)['codigo'=>$codigo,'necesita'=>$necesita,'validado'=>$validado,
                 'pendiente'=>max(0,$necesita-$validado)];
         });
+        // Carpeta inicial de auditoría: documentos próximos a la factura
+        // agrupados por número/serie/origen/destino y fecha. La cifra
+        // aportable se calcula por código completo y NO constituye
+        // asignación ni puede sumarse entre documentos sin conciliar.
+        $documentosSugeridos=collect();
+        if($requeridas) {
+            $usadoRem=DB::table('mayorista_vinculos')
+                ->select('remision_id')->selectRaw('SUM(cantidad) as usadas')
+                ->groupBy('remision_id');
+            $docs=self::entradas()->leftJoinSub($usadoRem,'usos','usos.remision_id','=','r.id')
+                ->whereNotNull('r.fecha_remision')
+                ->whereNotNull('r.fecha_recepcion')
+                ->whereBetween('r.fecha_remision',[
+                    Carbon::parse($factura->fecha)->subDays(30)->format('Y-m-d'),
+                    $factura->fecha
+                ])
+                ->where('r.fecha_recepcion','<=',$factura->fecha)
+                ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'),array_keys($requeridas))
+                ->select('r.serie','r.numero_remision','r.sucursal_salida',
+                    'r.sucursal_destino','r.fecha_remision')
+                ->selectRaw('MIN(r.id) as primera_linea')
+                ->selectRaw('UPPER(BTRIM(r.codigo)) as codigo')
+                ->selectRaw('SUM(GREATEST(0,r.cantidad-COALESCE(usos.usadas,0))) as disponibles')
+                ->groupBy('r.serie','r.numero_remision','r.sucursal_salida',
+                    'r.sucursal_destino','r.fecha_remision')
+                ->groupByRaw('UPPER(BTRIM(r.codigo))')
+                ->get();
+
+            $agrupados=[];
+            foreach($docs as $doc) {
+                $codigo=(string)$doc->codigo;
+                $pendiente=isset($porCodigo[$codigo])?(int)$porCodigo[$codigo]->pendiente:0;
+                $aporte=min($pendiente,max(0,(int)$doc->disponibles));
+                if($aporte<=0)continue;
+                $claveDocumento=implode('|',[
+                    $doc->serie,$doc->numero_remision,$doc->sucursal_salida,
+                    $doc->sucursal_destino,$doc->fecha_remision
+                ]);
+                if($doc->numero_remision===null) {
+                    $claveDocumento.='|SIN_NUMERO|'.$doc->primera_linea;
+                }
+                if(!isset($agrupados[$claveDocumento])) {
+                    $agrupados[$claveDocumento]=(object)[
+                        'serie'=>$doc->serie,'numero'=>$doc->numero_remision,
+                        'origen'=>$doc->sucursal_salida,'destino'=>$doc->sucursal_destino,
+                        'fecha'=>$doc->fecha_remision,
+                        'aporte'=>0,'codigos'=>0,'ejemplo_codigo'=>$codigo
+                    ];
+                }
+                $agrupados[$claveDocumento]->aporte+=$aporte;
+                $agrupados[$claveDocumento]->codigos++;
+            }
+            $documentosSugeridos=collect(array_values($agrupados))
+                ->sortByDesc('aporte')->take(15)->values();
+        }
         return view('ventas.mayoristas_factura',compact(
             'mes','factura','lineas','requeridas','enlaces','confirmadas',
-            'candidatas','candidatasLimitadas','porCodigo','estado','auditoria'
+            'candidatas','candidatasLimitadas','porCodigo','estado','auditoria',
+            'documentosSugeridos'
         ));
     }
 
