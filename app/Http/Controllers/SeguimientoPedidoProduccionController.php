@@ -10,6 +10,7 @@ use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use App\Support\PromedioDiarioProduccion;
 use App\Support\UltimoProcesoOt;
+use App\Support\ConteoEtapasPedido;
 use App\Support\AntiguedadOt;
 
 class SeguimientoPedidoProduccionController extends Controller
@@ -367,9 +368,39 @@ class SeguimientoPedidoProduccionController extends Controller
             ];
         })->filter()->values();
 
-        $porEtapa = $pendientes->groupBy('etapa')->map(function ($items, $etapa) {
-            return (object) ['etapa' => $etapa, 'ots' => $items->count(), 'prendas' => (int) $items->sum('cantidad_pendiente')];
-        })->sortByDesc('ots')->values();
+        /*
+         * Comparación al MISMO CORTE de pendientes:
+         * 1) una sola última etapa por OT en toda la trazabilidad (haya
+         *    pedido P o no); 2) subconjunto de OT pendientes P de arriba.
+         *
+         * DISTICT ON es de PostgreSQL 9.5: fecha más reciente, prioridad
+         * de área en el mismo día y por último timestamp e ID. El CASE
+         * se construye desde el MISMO catálogo de UltimoProcesoOt.
+         * No cargar todos los movimientos en PHP ni contar cada registro
+         * histórico como una OT diferente en el área.
+         */
+        $todosPorEtapa = collect();
+        if ($cortePendientes && $pendientes->isNotEmpty()) {
+            $ultimoPorOt = DB::table('ot_trazabilidad as t')
+                ->join('ot as o', 'o.id_ot', '=', 't.id_ot')
+                ->whereNotNull('t.fecha_proceso')
+                ->where('t.fecha_proceso', '<=', $cortePendientes->format('Y-m-d H:i:s'))
+                ->selectRaw('DISTINCT ON (o.nro_ot) o.nro_ot, t.proceso')
+                ->orderBy('o.nro_ot')
+                ->orderByRaw('DATE(t.fecha_proceso) DESC, '
+                    . UltimoProcesoOt::prioridadSql('t.proceso')
+                    . ' DESC, t.fecha_proceso DESC, t.id_trazabilidad DESC');
+
+            // Resultado reducido: una fila por nombre de etapa, con su
+            // cantidad de OT únicas, sin descargar todo el historial.
+            $todosPorEtapa = DB::query()->fromSub($ultimoPorOt, 'ultimo')
+                ->select('ultimo.proceso')
+                ->selectRaw('COUNT(*) as ots')
+                ->groupBy('ultimo.proceso')
+                ->get();
+        }
+
+        $porEtapa = ConteoEtapasPedido::comparar($pendientes, $todosPorEtapa);
 
         $habilesTranscurridos = $ultimoDia->dias_transcurridos ?? 0;
         $habilesRestantes = max(0, $diasHabilesMes - $habilesTranscurridos);
