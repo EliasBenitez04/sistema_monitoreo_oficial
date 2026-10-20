@@ -833,7 +833,7 @@
                     </div>
 
                     <div class="kpi-sub">
-                        {{ $resumen['tiempo_total_dias'] }} días · 1er registro hasta último
+                        {{ $resumen['tiempo_total_dias'] }} días · primera a última fecha registrada
                     </div>
 
                 </div>
@@ -1119,12 +1119,14 @@
 
                                         </div>
 
-                                        @if (!$loop->first)
-                                            <div class="small text-muted mt-2">
-                                                +{{ number_format($p['desde_anterior_horas'], 2) }}
-                                                h ({{ number_format($p['desde_anterior_dias'], 2) }} d) desde el anterior
-                                            </div>
-                                        @endif
+                                        <div class="small text-muted mt-2">
+                                            @if ($p['fecha_invertida'])
+                                                Fecha a revisar
+                                            @else
+                                                {{ number_format($p['duracion_dias'], 2) }} d
+                                                @if ($p['es_ultimo']) · hasta hoy @endif
+                                            @endif
+                                        </div>
 
                                     </div>
                                 @endforeach
@@ -1158,19 +1160,18 @@
                             </h5>
 
                             <span class="text-muted small">
-                                {{ count($procesos) }} registros · orden por fecha
+                                {{ count($procesos) }} registros · orden del flujo de producción
                             </span>
 
                         </div>
 
                         <p class="small text-muted px-3 pt-2 mb-2">
                             <i class="bi bi-info-circle"></i>
-                            Los movimientos se ordenan por fecha e ID, no por porcentaje de avance.
-                            «Desde anterior» mide la distancia al movimiento previo;
-                            «Tiempo en etapa» mide hasta el movimiento siguiente.
-                            <strong>La última etapa se calcula hasta hoy</strong>, incluso si corresponde
-                            a Logística, Revisión o una OT finalizada. Un día registrado sin hora
-                            se interpreta desde las 00:00.
+                            Se conserva el orden habitual de los procesos.
+                            La duración se recalcula según la fecha del siguiente proceso mostrado;
+                            <strong>el último se calcula hasta hoy</strong>.
+                            Cuando una fecha es anterior a la etapa precedente,
+                            se indica «Revisar fechas» en vez de mostrar días incorrectos.
                         </p>
                         <div class="table-responsive">
 
@@ -1183,8 +1184,7 @@
                                         <th>Proceso</th>
                                         <th>Resultado</th>
                                         <th>Fecha</th>
-                                        <th>Desde anterior</th>
-                                        <th>Tiempo en etapa</th>
+                                        <th>Duración</th>
                                         <th>Avance</th>
                                         @can('ot destroy')
                                             <th>Acciones</th>
@@ -1206,15 +1206,7 @@
                                                 <strong>
                                                     {{ $p['proceso'] }}
                                                 </strong>
-                                                @if ($p['flujo_no_lineal'])
-                                                    <span class="d-block small text-warning" title="La etapa tiene un orden teórico anterior al movimiento cronológicamente precedente. Puede ser un reproceso o una fecha a revisar.">
-                                                        <i class="bi bi-exclamation-triangle"></i>
-                                                        Flujo no lineal / revisar fecha
-                                                    </span>
-                                                @endif
-                                                @if ($p['fecha_futura'])
-                                                    <span class="d-block small text-danger">Fecha posterior a hoy: revisar</span>
-                                                @endif
+
                                             </td>
 
                                             <td>
@@ -1230,30 +1222,21 @@
                                             </td>
 
                                             <td>
-                                                @if ($loop->first)
-                                                    <span class="text-muted">Inicio</span>
-                                                @else
-                                                    <strong>{{ number_format($p['desde_anterior_horas'], 2) }} h</strong>
-                                                    <span class="d-block small text-muted">
-                                                        ({{ number_format($p['desde_anterior_dias'], 2) }} d)
-                                                    </span>
-                                                @endif
-                                            </td>
-
-                                            <td>
-                                                <strong>{{ number_format($p['duracion_horas'], 2) }} h</strong>
-                                                <span class="d-block small text-muted">
-                                                    ({{ number_format($p['duracion_dias'], 2) }} d)
-                                                </span>
-                                                @if ($p['es_ultimo'])
-                                                    <span class="d-block small text-primary">
-                                                        <i class="bi bi-clock-history"></i>
-                                                        Hasta hoy · se actualiza al consultar
+                                                @if ($p['fecha_invertida'])
+                                                    <span class="small text-warning" title="La próxima etapa del flujo tiene una fecha anterior; el intervalo no se puede calcular sin corregir la fuente.">
+                                                        <i class="bi bi-exclamation-triangle"></i>
+                                                        Revisar fechas
                                                     </span>
                                                 @else
-                                                    <span class="d-block small text-muted">
-                                                        Hasta {{ $p['fecha_hasta']->format('d/m/Y') }}
+                                                    <strong>{{ number_format($p['duracion_horas'], 2) }} h</strong>
+                                                    <span class="text-muted">
+                                                        ({{ number_format($p['duracion_dias'], 2) }} d)
                                                     </span>
+                                                    @if ($p['es_ultimo'])
+                                                        <span class="d-block small text-primary">
+                                                            Hasta hoy · se actualiza al consultar
+                                                        </span>
+                                                    @endif
                                                 @endif
                                             </td>
 
