@@ -17,41 +17,39 @@ class VentaMayoristaController extends Controller
     }
 
     /**
-     * Panel de control del destino MODELO MUESTRA y destinos
-     * identificados expresamente como MAYORISTA.
+     * Ventas del canal mayorista = TODAS las líneas del local COMERCIAL MATRIZ.
+     * Las remisiones son movimientos físicos, NO comprobantes de venta.
      *
-     * No convierte una remisión en una venta: una remisión prueba
-     * un traslado, y solo un comprobante registrado en ventas
-     * prueba una operación comercial.
+     * Para enlazar ventas con OT se normaliza el código base de 9 caracteres
+     * y se asigna únicamente cuando esa base pertenece a UNA OT en toda la BD.
+     * Cuando no existe una coincidencia unívoca, no se inventa una OT.
      */
     public function index(Request $request)
     {
-        $tablas = Schema::hasTable('ot_logistica_detalle')
-            && Schema::hasTable('ot_logistica_remisiones')
-            && Schema::hasTable('ot');
+        $tablas = Schema::hasTable('ot')
+            && Schema::hasTable('ot_logistica_detalle')
+            && Schema::hasTable('ot_logistica_remisiones');
+        $tieneVentas = Schema::hasTable('ventas');
 
-        $ultimaRemision = $tablas
-            ? DB::table('ot_logistica_remisiones')->max('fecha_remision')
-            : null;
-        $hoy = Carbon::today();
-        $referencia = $ultimaRemision
-            ? Carbon::parse($ultimaRemision) : $hoy;
+        $fechaVentas = $tieneVentas ? DB::table('ventas')
+            ->whereRaw("UPPER(BTRIM(COALESCE(local,''))) = 'COMERCIAL MATRIZ'")
+            ->max('fecha') : null;
+        $fechaRemision = $tablas ? DB::table('ot_logistica_remisiones')->max('fecha_remision') : null;
+        $referencia = Carbon::parse(max($fechaVentas ?: '', $fechaRemision ?: '') ?: Carbon::today()->format('Y-m-d'));
 
         try {
             $desde = $request->filled('desde')
-                ? Carbon::createFromFormat('Y-m-d', (string) $request->input('desde'))->format('Y-m-d')
+                ? Carbon::createFromFormat('Y-m-d', (string) $request->query('desde'))->format('Y-m-d')
                 : $referencia->copy()->startOfMonth()->format('Y-m-d');
             $hasta = $request->filled('hasta')
-                ? Carbon::createFromFormat('Y-m-d', (string) $request->input('hasta'))->format('Y-m-d')
-                : $referencia->copy()->format('Y-m-d');
+                ? Carbon::createFromFormat('Y-m-d', (string) $request->query('hasta'))->format('Y-m-d')
+                : $referencia->format('Y-m-d');
         } catch (\Exception $e) {
             $desde = $referencia->copy()->startOfMonth()->format('Y-m-d');
             $hasta = $referencia->format('Y-m-d');
         }
         if ($desde > $hasta) {
-            $temp = $desde;
-            $desde = $hasta;
-            $hasta = $temp;
+            list($desde, $hasta) = [$hasta, $desde];
         }
 
         $tipo = (string) $request->query('destino', 'todos');
@@ -59,45 +57,125 @@ class VentaMayoristaController extends Controller
             $tipo = 'todos';
         }
         $buscar = trim((string) $request->query('buscar', ''));
-        // Regla comercial provisional, nunca presentada como foto efectuada.
         $muestrasPorOt = min(20, max(0, (int) $request->query('muestras_por_ot', 1)));
+        $incluirPlan = $request->boolean('incluir_plan');
 
-        $modeloD = "UPPER(TRIM(COALESCE(d.sucursal, ''))) LIKE '%MODELO%MUESTRA%'";
-        $modeloR = "(UPPER(TRIM(COALESCE(r.sucursal_logistica, ''))) LIKE '%MODELO%MUESTRA%' OR UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) LIKE '%MODELO%MUESTRA%')";
-        $mayoristaD = "UPPER(TRIM(COALESCE(d.sucursal, ''))) LIKE '%MAYORISTA%'";
-        $mayoristaR = "(UPPER(TRIM(COALESCE(r.sucursal_logistica, ''))) LIKE '%MAYORISTA%' OR UPPER(TRIM(COALESCE(r.sucursal_destino, ''))) LIKE '%MAYORISTA%')";
-        $modelo = "($modeloD OR $modeloR)";
-        $mayorista = "($mayoristaD OR $mayoristaR)";
-        $clase = "CASE WHEN $modelo THEN 'MODELO MUESTRA' WHEN $mayorista THEN 'MAYORISTA' ELSE 'OTRO' END";
+        $baseOt = $this->baseCodigoSql('o.codigo');
+        $baseVentas = $this->baseCodigoSql('v.codigo');
+        $modeloD = "UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MODELO%MUESTRA%'";
+        $mayoristaD = "(UPPER(BTRIM(COALESCE(d.sucursal,''))) LIKE '%MAYORISTA%' OR UPPER(BTRIM(COALESCE(d.sucursal,''))) = 'COMERCIAL MATRIZ')";
+        $modeloR = "(UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) LIKE '%MODELO%MUESTRA%' OR UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) LIKE '%MODELO%MUESTRA%' OR $modeloD)";
+        $mayoristaR = "(UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = 'COMERCIAL MATRIZ' OR UPPER(BTRIM(COALESCE(r.sucursal_logistica,''))) LIKE '%MAYORISTA%' OR UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) LIKE '%MAYORISTA%' OR UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = 'COMERCIAL MATRIZ' OR $mayoristaD)";
+        $clase = "CASE WHEN $modeloR THEN 'MODELO MUESTRA' ELSE 'MAYORISTA' END";
+        $clasePlan = "CASE WHEN $modeloD THEN 'MODELO MUESTRA' ELSE 'MAYORISTA' END";
 
-        $planes = collect();
-        $remisionesAgrupadas = collect();
-        $remisiones = null;
-        $filas = collect();
-        $sinVinculo = 0;
+        $baseVentasQuery = null;
+        $ventasPorCodigo = collect();
+        $ventasDias = collect();
+        $clientes = collect();
+        $ventasResumen = (object) [
+            'prendas_vendidas' => 0, 'devoluciones' => 0,
+            'prendas_netas' => 0, 'importe_neto' => 0,
+            'venta_lista' => 0, 'descuento' => 0, 'comprobantes' => 0,
+            'clientes' => 0, 'codigos' => 0,
+        ];
 
-        if ($tablas) {
-            // Plan logístico histórico por OT: no se reinterpreta como
-            // despacho ni se filtra por la fecha de remisión.
-            $planQuery = DB::table('ot_logistica_detalle as d')
-                ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
-                ->where(function ($q) use ($modeloD, $mayoristaD, $tipo) {
-                    if ($tipo !== 'mayorista') {
-                        $q->orWhereRaw($modeloD);
-                    }
-                    if ($tipo !== 'modelo') {
-                        $q->orWhereRaw($mayoristaD);
+        $basesOtBuscadas = [];
+        if ($buscar !== '' && $tablas) {
+            $basesOtBuscadas = DB::table('ot as o')
+                ->where(function ($q) use ($buscar) {
+                    $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
+                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                })->selectRaw($baseOt . ' as base')->pluck('base')->filter()->unique()->all();
+        }
+
+        if ($tieneVentas) {
+            $baseVentasQuery = DB::table('ventas as v')
+                ->whereRaw("UPPER(BTRIM(COALESCE(v.local,''))) = 'COMERCIAL MATRIZ'")
+                ->whereBetween('v.fecha', [$desde, $hasta]);
+            if ($buscar !== '') {
+                $baseVentasQuery->where(function ($q) use ($buscar, $baseVentas, $basesOtBuscadas) {
+                    $q->where('v.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('v.descripcion', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('v.cliente', 'ILIKE', '%' . $buscar . '%');
+                    if ($basesOtBuscadas) {
+                        foreach (array_chunk($basesOtBuscadas, 400) as $bases) {
+                            $q->orWhereIn(DB::raw($baseVentas), $bases);
+                        }
                     }
                 });
-            $planQuery = $this->filtrarOt($planQuery, $buscar, 'o');
+            }
+            $ventasResumen = (clone $baseVentasQuery)
+                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END),0) as prendas_vendidas")
+                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END),0) as devoluciones")
+                ->selectRaw("COALESCE(SUM(v.cantidad),0) as prendas_netas, COALESCE(SUM(v.p_venta),0) as importe_neto")
+                ->selectRaw("COALESCE(SUM(v.p_lista),0) as venta_lista, COALESCE(SUM(v.descuento),0) as descuento")
+                ->selectRaw("COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante ELSE NULL END) as comprobantes")
+                ->selectRaw("COUNT(DISTINCT NULLIF(BTRIM(COALESCE(v.cli_cod,'')),'')) as clientes, COUNT(DISTINCT v.codigo) as codigos")
+                ->first();
+            $ventasPorCodigo = (clone $baseVentasQuery)
+                ->selectRaw("$baseVentas as codigo_base, MAX(v.descripcion) as descripcion")
+                ->selectRaw("COALESCE(SUM(v.cantidad),0) as prendas_netas, COALESCE(SUM(v.p_venta),0) as venta_neta")
+                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END),0) as vendidas")
+                ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END),0) as devoluciones")
+                ->selectRaw("COUNT(DISTINCT CASE WHEN v.cantidad > 0 THEN v.comprobante ELSE NULL END) as comprobantes")
+                ->groupByRaw($baseVentas)->get();
 
-            $clasePlan = "CASE WHEN $modeloD THEN 'MODELO MUESTRA' ELSE 'MAYORISTA' END";
-            $planes = $planQuery
-                ->selectRaw("d.id_ot, $clasePlan as canal, MAX(o.nro_ot) as nro_ot, MAX(o.codigo) as codigo, MAX(o.descripcion) as descripcion, COALESCE(SUM(d.cantidad),0) as asignado")
-                ->groupBy('d.id_ot')
-                ->groupByRaw($clasePlan)
-                ->get();
+            $ventasDias = (clone $baseVentasQuery)
+                ->select('v.fecha')
+                ->selectRaw('COALESCE(SUM(v.cantidad),0) as prendas, COALESCE(SUM(v.p_venta),0) as importe')
+                ->groupBy('v.fecha')->orderBy('v.fecha')->get();
 
+            $clientes = (clone $baseVentasQuery)
+                ->selectRaw("COALESCE(NULLIF(BTRIM(v.cliente),''),'CLIENTE SIN IDENTIFICAR') as cliente")
+                ->selectRaw("COALESCE(SUM(v.p_venta),0) as venta_neta, COALESCE(SUM(v.cantidad),0) as prendas")
+                ->groupByRaw("COALESCE(NULLIF(BTRIM(v.cliente),''),'CLIENTE SIN IDENTIFICAR')")
+                ->orderBy('venta_neta','desc')->limit(8)->get();
+        }
+
+        // Nunca atribuir ventas solo por descripción. El código base debe
+        // identificar inequívocamente una OT en TODA la base histórica.
+        $idsPorBase = [];
+        if ($tablas && $ventasPorCodigo->isNotEmpty()) {
+            $bases = $ventasPorCodigo->pluck('codigo_base')->filter()->unique()->values()->all();
+            $candidatos = collect();
+            foreach (array_chunk($bases, 400) as $fragmento) {
+                $candidatos = $candidatos->concat(DB::table('ot as o')
+                    ->whereIn(DB::raw($baseOt), $fragmento)
+                    ->select('o.id_ot', 'o.nro_ot', 'o.codigo', 'o.descripcion')
+                    ->selectRaw("$baseOt as codigo_base")->get());
+            }
+            foreach ($candidatos->groupBy('codigo_base') as $base => $grupo) {
+                if ($grupo->pluck('id_ot')->unique()->count() === 1) {
+                    $idsPorBase[$base] = $grupo->first();
+                }
+            }
+        }
+
+        $mapa = [];
+        $nuevo = function ($idOt, $codigoBase, $descripcion, $nroOt) use (&$mapa) {
+            $clave = $idOt !== null ? 'OT:' . $idOt : 'SIN_OT:' . $codigoBase;
+            if (!isset($mapa[$clave])) {
+                $mapa[$clave] = (object) [
+                    'id_ot' => $idOt, 'nro_ot' => $nroOt,
+                    'codigo' => $codigoBase, 'descripcion' => $descripcion,
+                    'plan_modelo' => 0, 'plan_mayorista' => 0,
+                    'remitido_modelo' => 0, 'remitido_mayorista' => 0,
+                    'recibido_modelo' => 0, 'recibido_mayorista' => 0,
+                    'salida_central' => 0, 'traslado' => 0,
+                    'valor_referencial' => 0, 'costo_referencial' => 0,
+                    'documentos' => 0, 'ultima_remision' => null,
+                    'ventas_netas' => 0, 'vendidas' => 0, 'devoluciones' => 0,
+                    'venta_neta' => 0, 'comprobantes' => 0,
+                    'venta_sin_ot' => false, 'remision_sin_ot' => false,
+                ];
+            }
+            return $clave;
+        };
+
+        $remisiones = null;
+        if ($tablas) {
             $baseRemision = DB::table('ot_logistica_remisiones as r')
                 ->leftJoin('ot_logistica_detalle as d', 'd.id', '=', 'r.id_logistica_detalle')
                 ->leftJoin('ot as o', function ($join) {
@@ -105,232 +183,213 @@ class VentaMayoristaController extends Controller
                 })
                 ->whereNotNull('r.fecha_remision')
                 ->whereBetween('r.fecha_remision', [$desde, $hasta])
-                ->where(function ($q) use ($modelo, $mayorista, $tipo) {
-                    if ($tipo !== 'mayorista') {
-                        $q->orWhereRaw($modelo);
-                    }
-                    if ($tipo !== 'modelo') {
-                        $q->orWhereRaw($mayorista);
-                    }
+                ->where(function ($q) use ($tipo, $modeloR, $mayoristaR) {
+                    if ($tipo !== 'mayorista') $q->orWhereRaw($modeloR);
+                    if ($tipo !== 'modelo') $q->orWhereRaw($mayoristaR);
                 });
-
             if ($buscar !== '') {
                 $baseRemision->where(function ($q) use ($buscar) {
                     $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
-                      ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
-                      ->orWhere('r.codigo', 'ILIKE', '%' . $buscar . '%')
-                      ->orWhere('r.descripcion', 'ILIKE', '%' . $buscar . '%')
-                      ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
+                        ->orWhere('o.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('r.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('r.descripcion', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('o.descripcion', 'ILIKE', '%' . $buscar . '%');
                 });
             }
 
-            // Agrupar en PostgreSQL primero: no cargar decenas de miles
-            // de movimientos a PHP para calcular el resumen.
             $idExp = 'COALESCE(r.id_ot, d.id_ot)';
-            $claveCodigo = "CASE WHEN $idExp IS NULL THEN r.codigo ELSE '' END";
-            $remisionesAgrupadas = (clone $baseRemision)
-                ->selectRaw("$idExp as id_ot, $claveCodigo as codigo_sin_vinculo, $clase as canal")
+            // Código normalizado también para las remisiones sin OT;
+            // quedan separadas del canal de ventas hasta resolver el vínculo.
+            $baseRem = $this->baseCodigoSql('r.codigo');
+            $agrupadas = (clone $baseRemision)
+                ->selectRaw("$idExp as id_ot, $baseRem as codigo_base, $clase as canal")
                 ->selectRaw("MAX(o.nro_ot) as nro_ot, MAX(o.codigo) as codigo_ot, MAX(o.descripcion) as descripcion_ot, MAX(r.descripcion) as descripcion_remision")
                 ->selectRaw("COALESCE(SUM(r.cantidad),0) as remitido, COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibido")
-                ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN r.cantidad ELSE 0 END),0) as salida_central")
-                ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(TRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN 0 ELSE r.cantidad END),0) as traslado")
+                ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN r.cantidad ELSE 0 END),0) as salida_central")
+                ->selectRaw("COALESCE(SUM(CASE WHEN r.cod_sucursal_salida = 1 OR UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','MATRIZ') THEN 0 ELSE r.cantidad END),0) as traslado")
                 ->selectRaw("COALESCE(SUM(r.cantidad * COALESCE(r.precio_venta,0)),0) as valor_referencial, COALESCE(SUM(r.cantidad * COALESCE(r.costo_unitario,0)),0) as costo_referencial")
-                ->selectRaw("MIN(r.fecha_remision) as primera_remision, MAX(r.fecha_remision) as ultima_remision, MAX(r.fecha_recepcion) as ultima_recepcion, COUNT(*) as documentos")
-                ->groupByRaw("$idExp, $claveCodigo, $clase")
+                ->selectRaw("MAX(r.fecha_remision) as ultima_remision, COUNT(*) as documentos")
+                ->groupByRaw("$idExp, $baseRem, $clase")
                 ->get();
+
+            foreach ($agrupadas as $dato) {
+                $clave = $nuevo($dato->id_ot, $dato->id_ot !== null ? ($dato->codigo_ot ?: $dato->codigo_base) : $dato->codigo_base,
+                    $dato->descripcion_ot ?: $dato->descripcion_remision, $dato->nro_ot);
+                $fila = $mapa[$clave];
+                $categoria = $dato->canal === 'MODELO MUESTRA' ? 'modelo' : 'mayorista';
+                $fila->{'remitido_' . $categoria} += (int) $dato->remitido;
+                $fila->{'recibido_' . $categoria} += (int) $dato->recibido;
+                $fila->salida_central += (int) $dato->salida_central;
+                $fila->traslado += (int) $dato->traslado;
+                $fila->valor_referencial += (float) $dato->valor_referencial;
+                $fila->costo_referencial += (float) $dato->costo_referencial;
+                $fila->documentos += (int) $dato->documentos;
+                $fila->remision_sin_ot = $dato->id_ot === null;
+                if (!$fila->ultima_remision || $dato->ultima_remision > $fila->ultima_remision) {
+                    $fila->ultima_remision = $dato->ultima_remision;
+                }
+            }
 
             $remisiones = (clone $baseRemision)
                 ->selectRaw("$idExp as id_ot, $clase as canal")
-                ->addSelect(
-                    'r.fecha_remision', 'r.fecha_recepcion', 'r.serie', 'r.numero_remision',
-                    'r.codigo', 'r.descripcion', 'r.cantidad', 'r.precio_venta',
-                    'r.costo_unitario', 'r.sucursal_salida', 'r.sucursal_destino',
-                    'r.sucursal_logistica', 'o.nro_ot'
-                )
-                ->orderBy('r.fecha_remision', 'desc')
-                ->orderBy('r.id', 'desc')
+                ->addSelect('r.fecha_remision','r.fecha_recepcion','r.serie','r.numero_remision','r.codigo',
+                    'r.descripcion','r.cantidad','r.precio_venta','r.sucursal_salida',
+                    'r.sucursal_destino','r.sucursal_logistica','o.nro_ot')
+                ->orderBy('r.fecha_remision','desc')->orderBy('r.id','desc')
                 ->paginate(30, ['*'], 'remisiones_page')
                 ->appends($request->except('remisiones_page'));
-
-            $mapa = [];
-            $asegurar = function ($idOt, $codigoSinVinculo, $canal) use (&$mapa) {
-                $clave = ($idOt === null ? 'SIN_OT:' . $codigoSinVinculo : 'OT:' . $idOt) . ':' . $canal;
-                if (!isset($mapa[$clave])) {
-                    $mapa[$clave] = (object) [
-                        'id_ot' => $idOt,
-                        'nro_ot' => null, 'codigo' => $codigoSinVinculo,
-                        'descripcion' => null, 'canal' => $canal,
-                        'asignado' => 0, 'remitido' => 0, 'recibido' => 0,
-                        'salida_central' => 0, 'traslado' => 0, 'valor_referencial' => 0,
-                        'costo_referencial' => 0, 'documentos' => 0,
-                        'primera_remision' => null, 'ultima_remision' => null,
-                        'ultima_recepcion' => null,
-                    ];
-                }
-                return $clave;
-            };
-
-            foreach ($planes as $p) {
-                $clave = $asegurar($p->id_ot, '', $p->canal);
-                $mapa[$clave]->nro_ot = $p->nro_ot;
-                $mapa[$clave]->codigo = $p->codigo;
-                $mapa[$clave]->descripcion = $p->descripcion;
-                $mapa[$clave]->asignado += (int) $p->asignado;
-            }
-            foreach ($remisionesAgrupadas as $p) {
-                $clave = $asegurar($p->id_ot, $p->codigo_sin_vinculo, $p->canal);
-                $fila = $mapa[$clave];
-                $fila->nro_ot = $fila->nro_ot ?: $p->nro_ot;
-                $fila->codigo = $fila->codigo ?: $p->codigo_ot;
-                $fila->descripcion = $fila->descripcion ?: $p->descripcion_ot ?: $p->descripcion_remision;
-                foreach (['remitido', 'recibido', 'salida_central', 'traslado', 'documentos'] as $campo) {
-                    $fila->{$campo} += (int) $p->{$campo};
-                }
-                foreach (['valor_referencial', 'costo_referencial'] as $campo) {
-                    $fila->{$campo} += (float) $p->{$campo};
-                }
-                $fila->primera_remision = $fila->primera_remision ?: $p->primera_remision;
-                if (!$fila->ultima_remision || $p->ultima_remision > $fila->ultima_remision) {
-                    $fila->ultima_remision = $p->ultima_remision;
-                }
-                if ($p->ultima_recepcion && (!$fila->ultima_recepcion || $p->ultima_recepcion > $fila->ultima_recepcion)) {
-                    $fila->ultima_recepcion = $p->ultima_recepcion;
-                }
-            }
-
-            $filas = collect(array_values($mapa))->map(function ($fila) use ($muestrasPorOt) {
-                $fila->remitido = max(0, (int) $fila->remitido);
-                $fila->recibido = min($fila->remitido, max(0, (int) $fila->recibido));
-                $fila->en_transito = max(0, $fila->remitido - $fila->recibido);
-                $fila->sin_vinculo = $fila->id_ot === null;
-                $modelo = $fila->canal === 'MODELO MUESTRA';
-                // Nunca declarar "vendido" por una remisión.
-                // Si falta el vínculo a la OT, no imputar reserva ni stock comercial.
-                $fila->muestra_estimada = $modelo && !$fila->sin_vinculo
-                    ? min($muestrasPorOt, $fila->remitido) : 0;
-                $fila->potencial_enviado = $fila->sin_vinculo ? 0
-                    : max(0, $fila->remitido - $fila->muestra_estimada);
-                // Recibido es lo que tiene fecha de recepción. Una prenda
-                // todavía en tránsito no se presenta como disponible.
-                $muestrasRecibidas = $modelo && !$fila->sin_vinculo
-                    ? min($muestrasPorOt, $fila->recibido) : 0;
-                $fila->potencial_venta = $fila->sin_vinculo ? 0
-                    : max(0, $fila->recibido - $muestrasRecibidas);
-                $fila->muestra_asignada = $modelo && !$fila->sin_vinculo
-                    ? min($muestrasPorOt, max(0, (int) $fila->asignado)) : 0;
-                $fila->sin_remision = max(0, (int) $fila->asignado - $fila->remitido);
-                return $fila;
-            })->sortByDesc('remitido')->values();
-            $sinVinculo = $filas->where('sin_vinculo', true)->count();
         }
 
-        $vinculadas = $filas->where('sin_vinculo', false);
+        // Las ventas de COMERCIAL MATRIZ se integran una vez por código base.
+        // La venta NO se atribuye a MODELO MUESTRA/otro destino en particular.
+        foreach ($ventasPorCodigo as $venta) {
+            $base = (string) $venta->codigo_base;
+            $ot = $idsPorBase[$base] ?? null;
+            $clave = $nuevo($ot ? $ot->id_ot : null, $ot ? $ot->codigo : $base,
+                $ot ? $ot->descripcion : $venta->descripcion, $ot ? $ot->nro_ot : null);
+            $fila = $mapa[$clave];
+            $fila->ventas_netas += (int) $venta->prendas_netas;
+            $fila->vendidas += (int) $venta->vendidas;
+            $fila->devoluciones += (int) $venta->devoluciones;
+            $fila->venta_neta += (float) $venta->venta_neta;
+            $fila->comprobantes += (int) $venta->comprobantes;
+            $fila->venta_sin_ot = $ot === null;
+        }
+
+        // Incorporar el plan solo para OT activas en el período por
+        // ventas o remisiones; opción de auditoría para planes sin actividad.
+        if ($tablas) {
+            $idsActivos = collect($mapa)->pluck('id_ot')->filter()->unique()->values()->all();
+            if ($idsActivos || $incluirPlan) {
+                $planQuery = DB::table('ot_logistica_detalle as d')
+                    ->join('ot as o', 'o.id_ot', '=', 'd.id_ot')
+                    ->where(function ($q) use ($tipo,$modeloD,$mayoristaD) {
+                        if ($tipo !== 'mayorista') $q->orWhereRaw($modeloD);
+                        if ($tipo !== 'modelo') $q->orWhereRaw($mayoristaD);
+                    });
+                if (!$incluirPlan) {
+                    $planQuery->whereIn('d.id_ot',$idsActivos);
+                }
+                if ($buscar !== '') {
+                    $planQuery->where(function ($q) use ($buscar) {
+                        $q->whereRaw('CAST(o.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
+                            ->orWhere('o.codigo','ILIKE','%' . $buscar . '%')
+                            ->orWhere('o.descripcion','ILIKE','%' . $buscar . '%');
+                    });
+                }
+                $planes = $planQuery
+                    ->selectRaw("d.id_ot, $clasePlan as canal, MAX(o.nro_ot) as nro_ot, MAX(o.codigo) as codigo, MAX(o.descripcion) as descripcion, COALESCE(SUM(d.cantidad),0) as asignado")
+                    ->groupBy('d.id_ot')->groupByRaw($clasePlan)->get();
+                foreach ($planes as $dato) {
+                    $clave = $nuevo($dato->id_ot, $dato->codigo, $dato->descripcion, $dato->nro_ot);
+                    $categoria = $dato->canal === 'MODELO MUESTRA' ? 'modelo' : 'mayorista';
+                    $mapa[$clave]->{'plan_' . $categoria} += (int) $dato->asignado;
+                }
+            }
+        }
+
+        $filas = collect(array_values($mapa))->map(function ($fila) use ($muestrasPorOt) {
+            $fila->plan = $fila->plan_modelo + $fila->plan_mayorista;
+            $fila->remitido = $fila->remitido_modelo + $fila->remitido_mayorista;
+            $fila->recibido = $fila->recibido_modelo + $fila->recibido_mayorista;
+            $fila->transito = max(0, $fila->remitido - $fila->recibido);
+            // Movimiento interno != mercadería adicional: separar traslado
+            // y salida original, evitando inflar KPI de stock o facturación.
+            $fila->reserva_foto = $fila->id_ot === null
+                ? null : min($muestrasPorOt, max(0, $fila->recibido_modelo));
+            $fila->recibido_venta_estimado = $fila->id_ot === null
+                ? null : max(0, $fila->recibido - $fila->reserva_foto);
+            $fila->brecha_movimientos = $fila->plan - $fila->remitido;
+            $fila->status = $fila->id_ot === null ? 'SIN OT SEGURA'
+                : ($fila->ventas_netas > 0 && $fila->plan === 0 && $fila->remitido === 0
+                    ? 'VENTA SIN PLAN/REMISIÓN'
+                    : ($fila->ventas_netas > 0 && $fila->remitido === 0
+                        ? 'VENTA SIN REMISIÓN'
+                        : ($fila->transito > 0 ? 'RECEPCIÓN PENDIENTE' : 'CON DOCUMENTOS')));
+            return $fila;
+        })->sort(function ($a,$b) {
+            $alerta = ['SIN OT SEGURA'=>0,'VENTA SIN PLAN/REMISIÓN'=>1,'VENTA SIN REMISIÓN'=>2,'RECEPCIÓN PENDIENTE'=>3,'CON DOCUMENTOS'=>4];
+            $prioridad = ($alerta[$a->status] ?? 5) <=> ($alerta[$b->status] ?? 5);
+            return $prioridad ?: ($b->venta_neta <=> $a->venta_neta);
+        })->values();
+
+        $vinculadas = $filas->whereNotNull('id_ot');
         $resumen = (object) [
-            'ot' => $vinculadas->where('remitido', '>', 0)->pluck('id_ot')->unique()->count(),
-            'ot_asignadas' => $vinculadas->where('asignado', '>', 0)->pluck('id_ot')->unique()->count(),
-            'asignado_historico' => (int) $filas->sum('asignado'),
+            'ot_plan' => $vinculadas->where('plan','>',0)->count(),
+            'ot_con_venta' => $vinculadas->where('comprobantes','>',0)->count(),
+            'plan' => (int) $vinculadas->sum('plan'),
             'remitido' => (int) $filas->sum('remitido'),
             'recibido' => (int) $filas->sum('recibido'),
-            'en_transito' => (int) $filas->sum('en_transito'),
-            'modelo_remitido' => (int) $filas->where('canal', 'MODELO MUESTRA')->sum('remitido'),
-            'muestra_estimada' => (int) $vinculadas->sum('muestra_estimada'),
-            'potencial_enviado' => (int) $vinculadas->sum('potencial_enviado'),
-            'potencial_venta' => (int) $vinculadas->sum('potencial_venta'),
-            'sin_vinculo' => (int) $filas->where('sin_vinculo', true)->sum('remitido'),
-            'valor_referencial' => (float) $filas->sum('valor_referencial'),
-            'costo_referencial' => (float) $filas->sum('costo_referencial'),
+            'transito' => (int) $filas->sum('transito'),
+            'salida_central' => (int) $filas->sum('salida_central'),
             'traslados' => (int) $filas->sum('traslado'),
+            'reserva_foto' => (int) $vinculadas->sum('reserva_foto'),
+            'recibido_venta_estimado' => (int) $vinculadas->sum('recibido_venta_estimado'),
+            'sin_ot_venta' => (int) $filas->where('venta_sin_ot',true)->sum('ventas_netas'),
+            'sin_ot_movimiento' => (int) $filas->where('remision_sin_ot',true)->sum('remitido'),
+            'con_alerta' => $filas->where('status','<>','CON DOCUMENTOS')->count(),
         ];
 
-        // Las ventas solo se reconocen si los movimientos de ventas
-        // tienen un LOCAL explícito del canal mayorista; COMERCIAL MATRIZ
-        // no se infiere mayorista y tampoco se cruzan códigos ambiguos.
-        $ventasMay = null;
-        if (Schema::hasTable('ventas')) {
-            $query = DB::table('ventas as v')
-                ->whereBetween('v.fecha', [$desde, $hasta])
-                ->where(function ($q) {
-                    $q->whereRaw("UPPER(TRIM(v.local)) LIKE '%MAYORISTA%'")
-                      ->orWhereRaw("UPPER(TRIM(v.local)) LIKE '%MODELO%MUESTRA%'");
-                });
-            if ($buscar !== '') {
-                $query->where(function ($q) use ($buscar) {
-                    $q->where('v.codigo', 'ILIKE', '%' . $buscar . '%')
-                      ->orWhere('v.descripcion', 'ILIKE', '%' . $buscar . '%')
-                      ->orWhere('v.cliente', 'ILIKE', '%' . $buscar . '%');
-                });
-            }
-            $ventasMay = $query->selectRaw("COALESCE(SUM(v.cantidad),0) as prendas_netas, COALESCE(SUM(v.p_venta),0) as importe_neto, COUNT(DISTINCT COALESCE(v.local,'') || '|' || COALESCE(v.comprobante,'')) as comprobantes")->first();
-        }
-
-        // Exporta el mismo universo filtrado que aparece en el resumen,
-        // no solamente la página visible. Texto protegido contra fórmulas CSV.
         if ($request->query('exportar') === 'csv') {
-            return response()->streamDownload(function () use ($filas) {
-                $salida = fopen('php://output', 'w');
-                fwrite($salida, "\xEF\xBB\xBF");
-                fputcsv($salida, [
-                    'OT', 'Código', 'Descripción', 'Canal',
-                    'Asignado histórico', 'Remitido período', 'Recibido',
-                    'En tránsito', 'Reserva fotos estimada',
-                    'Destinado comercialización estimado',
-                    'Recibido para comercialización estimado',
-                    'Salida Central', 'Redistribuido', 'Documentos',
-                    'Última remisión', 'Valor referencial Gs', 'Costo referencial Gs',
-                    'Alerta vínculo',
-                ], ';');
-
-                $texto = function ($valor) {
-                    $valor = (string) $valor;
-                    return preg_match('/^[\s]*[=+\-@]/u', $valor) ? "'" . $valor : $valor;
-                };
-                foreach ($filas as $fila) {
-                    fputcsv($salida, [
-                        $texto($fila->nro_ot ?: 'SIN OT'), $texto($fila->codigo),
-                        $texto($fila->descripcion), $texto($fila->canal),
-                        $fila->asignado, $fila->remitido, $fila->recibido,
-                        $fila->en_transito, $fila->sin_vinculo ? '' : $fila->muestra_estimada,
-                        $fila->sin_vinculo ? '' : $fila->potencial_enviado,
-                        $fila->sin_vinculo ? '' : $fila->potencial_venta,
-                        $fila->salida_central, $fila->traslado, $fila->documentos,
-                        $fila->ultima_remision ?: '', round($fila->valor_referencial, 2),
-                        round($fila->costo_referencial, 2),
-                        $fila->sin_vinculo ? 'REVISAR OT' : '',
-                    ], ';');
-                }
-                fclose($salida);
-            }, 'mayoristas_' . $desde . '_' . $hasta . '.csv', [
-                'Content-Type' => 'text/csv; charset=UTF-8',
-            ]);
+            return $this->csv($filas,$desde,$hasta);
         }
-
-        $pagina = max(1, (int) $request->query('page', 1));
+        $pagina = max(1, (int) $request->query('page',1));
         $porPagina = 35;
         $ordenes = new LengthAwarePaginator(
-            $filas->slice(($pagina - 1) * $porPagina, $porPagina)->values(),
-            $filas->count(),
-            $porPagina,
-            $pagina,
-            ['path' => $request->url(), 'query' => $request->query()]
+            $filas->slice(($pagina - 1) * $porPagina,$porPagina)->values(),
+            $filas->count(),$porPagina,$pagina,
+            ['path'=>$request->url(),'query'=>$request->query()]
         );
-
-        return view('ventas.mayoristas', compact(
-            'desde', 'hasta', 'tipo', 'buscar', 'muestrasPorOt',
-            'resumen', 'ordenes', 'remisiones', 'ventasMay',
-            'sinVinculo', 'tablas'
+        return view('ventas.mayoristas',compact(
+            'desde','hasta','tipo','buscar','muestrasPorOt','incluirPlan',
+            'resumen','ventasResumen','ordenes','remisiones','ventasDias',
+            'clientes','tablas','tieneVentas'
         ));
     }
 
-    private function filtrarOt($query, string $buscar, string $aliasOt)
+    /**
+     * Misma normalización empleada en conciliación logística:
+     * 8 dígitos -> 0 inicial; demás códigos -> primeros 9 caracteres
+     * alfanuméricos. Menos de 8 caracteres no son atribuibles.
+     */
+    private function baseCodigoSql(string $campo): string
     {
-        if ($buscar === '') {
-            return $query;
-        }
+        $limpio = "REGEXP_REPLACE(UPPER(BTRIM(COALESCE($campo,''))),'[^0-9A-Z]','','g')";
+        return "(CASE WHEN $limpio ~ '^[0-9]{8}$' THEN LPAD($limpio,9,'0') "
+            . "WHEN LENGTH($limpio) >= 9 THEN LEFT($limpio,9) ELSE '' END)";
+    }
 
-        return $query->where(function ($q) use ($buscar, $aliasOt) {
-            $q->whereRaw('CAST(' . $aliasOt . '.nro_ot AS TEXT) ILIKE ?', ['%' . $buscar . '%'])
-              ->orWhere($aliasOt . '.codigo', 'ILIKE', '%' . $buscar . '%')
-              ->orWhere($aliasOt . '.descripcion', 'ILIKE', '%' . $buscar . '%');
-        });
+    private function csv($filas, string $desde, string $hasta)
+    {
+        return response()->streamDownload(function () use ($filas) {
+            $s = fopen('php://output','w');
+            fwrite($s,"\xEF\xBB\xBF");
+            fputcsv($s,[
+                'OT','Código','Descripción','Plan MODELO MUESTRA','Plan otros',
+                'Plan total','Remitido','Recibido','En tránsito',
+                'Salida original Central','Traslados desde locales',
+                'Reserva fotos estimada','Recibido comercial estimado',
+                'Unidades vendidas','Devoluciones','Unidades netas venta',
+                'Venta neta Gs','Comprobantes','Estado conciliación'
+            ],';');
+            $csvSeguro = function ($v) {
+                $v = (string) $v;
+                return preg_match('/^\s*[=+\-@]/u',$v) ? "'" . $v : $v;
+            };
+            foreach($filas as $f) {
+                fputcsv($s,[
+                    $csvSeguro($f->nro_ot ?: 'SIN OT'),$csvSeguro($f->codigo),
+                    $csvSeguro($f->descripcion),$f->plan_modelo,$f->plan_mayorista,
+                    $f->plan,$f->remitido,$f->recibido,$f->transito,
+                    $f->salida_central,$f->traslado,$f->reserva_foto,
+                    $f->recibido_venta_estimado,$f->vendidas,$f->devoluciones,
+                    $f->ventas_netas,round($f->venta_neta,2),$f->comprobantes,
+                    $csvSeguro($f->status)
+                ],';');
+            }
+            fclose($s);
+        },'mayoristas_comercial_matriz_'.$desde.'_'.$hasta.'.csv',[
+            'Content-Type'=>'text/csv; charset=UTF-8'
+        ]);
     }
 }
