@@ -110,5 +110,6 @@ class ConteoEtapasPedidoTest extends TestCase
         $this->assertSame(1,$resultado[0]->ots);
         $this->assertSame(2,$resultado[0]->ots_en_area);
         $this->assertSame(1,$resultado[0]->ots_fuera_p);
+        $this->assertSame(270,$resultado[0]->prendas);
     }
 }
