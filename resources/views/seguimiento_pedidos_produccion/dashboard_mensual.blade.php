@@ -923,59 +923,61 @@
                 </span>
             </div>
             <div class="row">
-                <div class="col-xl-5">
+                <div class="col-12 mb-3">
                     <div class="card prod-section-card">
                         <div class="card-header">
-                            <strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de botella · OT en cada área</strong>
+                            <strong><i class="fas fa-layer-group text-primary mr-2"></i>Cuello de botella · OT y prendas por área</strong>
                             <small class="d-block text-muted mt-1">
-                                «En el área»: última etapa registrada de todas las OT.
-                                «Pedido P»: subconjunto pendiente del pedido. Ambas cifras usan el mismo corte.
-                                No representa un conteo físico del taller. Las OT fuera de P pueden ser de otros pedidos o no tener pedido asociado.
+                                Cada OT se cuenta una vez en su última etapa, al mismo corte.
+                                Separamos OT pendientes P, otras asociaciones de pedidos y OT sin pedido vigente.
+                                Las prendas corresponden al resultado de esa etapa, no al inventario físico.
                             </small>
                         </div>
                         <div class="table-responsive">
-                            <table class="table prod-table mb-0">
+                            <table class="table prod-table table-bordered mb-0" style="white-space:nowrap">
                                 <thead>
                                     <tr>
-                                        <th>Proceso actual</th>
-                                        <th title="Todas las OT cuyo último proceso registrado corresponde al área, con o sin pedido P">OT en esta área</th>
-                                        <th title="OT de pedidos P todavía pendientes en esta etapa">OT de pedidos P</th>
-                                        <th title="Prendas pendientes de los pedidos P; no incluye otras OT del área">Prendas de P</th>
+                                        <th rowspan="2">Proceso actual</th>
+                                        <th colspan="2">Total del área</th>
+                                        <th colspan="2">Pendientes P</th>
+                                        <th colspan="2">Con pedido fuera de P pendiente</th><th colspan="2">Sin pedido vigente</th>
+                                    </tr>
+                                    <tr>
+                                        <th>OT</th><th>Prendas</th>
+                                        <th>OT</th><th>Prendas</th>
+                                        <th>OT</th><th>Prendas</th>
+                                        <th>OT</th><th>Prendas</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @forelse($porEtapa as $fila)
                                         <tr>
-                                            <td>{{ $fila->etapa }}</td>
-                                            <td>
-                                                @if($fila->conteo_inconsistente)
-                                                    <span class="text-warning font-weight-bold" title="El total de etapas no cubre todas las OT pendientes P de este grupo. Revisar las trazabilidades.">REVISAR</span>
-                                                @elseif($fila->ots_en_area === null)
-                                                    <span class="text-muted">Sin etapa</span>
-                                                @else
-                                                    <strong>{{ number_format($fila->ots_en_area, 0, ',', '.') }}</strong>
-                                                @endif
-                                            </td>
-                                            <td>
-                                                <strong>{{ number_format($fila->ots, 0, ',', '.') }}</strong>
-                                                @if($fila->ots_fuera_p !== null && $fila->ots_fuera_p > 0)
-                                                    <small class="d-block text-muted">
-                                                        {{ number_format($fila->ots_fuera_p, 0, ',', '.') }} fuera de pendientes P
-                                                    </small>
-                                                @endif
-                                            </td>
-                                            <td>{{ number_format($fila->prendas, 0, ',', '.') }}</td>
+                                            <td class="font-weight-bold">{{ $fila->etapa }}</td>
+                                            <td>{{ $fila->ots_en_area === null ? 'REVISAR' : number_format($fila->ots_en_area,0,',','.') }}</td>
+                                            <td>{{ $fila->prendas_en_area === null ? 'SIN DATO' : number_format($fila->prendas_en_area,0,',','.') }}</td>
+                                            <td class="font-weight-bold">{{ number_format($fila->ots,0,',','.') }}</td>
+                                            <td>{{ $fila->prendas === null ? 'SIN DATO' : number_format($fila->prendas,0,',','.') }}</td>
+                                            <td>{{ $fila->ots_con_otro_pedido === null ? 'REVISAR' : number_format($fila->ots_con_otro_pedido,0,',','.') }}</td>
+                                            <td>{{ $fila->prendas_con_otro_pedido === null ? 'SIN DATO' : number_format($fila->prendas_con_otro_pedido,0,',','.') }}</td>
+                                            <td class="{{ ($fila->ots_sin_pedido ?? 0)>0 ? 'text-danger font-weight-bold':'' }}">{{ $fila->ots_sin_pedido === null ? 'REVISAR' : number_format($fila->ots_sin_pedido,0,',','.') }}</td>
+                                            <td class="{{ ($fila->prendas_sin_pedido ?? 0)>0 ? 'text-danger font-weight-bold':'' }}">{{ $fila->prendas_sin_pedido === null ? 'SIN DATO' : number_format($fila->prendas_sin_pedido,0,',','.') }}</td>
                                         </tr>
                                     @empty<tr>
-                                            <td colspan="4" class="text-muted">Sin OT pendientes de pedidos P para este corte</td>
+                                            <td colspan="9" class="text-muted text-center">Sin OT en estas etapas al corte seleccionado.</td>
                                         </tr>
                                     @endforelse
                                 </tbody>
                             </table>
                         </div>
+                        <div class="card-footer bg-white small text-muted">
+                            Total área = P pendientes + con pedido fuera de P pendiente + sin pedido vigente.
+                            Cada OT cuenta una vez, usando la última etapa registrada.
+                            Prendas = resultado del último proceso; SIN DATO significa resultado incompleto.
+                            No es un conteo físico. Se excluyen asociaciones anuladas o reemplazadas.
+                        </div>
                     </div>
                 </div>
-                <div class="col-xl-7">
+                <div class="col-12">
                     <div class="card prod-section-card">
                         <div class="card-header"><strong><i class="fas fa-clipboard-list text-primary mr-2"></i>OT
                                 pendientes de pedidos P</strong></div>
