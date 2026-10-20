@@ -16,6 +16,7 @@ use App\Exports\OtLogisticaExport;
 use App\Exports\ReporteSemanalLogisticaExport;
 use App\Models\OtTrazabilidad;
 use App\Support\TiemposTrazabilidadOt;
+use App\Support\UltimoProcesoOt;
 use App\Http\Requests\OtAtrasadasRequest;
 use App\Services\LogisticaConciliacionService;
 
@@ -1007,14 +1008,7 @@ class OtController extends Controller
              * Última ACTIVIDAD real: manda la fecha y el orden del proceso solo
              * desempata cuando existen movimientos en la misma fecha.
              */
-            $ultimoMovimiento = $trazabilidades
-                ->sortByDesc(function ($traza) {
-                    $fecha = Carbon::parse($traza->fecha_proceso)->timestamp;
-                    $ordenProceso = $this->ordenProceso($traza->proceso);
-
-                    return sprintf('%012d-%05d', $fecha, $ordenProceso);
-                })
-                ->first();
+            $ultimoMovimiento = UltimoProcesoOt::ultimo($trazabilidades);
 
             if (!$ultimoMovimiento) {
                 continue;
@@ -1643,12 +1637,7 @@ class OtController extends Controller
         |
         */
 
-            $ultimoMovimiento = $trazas
-                ->sortByDesc(function ($traza) {
-
-                    return $traza->fecha_carbon->timestamp;
-                })
-                ->first();
+            $ultimoMovimiento = UltimoProcesoOt::ultimo($trazas);
 
 
             if (!$ultimoMovimiento) {
@@ -1712,23 +1701,7 @@ class OtController extends Controller
         |
         */
 
-            $procesoActualTraza = $trazas
-                ->sortByDesc(function ($traza) {
-
-                    /*
-                 * Primero manda el orden del flujo.
-                 *
-                 * La fecha queda como desempate cuando hay
-                 * procesos repetidos.
-                 */
-
-                    return sprintf(
-                        '%05d-%010d',
-                        $traza->orden_flujo,
-                        $traza->fecha_carbon->timestamp
-                    );
-                })
-                ->first();
+            $procesoActualTraza = UltimoProcesoOt::ultimo($trazas);
 
 
             if (!$procesoActualTraza) {
@@ -1795,22 +1768,11 @@ class OtController extends Controller
 
             if ($suspendida) {
 
-                $procesoAnteriorTraza = $trazas
-                    ->filter(function ($traza) {
-
-                        return
-                            $traza->proceso_normalizado
-                            !== self::PROCESO_SUSPENDIDO;
+                $procesoAnteriorTraza = UltimoProcesoOt::ultimo(
+                    $trazas->filter(function ($traza) {
+                        return $traza->proceso_normalizado !== self::PROCESO_SUSPENDIDO;
                     })
-                    ->sortByDesc(function ($traza) {
-
-                        return sprintf(
-                            '%05d-%010d',
-                            $traza->orden_flujo,
-                            $traza->fecha_carbon->timestamp
-                        );
-                    })
-                    ->first();
+                );
 
 
                 if ($procesoAnteriorTraza) {
