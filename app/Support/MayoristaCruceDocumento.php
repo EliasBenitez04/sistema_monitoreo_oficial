@@ -26,6 +26,7 @@ class MayoristaCruceDocumento
             $r->modelo = (int) ($r->es_modelo ?? 0) === 1;
             $r->origen_real = MayoristaOrigenRemision::nombreOrigen($r);
             $r->tipo_origen = MayoristaOrigenRemision::tipoOrigen($r);
+            $r->origen_discordante = MayoristaOrigenRemision::origenDiscordante($r);
             $r->canal = MayoristaOrigenRemision::clasificar($r);
             $r->posterior = $fechaFactura !== null
                 && $r->fecha_remision > $fechaFactura;
@@ -57,6 +58,8 @@ class MayoristaCruceDocumento
                     'fecha' => $r->fecha_remision,
                     'origen' => $r->origen_real,
                     'tipo_origen' => $r->tipo_origen,
+                    'origen_discordante' => $r->origen_discordante,
+                    'origen_importado' => $r->sucursal_salida,
                     'canal' => $r->canal,
                     'destino' => $r->es_destino_matriz ? 'COMERCIAL MATRIZ'
                         : ($r->sucursal_destino ?: $r->sucursal_logistica),
