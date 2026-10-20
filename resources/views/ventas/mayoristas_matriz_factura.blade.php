@@ -68,6 +68,9 @@
                   <span class="mx-1">→</span> Destino: {{ $doc->destino ?: 'No informado' }}
                   <span class="badge badge-{{ $doc->tipo_origen==='LOCAL'?'info':($doc->tipo_origen==='CENTRAL'?'secondary':'warning') }} ml-2">{{ $doc->canal }}</span>
                 </small>
+                @if($doc->origen_discordante)
+                  <small class="d-block text-warning"><i class="fas fa-exclamation-triangle"></i> Código y nombre de origen discordantes: revisar «{{ $doc->origen_importado }}»</small>
+                @endif
               </div>
               <div class="small">
                 <span class="badge badge-{{ $doc->completo ? 'success':'secondary' }}">{{ $doc->coincidencias }} de {{ $totales->codigos }} códigos de la factura</span>
@@ -152,7 +155,9 @@
       <thead><tr><th>Remisión</th><th>Fecha</th><th>Origen real</th><th>Código</th><th class="text-right">Asignadas</th><th>Evidencia</th><th>Revertir</th></tr></thead><tbody>
       @forelse($enlaces as $v)<tr>
         <td>{{ $v->serie }}-{{ $v->numero_remision }}</td><td>{{ $v->fecha_remision }}</td>
-        <td><strong>{{ $v->origen_real }}</strong><small class="d-block text-muted">{{ $v->tipo_origen }}</small></td><td>{{ $v->codigo }}</td>
+        <td><strong>{{ $v->origen_real }}</strong><small class="d-block text-muted">{{ $v->tipo_origen }}</small>
+          @if($v->origen_discordante)<small class="d-block text-warning">Revisar origen importado: {{ $v->sucursal_salida }}</small>@endif
+        </td><td>{{ $v->codigo }}</td>
         <td class="text-right font-weight-bold">{{ $v->cantidad }}</td><td>{{ $v->observacion }}</td>
         <td><form method="POST" class="maym-form" action="{{ route('ventas.mayoristas.desvincular',['clave'=>$factura->clave,'id'=>$v->id]) }}">
           @csrf<input type="hidden" name="mes" value="{{ $mes }}"><input name="motivo" class="form-control form-control-sm" minlength="5" maxlength="255" required placeholder="Motivo de reversión">
