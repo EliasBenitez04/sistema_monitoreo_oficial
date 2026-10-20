@@ -862,6 +862,8 @@
                 </div>
             </div>
 
+            <details class="prod-details" id="calendarioProduccion">
+                <summary><i class="far fa-calendar-alt mr-1"></i>Calendario completo de producción y consulta diaria de OT</summary>
             <div class="card mb-3">
                 <div class="card-header bg-white">
                     <h3 class="prod-section-title mb-1"><i class="far fa-calendar-alt mr-2 text-primary"></i>Calendario de
@@ -1013,6 +1015,8 @@
                 @endif
             @endforeach
 
+            </details>
+
             <div class="alert {{ $indicadores->pendientes_en_vivo ? 'alert-info' : 'alert-secondary' }} mb-3">
                 <i class="fas fa-clock mr-1"></i>
                 <strong>{{ $indicadores->pendientes_en_vivo ? 'Pendientes vigentes' : 'Pendientes al corte histórico' }}:</strong>
@@ -1029,6 +1033,8 @@
                     No confundir 25 días de un corte anterior con los días actuales.
                 </span>
             </div>
+            <details class="prod-details" id="detalleOperativo">
+                <summary><i class="fas fa-layer-group mr-1"></i>Ver todas las áreas, cantidades y clasificación de pedidos</summary>
             <div class="row">
                 <div class="col-12 mb-3">
                     <div class="card prod-section-card">
@@ -1115,6 +1121,10 @@
                 </div>
             </div>
 
+            </details>
+
+            <details class="prod-details" id="listaPendientesCompleta">
+                <summary><i class="fas fa-clipboard-list mr-1"></i>Lista completa de OT P pendientes y prioridades</summary>
             <div class="card prod-section-card">
                 <div class="card-header"><strong><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Prioridades
                         y pendientes para intervenir</strong>
@@ -1164,6 +1174,10 @@
                     </table>
                 </div>
             </div>
+            </details>
+
+            <details class="prod-details" id="movimientosMensuales">
+                <summary><i class="fas fa-truck-loading mr-1"></i>Documentos y movimientos del hito IT por fecha</summary>
             <div class="card prod-section-card">
                 <div class="card-header"><strong><i class="fas fa-truck-loading text-primary mr-2"></i>Movimientos del
                         hito durante el mes · Asociación con pedidos P</strong></div>
@@ -1200,6 +1214,7 @@
                     </table>
                 </div>
             </div>
+            </details>
         </div>
     </section>
 @endsection
