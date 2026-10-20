@@ -61,7 +61,7 @@
               <div class="small">
                 <span class="badge badge-{{ $doc->completo ? 'success':'secondary' }}">{{ $doc->coincidencias }} de {{ $totales->codigos }} códigos de la factura</span>
                 @foreach($doc->grupos_de_ot as $grupoOt)
-                  <span class="badge badge-info">OT {{ $grupoOt->id_ot }} · {{ $grupoOt->codigos }} códigos en esta remisión</span>
+                  <span class="badge badge-info">ID interno OT {{ $grupoOt->id_ot }} · {{ $grupoOt->codigos }} códigos en este documento</span>
                 @endforeach
                 <span class="badge badge-light">Remitido {{ number_format($doc->remitidas,0,',','.') }}</span>
                 <span class="badge badge-light">Ya vinculado {{ number_format($doc->usadas,0,',','.') }}</span>
