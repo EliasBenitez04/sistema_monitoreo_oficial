@@ -119,7 +119,7 @@
   <div class="row">
     <div class="col-xl-4 col-md-6 mb-3"><div class="may-kpi"><small>Códigos sin saldo inicial declarado</small><strong>{{ $sinSaldo }}</strong><span>Es necesario registrar incluso un cero, cuando esté documentado</span></div></div>
     <div class="col-xl-4 col-md-6 mb-3"><div class="may-kpi may-blue"><small>Saldo documental estimado al cierre</small><strong>{{ $cierre===null ? 'NO DETERMINADO' : number_format($cierre,0,',','.') }}</strong><span>Saldo inicial + entradas recibidas − ventas netas · no inventario físico</span></div></div>
-    <div class="col-xl-4 col-md-6 mb-3"><div class="may-kpi may-orange"><small>Remisiones antiguas sin vínculo</small><strong>{{ $arrastres->count() }}+</strong><span>Muestra de hasta 100 documentos previos; no implica stock físico disponible</span></div></div>
+    <div class="col-xl-4 col-md-6 mb-3"><div class="may-kpi may-orange"><small>Remisiones antiguas sin vínculo</small><strong>{{ $arrastres->count() }}</strong><span>Remisiones sin asignación dentro de las 100 más recientes del historial; no es un total de stock físico</span></div></div>
   </div>
 
   <div class="row">
@@ -173,6 +173,27 @@
       </table>
     </div>
     <div class="card-footer bg-white small text-muted">Esta lista es una muestra de remisiones antiguas. «Sin vincular» no significa necesariamente que sigan físicamente disponibles: pueden existir facturas de períodos anteriores aún no conciliadas.</div>
+  </div>
+
+  <div class="alert alert-light border small">
+    <strong>MODELO MUESTRA · fotografía:</strong>
+    @if($separaciones->registros)
+      reserva orientativa de <b>{{ number_format($reservaFotoEstimada,0,',','.') }} prendas</b>,
+      suponiendo hasta {{ $muestrasPorOt }} por OT separada este mes.
+    @else
+      todavía no hay separaciones verificadas para estimar la reserva de fotografías.
+    @endif
+    Las muestras no desaparecen del inventario y no se consideran ventas.
+    <form method="GET" class="d-inline-flex align-items-center ml-2">
+      <input type="hidden" name="mes" value="{{ $mes }}">
+      <label for="mayFoto" class="mb-0 mr-1">Reserva por OT</label>
+      <select id="mayFoto" name="muestras_por_ot" class="form-control form-control-sm mr-2" style="width:65px">
+        @foreach([0,1,2,3,4,5] as $n)
+          <option value="{{ $n }}" {{ $n===$muestrasPorOt ? 'selected' : '' }}>{{ $n }}</option>
+        @endforeach
+      </select>
+      <button class="btn btn-sm btn-outline-primary">Aplicar</button>
+    </form>
   </div>
 
   <div class="may-section"><div><h3>4. Separaciones del plan mayorista</h3>
@@ -240,7 +261,7 @@
   <div class="card may-card mb-4">
     <div class="card-header bg-white"><strong><i class="fas fa-clipboard-list mr-2 text-primary"></i>5. Estado del cierre mensual</strong></div>
     <div class="card-body">
-      <p class="mb-2">**Cierre documental estimado**</p>
+      <p class="mb-2"><strong>Cierre documental estimado</strong></p>
       <div class="may-check"><i class="fas {{ $resumen->facturas_pendientes ? 'fa-exclamation-triangle text-warning':'fa-check-circle text-success' }}"></i>
         {{ $resumen->facturas_pendientes }} facturas con unidades sin vinculación documental</div>
       <div class="may-check"><i class="fas {{ $sinSaldo ? 'fa-exclamation-triangle text-warning':'fa-check-circle text-success' }}"></i>
