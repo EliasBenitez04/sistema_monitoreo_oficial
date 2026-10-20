@@ -942,6 +942,12 @@
                                         <th colspan="2">Pendientes P</th>
                                         <th colspan="2">Con otro pedido vigente</th><th colspan="2">Sin pedido asignado</th>
                                     </tr>
+                                    <tr>
+                                        <th>OT</th><th>Prendas</th>
+                                        <th>OT</th><th>Prendas</th>
+                                        <th>OT</th><th>Prendas</th>
+                                        <th>OT</th><th>Prendas</th>
+                                    </tr>
                                 </thead>
                                 <tbody>
                                     @forelse($porEtapa as $fila)
