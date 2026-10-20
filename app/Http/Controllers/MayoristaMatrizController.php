@@ -201,6 +201,7 @@ class MayoristaMatrizController extends Controller
         $remisionesDocumentos->getCollection()->transform(function ($doc) {
             $doc->origen_real = OrigenRemision::nombreOrigen($doc);
             $doc->tipo_origen = OrigenRemision::tipoOrigen($doc);
+            $doc->origen_discordante = OrigenRemision::origenDiscordante($doc);
             return $doc;
         });
 
@@ -270,6 +271,7 @@ class MayoristaMatrizController extends Controller
         $enlaces->each(function ($v) {
             $v->origen_real = OrigenRemision::nombreOrigen($v);
             $v->tipo_origen = OrigenRemision::tipoOrigen($v);
+            $v->origen_discordante = OrigenRemision::origenDiscordante($v);
         });
         $confirmadas = [];
         foreach ($enlaces as $v) {
