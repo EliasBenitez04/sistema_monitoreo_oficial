@@ -30,9 +30,14 @@ class MayoristaCruceDocumentoTest extends TestCase
             $necesidades[$codigo]=2;
             $porCodigo[$codigo]=(object)['pendiente'=>0];
         }
+        foreach ($registros as $registro) {
+            $registro->id_ot = 30924;
+        }
         $docs=MayoristaCruceDocumento::agrupar($registros,$necesidades,$porCodigo);
         $this->assertCount(1,$docs);
         $this->assertTrue($docs[0]->completo);
+        $this->assertCount(1,$docs[0]->grupos_de_ot);
+        $this->assertSame(4,$docs[0]->grupos_de_ot[0]->codigos);
         $this->assertSame(4,$docs[0]->coincidencias);
         $this->assertSame(32,$docs[0]->remitidas);
         $this->assertSame(8,$docs[0]->usadas);
