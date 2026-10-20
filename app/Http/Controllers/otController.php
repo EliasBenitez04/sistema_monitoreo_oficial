@@ -361,9 +361,10 @@ class OtController extends Controller
      * Catálogo de procesos del flujo de producción y el % de avance que
      * representa cada uno cuando es el ÚLTIMO proceso registrado en la OT.
      *
-     * El orden del catálogo sirve para identificar avances y señalar
-     * retrocesos/reprocesos. El historial y los tiempos del dashboard
-     * se ordenan siempre por FECHA e ID, no por este catálogo.
+     * El catálogo determina el orden visual y el avance del dashboard.
+     * Las duraciones se recalculan entre las filas de ese mismo flujo;
+     * si hay fechas invertidas se solicita revisión, nunca se convierte
+     * una diferencia negativa en horas positivas.
      */
     private const FLUJO_PROCESOS = [
         'PEDIDO A PRODUCCION'  => 5,
@@ -674,77 +675,79 @@ class OtController extends Controller
     }
 
     /**
-     * Calcula el historial de la OT con los registros de trazabilidad
-     * actuales, ordenados por FECHA y después ID (empates de fecha).
+     * Respeta el orden ORIGINAL del flujo de producción. El cambio
+     * solicitado afecta solamente al cálculo del tiempo, no a la
+     * posición ni al porcentaje de avance de los procesos.
      *
-     * Duración en proceso: fecha propia -> movimiento siguiente.
-     * Último movimiento: fecha propia -> ahora (tiempo abierto, incluso
-     * si ya llegó a Logística o existe una etapa posterior).
-     *
-     * Desde proceso anterior es una métrica independiente, presentada
-     * en el historial para verificar las transiciones. Nunca se guarda
-     * una duración calculada en PostgreSQL: al editar o borrar un evento
-     * se recomputan todos los intervalos en la próxima consulta.
+     * Se recalcula en cada consulta desde las trazabilidades actuales:
+     * fecha de fila -> fecha de siguiente fila; última fila -> hoy.
+     * Los registros con fechas invertidas se marcan para revisión.
      */
     private function construirReporte(Collection $trazas): array
     {
-        $intervalos = TiemposTrazabilidadOt::calcular($trazas);
+        // Orden que tenía el dashboard antes de la modificación:
+        // 1) etapa en el catálogo; 2) fecha dentro de la misma etapa;
+        // 3) ID para orden estable si hay fecha igual.
+        $trazasOrdenadas = $trazas->sortBy(function ($traza) {
+            $orden = str_pad((string) $this->ordenProceso($traza->proceso), 5, '0', STR_PAD_LEFT);
+            $fecha = Carbon::parse($traza->fecha_proceso)->format('YmdHis');
+            $id = str_pad((string) $traza->id_trazabilidad, 12, '0', STR_PAD_LEFT);
+
+            return "{$orden}-{$fecha}-{$id}";
+        })->values();
+
+        $intervalos = TiemposTrazabilidadOt::calcular($trazasOrdenadas);
         $procesos = collect();
-        $horasAcumuladasCerradas = 0.0;
-        $ordenPrevio = null;
         $posicion = 0;
 
         foreach ($intervalos as $intervalo) {
             $traza = $intervalo['traza'];
             $posicion++;
-
-            // El tiempo desde el último registro hasta hoy se muestra en
-            // su fila, pero NO se suma al tiempo cerrado entre registros.
-            if (!$intervalo['es_ultimo']) {
-                $horasAcumuladasCerradas += $intervalo['duracion_horas'];
-            }
-
-            $ordenActual = $this->ordenProceso($traza->proceso);
-            $flujoNoLineal = $ordenPrevio !== null
-                && $ordenActual < $ordenPrevio;
-            $ordenPrevio = $ordenActual;
-
             $procesos->push([
-                'id_trazabilidad'        => $traza->id_trazabilidad,
-                'proceso'               => $traza->proceso,
-                'resultado'             => $traza->resultado,
-                'fecha'                 => $intervalo['fecha'],
-                'fecha_hasta'           => $intervalo['fecha_hasta'],
-                'duracion_horas'        => $intervalo['duracion_horas'],
-                'duracion_dias'         => $intervalo['duracion_dias'],
-                'desde_anterior_horas'  => $intervalo['desde_anterior_horas'],
-                'desde_anterior_dias'   => $intervalo['desde_anterior_dias'],
-                'es_ultimo'             => $intervalo['es_ultimo'],
-                'fecha_futura'          => $intervalo['fecha_futura'],
-                'flujo_no_lineal'       => $flujoNoLineal,
-                'horas_acumuladas'      => round($horasAcumuladasCerradas, 2),
-                'avance_acumulado'      => $this->calcularAvance($traza->proceso, $posicion),
-                'es_suspendido'         => $this->normalizarProceso($traza->proceso)
-                    === self::PROCESO_SUSPENDIDO,
+                'id_trazabilidad' => $traza->id_trazabilidad,
+                'proceso' => $traza->proceso,
+                'resultado' => $traza->resultado,
+                'fecha' => $intervalo['fecha'],
+                'fecha_hasta' => $intervalo['fecha_hasta'],
+                'duracion_horas' => $intervalo['duracion_horas'],
+                'duracion_dias' => $intervalo['duracion_dias'],
+                'fecha_invertida' => $intervalo['fecha_invertida'],
+                'fecha_futura' => $intervalo['fecha_futura'],
+                'es_ultimo' => $intervalo['es_ultimo'],
+                'avance_acumulado' => $this->calcularAvance($traza->proceso, $posicion),
+                'es_suspendido' => $this->normalizarProceso($traza->proceso) === self::PROCESO_SUSPENDIDO,
             ]);
         }
 
-        $resumen = $this->construirResumen($procesos, $horasAcumuladasCerradas);
+        // Tiempo global entre la primera y la última fecha efectivamente
+        // registrada (cronología), sin sumar diferencias que se solapan
+        // cuando una fecha del flujo se cargó fuera de secuencia.
+        $inicioReal = $procesos->min('fecha');
+        $finReal = $procesos->max('fecha');
+        $horasRegistradas = $inicioReal && $finReal
+            ? round(Carbon::parse($inicioReal)->diffInMinutes(Carbon::parse($finReal)) / 60, 2)
+            : 0.0;
+
+        $resumen = $this->construirResumen($procesos, $horasRegistradas);
 
         return [$procesos, $resumen];
     }
 
     /**
      * Arma el resumen ejecutivo (KPIs) a partir de los movimientos
-     * ordenados cronológicamente.
+     * conservando el orden del flujo de producción.
      */
     private function construirResumen(Collection $procesos, float $horasAcumuladas): array
     {
         $primerProceso = $procesos->first();
         $ultimoProceso = $procesos->last();
 
-        $fechaInicio = $primerProceso['fecha'];
-        $fechaUltimo = $ultimoProceso['fecha'];
+        // La tabla conserva el flujo; las fechas del resumen deben
+        // basarse en la cronología real, no asumir que el flujo siempre
+        // tiene fechas crecientes.
+        $fechaInicio = $procesos->min('fecha');
+        $ultimoCronologico = $procesos->sortByDesc('fecha')->first();
+        $fechaUltimo = $ultimoCronologico['fecha'];
 
         $estaSuspendida = $ultimoProceso['es_suspendido'];
 
@@ -774,7 +777,7 @@ class OtController extends Controller
 
         // Cada intervalo cerrado comprende desde un evento hasta el
         // próximo; la duración abierta del último es independiente.
-        $procesosCerrados = $procesos->filter(fn ($p) => !$p['es_ultimo']);
+        $procesosCerrados = $procesos->filter(fn ($p) => !$p['es_ultimo'] && !$p['fecha_invertida']);
         $duracionesValidas = $procesosCerrados->pluck('duracion_horas');
         $duracionPromedio = $duracionesValidas->isNotEmpty() ? round($duracionesValidas->avg(), 2) : 0.0;
 
