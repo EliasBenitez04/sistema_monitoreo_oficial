@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 use App\Support\PromedioDiarioProduccion;
+use App\Support\UltimoProcesoOt;
 
 class SeguimientoPedidoIngresoTerminacionController extends Controller
 {
@@ -833,7 +834,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
             ->orderBy('id_trazabilidad')
             ->get(['id_trazabilidad','proceso','resultado','fecha_proceso']);
 
-        $ultimoProceso = $trazabilidad->last();
+        $ultimoProceso = UltimoProcesoOt::ultimo($trazabilidad);
         $primeraTerminacion = $trazabilidad->first(function ($item) {
             return strtoupper(trim((string) $item->proceso)) === self::PROCESO_CIERRE;
         });
@@ -1075,11 +1076,7 @@ class SeguimientoPedidoIngresoTerminacionController extends Controller
                 ->sortBy('fecha_proceso')
                 ->first();
 
-            $ultimoProceso = $historial
-                ->sortBy(function ($t) {
-                    return sprintf('%s-%010d', (string) $t->fecha_proceso, (int) $t->id_trazabilidad);
-                })
-                ->last();
+            $ultimoProceso = UltimoProcesoOt::ultimo($historial);
 
             $completo = $cierre !== null;
             $fechaPedido = $ot->fecha_pedido

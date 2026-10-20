@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Carbon\Carbon;
 use App\Support\PromedioDiarioProduccion;
+use App\Support\UltimoProcesoOt;
 
 class SeguimientoPedidoProduccionController extends Controller
 {
@@ -300,7 +301,10 @@ class SeguimientoPedidoProduccionController extends Controller
                 return null;
             }
 
-            $ultimo = $historial->last();
+            // El último movimiento del día se determina por el orden del
+            // flujo, no por id/importación ni por hora cuando son etapas
+            // distintas. Ej.: SERIGRAFIA (55) → COSTURA INTERNA (70).
+            $ultimo = UltimoProcesoOt::ultimo($historial);
             // Para OT todavía pendientes, tomar el resultado del último
             // movimiento disponible, sea cual sea el proceso (sin exigir CORTE).
             $cantidadIngresada = 0;
@@ -441,15 +445,7 @@ class SeguimientoPedidoProduccionController extends Controller
                 ->sortBy('fecha_proceso')
                 ->first();
 
-            $ultimoProceso = $historial
-                ->sortBy(function ($t) {
-                    return sprintf(
-                        '%s-%010d',
-                        (string) $t->fecha_proceso,
-                        (int) $t->id_trazabilidad
-                    );
-                })
-                ->last();
+            $ultimoProceso = UltimoProcesoOt::ultimo($historial);
 
             $completo = $ingresoTerminacion !== null;
             $fechaPedido = $ot->fecha_pedido
