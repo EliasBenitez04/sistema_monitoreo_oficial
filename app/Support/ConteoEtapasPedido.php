@@ -25,7 +25,8 @@ class ConteoEtapasPedido
             });
 
         return $pendientesP->groupBy('etapa')->map(function ($items, $etapa) use ($totales) {
-            $cantidadP = $items->pluck('nro_ot')->unique()->count();
+            $otsUnicas = $items->unique('nro_ot');
+            $cantidadP = $otsUnicas->count();
             $clave = UltimoProcesoOt::normalizar($etapa);
             $sinProceso = $clave === UltimoProcesoOt::normalizar('SIN MOVIMIENTO REGISTRADO');
             $total = $sinProceso ? null : (int) $totales->get($clave, 0);
@@ -34,7 +35,7 @@ class ConteoEtapasPedido
             return (object) [
                 'etapa' => $etapa,
                 'ots' => $cantidadP,
-                'prendas' => (int) $items->sum('cantidad_pendiente'),
+                'prendas' => (int) $otsUnicas->sum('cantidad_pendiente'),
                 // null indica que el total NO puede respaldarse.
                 'ots_en_area' => $inconsistencia ? null : $total,
                 'ots_fuera_p' => $total !== null && !$inconsistencia
