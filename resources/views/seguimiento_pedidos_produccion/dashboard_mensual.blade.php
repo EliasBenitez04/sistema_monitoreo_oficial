@@ -930,7 +930,7 @@
                             <small class="d-block text-muted mt-1">
                                 «En el área»: última etapa registrada de todas las OT.
                                 «Pedido P»: subconjunto pendiente del pedido. Ambas cifras usan el mismo corte.
-                                No representa un conteo físico del taller.
+                                No representa un conteo físico del taller. Las OT fuera de P pueden ser de otros pedidos o no tener pedido asociado.
                             </small>
                         </div>
                         <div class="table-responsive">
@@ -960,7 +960,7 @@
                                                 <strong>{{ number_format($fila->ots, 0, ',', '.') }}</strong>
                                                 @if($fila->ots_fuera_p !== null && $fila->ots_fuera_p > 0)
                                                     <small class="d-block text-muted">
-                                                        {{ number_format($fila->ots_fuera_p, 0, ',', '.') }} fuera de pedidos P
+                                                        {{ number_format($fila->ots_fuera_p, 0, ',', '.') }} fuera de pendientes P
                                                     </small>
                                                 @endif
                                             </td>
