@@ -987,8 +987,9 @@
                 <div class="card-header"><strong><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Prioridades
                         y pendientes para intervenir</strong>
                     <div class="small text-muted font-weight-normal mt-1">
-                        Ordenadas por días de espera P, de mayor a menor.
+                        Ordenadas por días sin movimiento, de mayor a menor.
                         Corte: {{ $indicadores->fecha_corte_pendientes ? $indicadores->fecha_corte_pendientes->format('d/m/Y H:i') : 'no disponible' }}.
+                        La prioridad se calcula según la espera del pedido P.
                     </div>
                 </div>
                 <div class="table-responsive" style="max-height:540px;overflow:auto">
@@ -1000,7 +1001,7 @@
                                 <th>Descripción</th>
                                 <th>Etapa actual</th>
                                 <th>Última actividad</th>
-                                <th>Sin movimiento real</th>
+                                <th title="Días completos desde la última actividad hasta la fecha de corte del informe">Sin movimiento</th>
                                 <th>Prendas OT</th>
                                 <th>Ingresadas a IT</th>
                                 <th>Cant. etapa vigente</th>
@@ -1008,26 +1009,14 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($pendientes->sort(function($a, $b) { if ($a->dias_quieto === null) return $b->dias_quieto === null ? strcmp((string)$a->nro_ot, (string)$b->nro_ot) : 1; if ($b->dias_quieto === null) return -1; return ($b->dias_quieto <=> $a->dias_quieto) ?: strcmp((string)$a->nro_ot, (string)$b->nro_ot); }) as $fila)
+                            @forelse($pendientes->sort(function($a, $b) { if ($a->dias_sin_movimiento === null) return $b->dias_sin_movimiento === null ? strcmp((string)$a->nro_ot, (string)$b->nro_ot) : 1; if ($b->dias_sin_movimiento === null) return -1; return ($b->dias_sin_movimiento <=> $a->dias_sin_movimiento) ?: strcmp((string)$a->nro_ot, (string)$b->nro_ot); }) as $fila)
                                 <tr>
                                     <td><strong>{{ $fila->nro_ot }}</strong></td>
                                     <td>{{ $fila->pedidos }}</td>
                                     <td>{{ $fila->descripcion }}</td>
                                     <td>{{ $fila->etapa }}</td>
                                     <td>{{ $fila->ultima_fecha ? date('d/m/Y', strtotime($fila->ultima_fecha)) : '-' }}</td>
-                                    <td>
-                                        @if($fila->dias_sin_movimiento !== null)
-                                            <strong>{{ number_format($fila->dias_sin_movimiento, 2, ',', '.') }} días</strong>
-                                            @if($fila->dias_quieto !== null && abs($fila->dias_quieto - $fila->dias_sin_movimiento) >= 0.01)
-                                                <small class="d-block text-muted">Espera P: {{ number_format($fila->dias_quieto, 2, ',', '.') }} días</small>
-                                            @endif
-                                        @elseif($fila->dias_quieto !== null)
-                                            <span class="text-muted">Sin trazabilidad</span>
-                                            <small class="d-block text-muted">Espera P: {{ number_format($fila->dias_quieto, 2, ',', '.') }} días</small>
-                                        @else
-                                            <span class="text-muted">Sin datos</span>
-                                        @endif
-                                    </td>
+                                    <td>{{ $fila->dias_sin_movimiento !== null ? number_format((int) floor($fila->dias_sin_movimiento), 0, ',', '.') . ' días' : 'Sin datos' }}</td>
                                     <td>{{ number_format($fila->cantidad, 0, ',', '.') }}</td>
                                     <td>{{ number_format($fila->cantidad_ingresada, 0, ',', '.') }}</td>
                                     <td><strong>{{ number_format($fila->cantidad_pendiente, 0, ',', '.') }}</strong></td>
