@@ -164,6 +164,8 @@ class MayoristaMatrizController extends Controller
                 $primera = $filas->first();
                 return (object) [
                     'nombre' => $nombre,
+                    'codigo_origen' => $primera->cod_sucursal_salida,
+                    'nombre_importado' => $primera->sucursal_salida,
                     'tipo' => OrigenRemision::tipoOrigen($primera),
                     'documentos' => (int) $filas->sum('documentos'),
                     'lineas' => (int) $filas->sum('lineas'),
@@ -183,7 +185,8 @@ class MayoristaMatrizController extends Controller
         ];
 
         $remisionesDocumentos = (clone $baseTransferencias)
-            ->select('r.serie','r.numero_remision','r.cod_sucursal_salida',
+            ->selectRaw('MIN(r.id) as remision_id')
+            ->addSelect('r.serie','r.numero_remision','r.cod_sucursal_salida',
                 'r.cod_sucursal_destino','r.fecha_remision')
             ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
             ->selectRaw('MAX(r.sucursal_destino) as sucursal_destino')
@@ -208,6 +211,185 @@ class MayoristaMatrizController extends Controller
         return view('ventas.mayoristas_matriz', compact(
             'desde','hasta','facturas','resumen','ventasDetalle','porCodigo',
             'transferenciasOrigen','transferenciasResumen','remisionesDocumentos'
+        ));
+    }
+
+
+    /**
+     * Navegación documental: sucursal de origen -> sus remisiones emitidas
+     * hacia Matriz en el mismo período de la pantalla Mayoristas.
+     * No confundir una transferencia logística con una factura conciliada.
+     */
+    public function sucursal(Request $request)
+    {
+        list($desde, $hasta) = $this->fechas($request);
+        $datos = $request->validate([
+            'codigo' => 'nullable|integer|min:1',
+            'nombre' => 'nullable|string|max:100',
+            'sin_origen' => 'nullable|in:1',
+        ]);
+        $codigo = isset($datos['codigo']) ? (int) $datos['codigo'] : null;
+        $nombre = trim((string) ($datos['nombre'] ?? ''));
+        $sinOrigen = ($datos['sin_origen'] ?? '') === '1';
+
+        if ($codigo === null && $nombre === '' && !$sinOrigen) {
+            abort(422, 'Indicá la sucursal de origen a consultar.');
+        }
+        if ($codigo === OrigenRemision::CODIGO_MATRIZ) {
+            abort(404, 'Matriz no puede ser origen de una entrada a sí misma.');
+        }
+
+        $usoPorLinea = DB::table('mayorista_vinculos')
+            ->select('remision_id')
+            ->selectRaw('SUM(cantidad) as usadas')
+            ->groupBy('remision_id');
+
+        $base = VentaMayoristaController::entradas()
+            ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
+            ->whereBetween('r.fecha_remision', [$desde, $hasta])
+            ->when($codigo !== null, function ($q) use ($codigo) {
+                $q->where('r.cod_sucursal_salida', $codigo);
+            })
+            ->when($codigo === null, function ($q) use ($nombre, $sinOrigen) {
+                // Cuando el origen no tiene código en la importación,
+                // localizarlo por su nombre, sin arrastrar otras sucursales.
+                $q->where(function ($sinCodigo) {
+                    $sinCodigo->whereNull('r.cod_sucursal_salida')
+                        ->orWhere('r.cod_sucursal_salida', 0);
+                });
+                if ($sinOrigen) {
+                    $q->whereRaw("BTRIM(COALESCE(r.sucursal_salida,'')) = ''");
+                } else {
+                    $q->whereRaw(
+                        "UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = ?",
+                        [mb_strtoupper($nombre, 'UTF-8')]
+                    );
+                }
+            })
+            ->leftJoinSub($usoPorLinea, 'uso', 'uso.remision_id', '=', 'r.id');
+
+        $primera = (clone $base)
+            ->select('r.cod_sucursal_salida','r.sucursal_salida')->first();
+        if (!$primera) {
+            abort(404, 'Sin remisiones de esa sucursal hacia Matriz en el período.');
+        }
+
+        $origen = (object) [
+            'codigo' => $codigo,
+            'nombre' => OrigenRemision::nombreOrigen($primera),
+            'tipo' => OrigenRemision::tipoOrigen($primera),
+        ];
+
+        $claveDocumento = "COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')"
+            . " || '|' || COALESCE(CAST(r.cod_sucursal_salida AS TEXT),'')"
+            . " || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')"
+            . " || '|' || COALESCE(CAST(r.fecha_remision AS TEXT),'')";
+
+        $totales = (clone $base)
+            ->selectRaw("COUNT(DISTINCT $claveDocumento) as documentos")
+            ->selectRaw('COUNT(*) as lineas')
+            ->selectRaw('COALESCE(SUM(r.cantidad),0) as remitidas')
+            ->selectRaw('COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibidas')
+            ->selectRaw('COALESCE(SUM(COALESCE(uso.usadas,0)),0) as vinculadas')
+            ->selectRaw('COALESCE(SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))),0) as disponibles')
+            ->first();
+
+        $remisiones = (clone $base)
+            ->selectRaw('MIN(r.id) as remision_id')
+            ->addSelect('r.serie','r.numero_remision','r.cod_sucursal_salida',
+                'r.cod_sucursal_destino','r.fecha_remision')
+            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
+            ->selectRaw('MAX(r.sucursal_destino) as sucursal_destino')
+            ->selectRaw('COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as remitidas')
+            ->selectRaw('COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibidas')
+            ->selectRaw('COALESCE(SUM(COALESCE(uso.usadas,0)),0) as vinculadas')
+            ->selectRaw('COALESCE(SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))),0) as disponibles')
+            ->selectRaw('COUNT(*) FILTER (WHERE r.fecha_recepcion IS NOT NULL) as lineas_recibidas')
+            ->groupBy('r.serie','r.numero_remision','r.cod_sucursal_salida',
+                'r.cod_sucursal_destino','r.fecha_remision')
+            ->orderBy('r.fecha_remision', 'desc')
+            ->orderBy('r.numero_remision', 'desc')
+            ->paginate(40)
+            ->appends($request->only(['desde','hasta','codigo','nombre','sin_origen']));
+
+        return view('ventas.mayoristas_sucursal', compact(
+            'desde','hasta','origen','codigo','nombre','sinOrigen','totales','remisiones'
+        ));
+    }
+
+    /**
+     * Abre una remisión concreta por ID de una de sus líneas.
+     * La serie/número solos NO identifican con seguridad un documento:
+     * se preservan origen, destino y fecha para evitar mezclar remisiones.
+     */
+    public function remision(Request $request, int $id)
+    {
+        $cabecera = VentaMayoristaController::entradas()
+            ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
+            ->where('r.id', $id)
+            ->select('r.id','r.serie','r.numero_remision','r.fecha_remision',
+                'r.cod_sucursal_salida','r.sucursal_salida',
+                'r.cod_sucursal_destino','r.sucursal_destino',
+                'r.sucursal_logistica')
+            ->first();
+        if (!$cabecera) {
+            abort(404, 'Remisión no encontrada entre las entradas hacia Matriz.');
+        }
+
+        $base = VentaMayoristaController::entradas()
+            ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
+            ->where('r.serie', $cabecera->serie)
+            ->where('r.numero_remision', $cabecera->numero_remision)
+            ->where('r.fecha_remision', $cabecera->fecha_remision)
+            ->where('r.cod_sucursal_salida', $cabecera->cod_sucursal_salida)
+            ->where('r.cod_sucursal_destino', $cabecera->cod_sucursal_destino)
+            // Si el importador no entregó código, el nombre de origen
+            // y destino también forma parte de la identidad documental.
+            // Evita mezclar dos sucursales sin código con mismo número.
+            ->when(!$cabecera->cod_sucursal_salida, function ($q) use ($cabecera) {
+                $q->whereRaw(
+                    "UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) = ?",
+                    [mb_strtoupper(trim((string) $cabecera->sucursal_salida), 'UTF-8')]
+                );
+            })
+            ->when(!$cabecera->cod_sucursal_destino, function ($q) use ($cabecera) {
+                $q->whereRaw(
+                    "UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) = ?",
+                    [mb_strtoupper(trim((string) $cabecera->sucursal_destino), 'UTF-8')]
+                );
+            })
+            ->leftJoinSub(
+                DB::table('mayorista_vinculos')
+                    ->select('remision_id')
+                    ->selectRaw('SUM(cantidad) as usadas')
+                    ->groupBy('remision_id'),
+                'uso', 'uso.remision_id', '=', 'r.id'
+            );
+
+        $totales = (clone $base)
+            ->selectRaw('COUNT(*) as lineas')
+            ->selectRaw('COALESCE(SUM(r.cantidad),0) as remitidas')
+            ->selectRaw('COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibidas')
+            ->selectRaw('COALESCE(SUM(COALESCE(uso.usadas,0)),0) as vinculadas')
+            ->selectRaw('COALESCE(SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))),0) as disponibles')
+            ->first();
+
+        $lineas = (clone $base)
+            ->leftJoin('ot as o', 'o.id_ot', '=', 'r.id_ot')
+            ->select('r.id','r.serie','r.numero_remision','r.id_ot','o.nro_ot',
+                'r.codigo','r.descripcion','r.cantidad','r.fecha_recepcion',
+                'r.estado','r.precio_venta','r.costo_unitario')
+            ->selectRaw('COALESCE(uso.usadas,0) as vinculadas')
+            ->selectRaw('GREATEST(0,r.cantidad-COALESCE(uso.usadas,0)) as disponibles')
+            ->orderBy('r.codigo')->orderBy('r.id')
+            ->paginate(100)->appends($request->only(['desde','hasta','codigo','nombre','sin_origen']));
+
+        $cabecera->origen_real = OrigenRemision::nombreOrigen($cabecera);
+        $cabecera->tipo_origen = OrigenRemision::tipoOrigen($cabecera);
+        $cabecera->origen_discordante = OrigenRemision::origenDiscordante($cabecera);
+
+        return view('ventas.mayoristas_remision', compact(
+            'cabecera','totales','lineas'
         ));
     }
 

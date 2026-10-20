@@ -36,8 +36,8 @@
         <div class="card-header bg-white">
           <strong><i class="fas fa-exchange-alt mr-1 text-primary"></i>1. Asignaciones de Logística hacia COMERCIAL MATRIZ</strong>
           <small class="d-block text-muted">
-            Incluye TODAS las sucursales de origen cuyo destino es código 25 / MATRIZ.
-            No clasificamos transferencias de locales como si fueran de Casa Central.
+            Seleccioná una sucursal para consultar sus números de remisión y cantidades; después presioná <strong>Ver</strong>
+            para consultar los códigos y talles de cada documento. Destino: código 25 / MATRIZ.
           </small>
         </div>
         <div class="row no-gutters may2-transfer-kpis">
@@ -69,7 +69,17 @@
             <tbody>
               @forelse($transferenciasOrigen as $origen)
                 <tr>
-                  <td class="font-weight-bold">{{ $origen->nombre }}</td>
+                  <td class="font-weight-bold">
+                    <a class="may2-sucursal-link" href="{{ route('ventas.mayoristas.sucursal', [
+                      'codigo'=>$origen->codigo_origen ?: null,
+                      'nombre'=>$origen->nombre_importado ?: null,
+                      'sin_origen'=>!$origen->codigo_origen && !$origen->nombre_importado ? '1' : null,
+                      'desde'=>$desde,'hasta'=>$hasta
+                    ]) }}">
+                      <i class="fas fa-folder-open mr-1"></i>{{ $origen->nombre }}
+                      <i class="fas fa-chevron-right ml-1 small"></i>
+                    </a>
+                  </td>
                   <td><span class="badge badge-{{ $origen->tipo==='LOCAL'?'info':($origen->tipo==='CENTRAL'?'secondary':'warning') }}">{{ $origen->tipo }}</span></td>
                   <td class="text-right">{{ number_format($origen->documentos,0,',','.') }}</td>
                   <td class="text-right">{{ number_format($origen->unidades,0,',','.') }}</td>
@@ -89,7 +99,7 @@
             <table class="table table-sm may2-table mb-0">
               <thead><tr><th>Fecha</th><th>Serie / Nº remisión</th><th>Origen</th><th>Destino</th>
                 <th class="text-right">Líneas</th><th class="text-right">Remitidas</th>
-                <th class="text-right">Ya vinculadas</th><th class="text-right">Saldo</th><th>Recepción</th></tr></thead>
+                <th class="text-right">Ya vinculadas</th><th class="text-right">Saldo</th><th>Recepción</th><th></th></tr></thead>
               <tbody>
                 @forelse($remisionesDocumentos as $doc)
                   <tr>
@@ -110,9 +120,12 @@
                     <td class="text-right">{{ number_format($doc->vinculadas,0,',','.') }}</td>
                     <td class="text-right font-weight-bold">{{ number_format($doc->saldo,0,',','.') }}</td>
                     <td>{{ $doc->lineas_recibidas==$doc->lineas ? 'Recibida':'Parcial / sin confirmar' }}</td>
+                    <td><a class="btn btn-sm btn-outline-primary" href="{{ route('ventas.mayoristas.remision', [
+                        'id'=>$doc->remision_id,'desde'=>$desde,'hasta'=>$hasta
+                    ]) }}">Ver</a></td>
                   </tr>
                 @empty
-                  <tr><td colspan="9" class="text-center text-muted">Sin documentos en el período.</td></tr>
+                  <tr><td colspan="10" class="text-center text-muted">Sin documentos en el período.</td></tr>
                 @endforelse
               </tbody>
             </table>
@@ -204,6 +217,8 @@
 .mayor-matriz .may2-transfer-kpis{background:#f7fbff}
 .mayor-matriz .may2-transfer-kpis strong{font-size:1.12rem;color:#244365}
 .mayor-matriz .may2-subdetails>summary{cursor:pointer;list-style:none;background:#f7faff}
+.mayor-matriz .may2-sucursal-link { color:#1d5f9a; text-decoration:none; }
+.mayor-matriz .may2-sucursal-link:hover { text-decoration:underline; }
 .mayor-matriz .may2-summary{cursor:pointer;list-style:none}
 .mayor-matriz .may2-summary::-webkit-details-marker{display:none}
 .mayor-matriz .may2-summary:after{content:"Abrir";float:right;color:#52749b}

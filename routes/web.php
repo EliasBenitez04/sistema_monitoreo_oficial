@@ -340,6 +340,12 @@ Route::get(
     [MayoristaMatrizController::class, 'index']
 )->name('ventas.mayoristas.index');
 
+// Consulta de transferencias: sucursal -> documentos -> líneas de remisión.
+Route::get('/ventas/mayoristas/sucursales',
+    [MayoristaMatrizController::class, 'sucursal'])->name('ventas.mayoristas.sucursal');
+Route::get('/ventas/mayoristas/remisiones/{id}',
+    [MayoristaMatrizController::class, 'remision'])->whereNumber('id')->name('ventas.mayoristas.remision');
+
 // Conciliación factura-remisión: cada vínculo registra responsable y evidencia.
 Route::get('/ventas/mayoristas/facturas/{clave}',
     [MayoristaMatrizController::class, 'factura'])->name('ventas.mayoristas.factura');
