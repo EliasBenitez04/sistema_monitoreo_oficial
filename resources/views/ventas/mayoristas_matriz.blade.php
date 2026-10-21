@@ -14,17 +14,23 @@
     @else
       @php
         $clienteFiltro = trim((string) request('cliente', ''));
-        $clientesMatriz = $facturas->map(function ($f) {
-            $codigo = trim((string) $f->cli_cod);
-            $nombre = trim((string) $f->cliente);
-            return (object) [
-                'valor' => $codigo !== '' ? $codigo : $nombre,
-                'codigo' => $codigo,
-                'nombre' => $nombre,
-            ];
-        })->filter(function ($c) {
-            return $c->valor !== '';
-        })->unique('valor')->sortBy('nombre')->values();
+        // Catálogo histórico completo: las fechas solo restringen los resultados,
+        // no los clientes disponibles para seleccionar.
+        $clientesMatriz = \App\Http\Controllers\VentaMayoristaController::ventas()
+            ->where(function ($q) {
+                $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) <> ''")
+                  ->orWhereRaw("BTRIM(COALESCE(v.cliente,'')) <> ''");
+            })
+            ->selectRaw("BTRIM(COALESCE(v.cli_cod,'')) as codigo")
+            ->selectRaw("BTRIM(COALESCE(v.cliente,'')) as nombre")
+            ->distinct()
+            ->orderBy('nombre')
+            ->orderBy('codigo')
+            ->get()
+            ->map(function ($c) {
+                $c->valor = $c->codigo !== '' ? $c->codigo : $c->nombre;
+                return $c;
+            })->unique('valor')->values();
 
         if ($clienteFiltro !== '') {
             $facturas = $facturas->filter(function ($f) use ($clienteFiltro) {
@@ -90,7 +96,7 @@
           <div><button class="btn btn-primary"><i class="fas fa-search mr-1"></i>Consultar ventas</button></div>
           <div><a class="btn btn-outline-success" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'exportar'=>'ventas']) }}"><i class="fas fa-file-csv mr-1"></i>Exportar todos los registros</a></div>
         </div>
-        <small class="text-muted mt-2">Sólo se listan clientes con ventas importadas de COMERCIAL MATRIZ dentro del período seleccionado.</small>
+        <small class="text-muted mt-2">El selector incluye todos los clientes históricos de COMERCIAL MATRIZ; las fechas y el cliente elegido filtran los resultados.</small>
       </form>
       <div class="row">
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Unidades netas vendidas</small><strong>{{ number_format($resumen->unidades_netas,0,',','.') }}</strong><span>{{ number_format($resumen->brutas,0,',','.') }} brutas · {{ number_format($resumen->notas_credito,0,',','.') }} notas de crédito</span></div></div>
