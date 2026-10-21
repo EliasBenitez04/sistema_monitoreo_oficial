@@ -8,85 +8,67 @@ use Tests\TestCase;
 
 class RedistribucionExcelEquilibrioTest extends TestCase
 {
-    private function proponer(array $stocks, array $origenes, array $destinos, $minimo = 1, $porcentaje = 20)
+    private function proponer(array $stocks, array $origenes, array $destinos)
     {
-        $metodo = new ReflectionMethod(RedistribucionExcelController::class, 'equilibrarTalle');
+        $metodo = new ReflectionMethod(RedistribucionExcelController::class, 'repartirTalle');
         $metodo->setAccessible(true);
         $controlador = new RedistribucionExcelController();
 
-        return $metodo->invoke(
-            $controlador,
-            [
-                'codigo' => '080617588CE06',
-                'talle' => '06',
-                'descripcion' => 'ARTICULO DE PRUEBA',
-                'stock' => $stocks,
-            ],
-            '080617588CE',
-            $origenes,
-            $destinos,
-            $minimo,
-            $porcentaje
-        );
+        return $metodo->invoke($controlador, [
+            'codigo' => '080617588CE06',
+            'talle' => '06',
+            'descripcion' => 'ARTICULO DE PRUEBA',
+            'stock' => $stocks,
+        ], '080617588CE', $origenes, $destinos);
     }
 
-    public function test_reparte_dos_destinos_sin_agotar_el_origen()
+    public function test_con_siete_deja_uno_y_reparte_dos_a_cada_destino()
     {
         $movimientos = $this->proponer(
-            ['CENTRAL' => 20, 'SL' => 0, 'SHOPP' => 0],
-            ['CENTRAL'], ['SL', 'SHOPP']
+            ['CENTRAL' => 7, 'SL' => 0, 'SHOPP' => 0, 'MARIANO' => 0],
+            ['CENTRAL'], ['SL', 'SHOPP', 'MARIANO']
         );
 
-        $this->assertNotEmpty($movimientos);
-        $total = array_sum(array_column($movimientos, 'cantidad'));
-        $saldoOrigen = $movimientos[0]['origen_final'];
-        $destinosFinal = [];
+        $porDestino = array_column($movimientos, 'cantidad', 'destino');
+        $this->assertSame(2, $porDestino['SL']);
+        $this->assertSame(2, $porDestino['SHOPP']);
+        $this->assertSame(2, $porDestino['MARIANO']);
+        $this->assertSame(1, $movimientos[0]['origen_final']);
+        $this->assertSame(6, array_sum(array_column($movimientos, 'cantidad')));
+    }
+
+    public function test_shopp_recibe_primero_el_sobrante()
+    {
+        $movimientos = $this->proponer(
+            ['CENTRAL' => 8, 'SL' => 0, 'SHOPP' => 0, 'MARIANO' => 0],
+            ['CENTRAL'], ['SL', 'SHOPP', 'MARIANO']
+        );
+
+        $porDestino = array_column($movimientos, 'cantidad', 'destino');
+        $this->assertSame(3, $porDestino['SHOPP']);
+        $this->assertSame(2, $porDestino['SL']);
+        $this->assertSame(2, $porDestino['MARIANO']);
+    }
+
+    public function test_no_mueve_si_el_origen_solo_tiene_una_unidad()
+    {
+        $this->assertSame([], $this->proponer(
+            ['CENTRAL' => 1, 'SHOPP' => 0], ['CENTRAL'], ['SHOPP']
+        ));
+    }
+
+    public function test_cada_origen_conserva_una_unidad()
+    {
+        $movimientos = $this->proponer(
+            ['CENTRAL' => 5, 'PINEDO' => 4, 'SL' => 0, 'SHOPP' => 0],
+            ['CENTRAL', 'PINEDO'], ['SL', 'SHOPP']
+        );
+
+        $saldos = [];
         foreach ($movimientos as $movimiento) {
-            $destinosFinal[$movimiento['destino']] = $movimiento['destino_final'];
-            $this->assertEquals('CENTRAL', $movimiento['origen']);
-            $this->assertGreaterThanOrEqual(4, $movimiento['origen_final']);
+            $saldos[$movimiento['origen']] = $movimiento['origen_final'];
         }
-
-        $this->assertEquals(20, $total + $saldoOrigen);
-        $this->assertCount(2, $destinosFinal);
-        $this->assertLessThanOrEqual(1, abs($destinosFinal['SL'] - $destinosFinal['SHOPP']));
-        $this->assertLessThanOrEqual(1, abs($saldoOrigen - $destinosFinal['SL']));
-    }
-
-    public function test_no_mueve_stock_si_solo_queda_la_reserva()
-    {
-        $movimientos = $this->proponer(
-            ['CENTRAL' => 1, 'SL' => 0],
-            ['CENTRAL'], ['SL']
-        );
-
-        $this->assertSame([], $movimientos);
-    }
-
-    public function test_no_envia_cuando_el_destino_tiene_mas_existencias()
-    {
-        $movimientos = $this->proponer(
-            ['CENTRAL' => 3, 'SL' => 9],
-            ['CENTRAL'], ['SL']
-        );
-
-        $this->assertSame([], $movimientos);
-    }
-
-    public function test_respeta_la_reserva_porcentual_en_cada_origen()
-    {
-        $movimientos = $this->proponer(
-            ['CENTRAL' => 50, 'PINEDO' => 12, 'SL' => 0, 'SHOPP' => 0],
-            ['CENTRAL', 'PINEDO'], ['SL', 'SHOPP'],
-            1, 50
-        );
-
-        $this->assertNotEmpty($movimientos);
-        foreach ($movimientos as $movimiento) {
-            $this->assertGreaterThanOrEqual(
-                $movimiento['reserva'],
-                $movimiento['origen_final']
-            );
-        }
+        $this->assertSame(1, $saldos['CENTRAL']);
+        $this->assertSame(1, $saldos['PINEDO']);
     }
 }
