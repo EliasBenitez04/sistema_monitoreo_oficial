@@ -64,9 +64,6 @@
                 <p>Consulta de stock real · Códigos por color · Equilibrio automático entre sucursales</p>
             </div>
         </div>
-        <a href="{{ route('RedistribucionSugeridas.index') }}" class="btn btn-sm btn-outline-light">
-            <i class="fas fa-external-link-alt mr-1"></i> Ir al módulo de sugerencias
-        </a>
     </header>
 
     @if(!empty($errorTabla))
@@ -139,7 +136,7 @@
                 <div class="d-flex flex-wrap align-items-center justify-content-between mt-3" style="gap:12px">
                     <div class="re-muted small"><i class="fas fa-shield-alt mr-1"></i> Solo genera una propuesta: no descuenta unidades ni modifica la redistribución existente.</div>
                     <button class="btn btn-primary re-btn" type="submit" {{ !empty($errorTabla) ? 'disabled' : '' }}>
-                        <i class="fas fa-search mr-2"></i>Analizar Excel y redistribuir
+                        <i class="fas fa-search mr-2"></i>Generar propuesta de redistribución
                     </button>
                 </div>
             </form>
@@ -249,12 +246,12 @@
                                                 <td>{{ $mov['talle'] }}</td>
                                                 <td>{{ $mov['origen'] }}</td>
                                                 <td>{{ $mov['destino'] }}</td>
-                                                <td class="text-right">{{ $numero($mov['stock_origen']) }}</td>
-                                                <td class="text-right">{{ $numero($mov['stock_destino']) }}</td>
-                                                <td class="text-right">{{ $numero($mov['reserva']) }}</td>
-                                                <td class="text-right re-quantity">{{ $numero($mov['cantidad']) }}</td>
-                                                <td class="text-right">{{ $numero($mov['origen_final']) }}</td>
-                                                <td class="text-right">{{ $numero($mov['destino_final']) }}</td>
+                                                <td class="text-right" data-value="{{ $mov['stock_origen'] }}">{{ $numero($mov['stock_origen']) }}</td>
+                                                <td class="text-right" data-value="{{ $mov['stock_destino'] }}">{{ $numero($mov['stock_destino']) }}</td>
+                                                <td class="text-right" data-value="{{ $mov['reserva'] }}">{{ $numero($mov['reserva']) }}</td>
+                                                <td class="text-right re-quantity" data-value="{{ $mov['cantidad'] }}">{{ $numero($mov['cantidad']) }}</td>
+                                                <td class="text-right" data-value="{{ $mov['origen_final'] }}">{{ $numero($mov['origen_final']) }}</td>
+                                                <td class="text-right" data-value="{{ $mov['destino_final'] }}">{{ $numero($mov['destino_final']) }}</td>
                                             </tr>
                                         @endforeach
                                         </tbody>
@@ -298,10 +295,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var filas = [cabecera];
         document.querySelectorAll('.re-export-row').forEach(function (fila) {
             filas.push(Array.from(fila.querySelectorAll('td')).map(function (celda) {
-                return celda.getAttribute('data-value') || celda.textContent.trim().replace(/\./g, function (m) {
-                    // Conserva codigos y nombres. Los campos numericos ya son numeros con separadores.
-                    return m;
-                });
+                return celda.getAttribute('data-value') || celda.textContent.trim();
             }));
         });
         var contenido = '\uFEFF' + filas.map(function (fila) {
