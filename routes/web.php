@@ -1029,3 +1029,15 @@ Route::get(
     '/control/terminacion/reporte-pendientes-envio/excel',
     [ControlTerminacionController::class, 'exportarReportePendientesEnvioExcel']
 )->name('control.terminacion.reporte-pendientes-envio.excel');
+
+
+/*
+|--------------------------------------------------------------------------
+| REDISTRIBUCION POR EXCEL (MODULO INDEPENDIENTE)
+|--------------------------------------------------------------------------
+| Consulta stock_sucursales, genera propuestas, no modifica stock ni lotes.
+*/
+Route::get('/redistribucion-excel', [\App\Http\Controllers\RedistribucionExcelController::class, 'index'])
+    ->name('redistribucion-excel.index');
+Route::post('/redistribucion-excel/consultar', [\App\Http\Controllers\RedistribucionExcelController::class, 'consultar'])
+    ->name('redistribucion-excel.consultar');
