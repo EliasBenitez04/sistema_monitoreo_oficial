@@ -69,6 +69,76 @@ class MayoristaMatrizController extends Controller
             ->groupBy('factura_clave')->pluck('prendas', 'factura_clave');
     }
 
+
+    private function sugerirConciliacion($facturas, string $hasta): void
+    {
+        foreach ($facturas as $f) {
+            $f->sugeridas = 0;
+            $f->sin_coincidencia = (int) $f->por_asignar;
+        }
+        if ($facturas->isEmpty()) return;
+
+        $porClave = $facturas->keyBy('clave');
+        $confirmadas = DB::table('mayorista_vinculos')
+            ->whereIn('factura_clave', $porClave->keys()->all())
+            ->select('factura_clave', 'codigo')
+            ->selectRaw('SUM(cantidad) as cantidad')
+            ->groupBy('factura_clave', 'codigo')->get();
+        $confirmado = [];
+        foreach ($confirmadas as $v) {
+            $k = $v->factura_clave.'|'.Conciliador::codigo($v->codigo);
+            $confirmado[$k] = ($confirmado[$k] ?? 0) + (int) $v->cantidad;
+        }
+
+        $uso = DB::table('mayorista_vinculos')
+            ->select('remision_id')->selectRaw('SUM(cantidad) as cantidad')
+            ->groupBy('remision_id');
+        $remisiones = VentaMayoristaController::entradas()
+            ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
+            ->where('r.fecha_remision', '<=', $hasta)
+            ->whereNotNull('r.fecha_recepcion')
+            ->leftJoinSub($uso, 'u', 'u.remision_id', '=', 'r.id')
+            ->select('r.id', 'r.codigo', 'r.fecha_remision', 'r.fecha_recepcion', 'r.cantidad')
+            ->selectRaw('COALESCE(u.cantidad,0) as usadas')
+            ->orderBy('r.fecha_recepcion')->orderBy('r.id')->get();
+
+        $disponibles = [];
+        foreach ($remisiones as $r) {
+            $codigo = Conciliador::codigo($r->codigo);
+            $r->saldo = max(0, (int) $r->cantidad - (int) $r->usadas);
+            if ($codigo !== '' && $r->saldo > 0) $disponibles[$codigo][] = $r;
+        }
+
+        $ventas = VentaMayoristaController::ventas()
+            ->whereBetween('v.fecha', [$facturas->min('fecha'), $hasta])
+            ->where('v.cantidad', '>', 0)
+            ->select('v.fecha', 'v.comprobante', 'v.cli_cod', 'v.cliente', 'v.codigo')
+            ->selectRaw('SUM(v.cantidad) as cantidad')
+            ->groupBy('v.fecha', 'v.comprobante', 'v.cli_cod', 'v.cliente', 'v.codigo')
+            ->orderBy('v.fecha')->orderBy('v.comprobante')->get();
+
+        foreach ($ventas as $v) {
+            $clave = Conciliador::claveFactura($v->fecha, $v->comprobante, $v->cli_cod, $v->cliente);
+            $factura = $porClave->get($clave);
+            if (!$factura) continue;
+            $codigo = Conciliador::codigo($v->codigo);
+            $faltante = max(0, (int) $v->cantidad - ($confirmado[$clave.'|'.$codigo] ?? 0));
+            foreach ($disponibles[$codigo] ?? [] as $r) {
+                if (!$faltante) break;
+                if (!$r->saldo || $r->fecha_remision > $v->fecha
+                    || substr((string) $r->fecha_recepcion, 0, 10) > $v->fecha) continue;
+                $n = min($faltante, $r->saldo);
+                $r->saldo -= $n;
+                $faltante -= $n;
+                $factura->sugeridas += $n;
+            }
+        }
+        foreach ($facturas as $f) {
+            $f->sugeridas = min($f->sugeridas, $f->por_asignar);
+            $f->sin_coincidencia = max(0, $f->por_asignar - $f->sugeridas);
+        }
+    }
+
     public function index(Request $request)
     {
         if (!Schema::hasTable('ventas') || !Schema::hasTable('ot_logistica_remisiones')) {
@@ -88,6 +158,8 @@ class MayoristaMatrizController extends Controller
             $f->estado_cruce = (int) $f->brutas === 0 ? 'NOTA DE CRÉDITO'
                 : ($f->por_asignar === 0 ? 'ASIGNADA' : ($f->asignadas > 0 ? 'PARCIAL' : 'SIN ASIGNAR'));
         });
+
+        $this->sugerirConciliacion($facturas, $hasta);
 
         $resumen = VentaMayoristaController::ventas()
             ->whereBetween('v.fecha', [$desde, $hasta])
