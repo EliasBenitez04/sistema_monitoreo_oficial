@@ -32,7 +32,7 @@
 
 
 @php
-    $menuMonitoreo = request()->routeIs('stock_ventas_sucursales.*', 'RedistribucionSugeridas.*', 'redistribucion-configs.*');
+    $menuMonitoreo = request()->routeIs('stock_ventas_sucursales.*', 'RedistribucionSugeridas.*', 'redistribucion-configs.*', 'redistribucion-excel.*');
 @endphp
 
 
@@ -517,6 +517,18 @@
             @endcan
 
 
+
+
+            {{-- Modulo independiente: redistribucion por importacion Excel --}}
+            @can('redistribucionsugerencia index')
+                <li class="nav-item">
+                    <a href="{{ route('redistribucion-excel.index') }}"
+                        class="nav-link {{ request()->routeIs('redistribucion-excel.*') ? 'active' : '' }}">
+                        <i class="nav-icon fas fa-file-excel"></i>
+                        <p>Redistribución por Excel</p>
+                    </a>
+                </li>
+            @endcan
 
             @can('redistribucionsugerencia index')
                 <li class="nav-item">
