@@ -40,6 +40,19 @@ class MayoristaCruceDocumento
                 $r->maximo = 0;
             }
 
+            // Indicio temporal, no prueba de vínculo ni recepción.
+            $r->dias_antes_factura = $fechaFactura && $r->fecha_remision
+                ? (int) round((strtotime($fechaFactura) - strtotime($r->fecha_remision)) / 86400)
+                : null;
+            $r->coincidencia_cercana = $r->dias_antes_factura !== null
+                && $r->dias_antes_factura >= 0
+                && $r->dias_antes_factura <= 7
+                && $disponible > 0
+                && $r->pendiente_factura > 0;
+            $r->sugerencia = $r->coincidencia_cercana
+                ? 'Coincidencia temporal de ' . $r->dias_antes_factura . ' día(s); verificar documento'
+                : 'Revisar correspondencia documental';
+
             $r->es_destino_matriz = (int) ($r->cod_sucursal_destino ?? 0) === 25
                 || in_array(strtoupper(trim((string) $r->sucursal_destino)), ['MATRIZ','COMERCIAL MATRIZ'], true)
                 || in_array(strtoupper(trim((string) ($r->sucursal_logistica ?? ''))), ['MATRIZ','COMERCIAL MATRIZ'], true);
@@ -66,6 +79,7 @@ class MayoristaCruceDocumento
                     'codigos' => [], 'lineas' => collect(),
                     'remitidas' => 0, 'usadas' => 0, 'disponibles' => 0,
                     'posible' => 0, 'coincidencias' => 0, 'completo' => false,
+                    'dias_cercanos' => null, 'lineas_cercanas' => 0, 'coincidencias_utiles' => 0,
                     'codigos_por_ot' => [], 'grupos_de_ot' => [],
                 ];
             }
@@ -79,6 +93,15 @@ class MayoristaCruceDocumento
             $doc->usadas += (int) ($r->usadas ?? 0);
             $doc->disponibles += $disponible;
             $doc->posible += $r->maximo;
+            if ($r->maximo > 0) {
+                $doc->coincidencias_utiles++;
+                if ($r->coincidencia_cercana) {
+                    $doc->lineas_cercanas++;
+                    $doc->dias_cercanos = $doc->dias_cercanos === null
+                        ? $r->dias_antes_factura
+                        : min($doc->dias_cercanos, $r->dias_antes_factura);
+                }
+            }
         }
         foreach ($documentos as $doc) {
             $doc->coincidencias = count($doc->codigos);
@@ -98,7 +121,12 @@ class MayoristaCruceDocumento
 
         return collect(array_values($documentos))
             ->sortByDesc(function ($doc) {
-                return ($doc->completo ? 10000000 : 0) + $doc->posible;
+                // Priorizar coincidencias cercanas y saldo utilizable,
+                // sin considerar un documento completo como vinculado.
+                return ($doc->lineas_cercanas > 0 ? 10000000 : 0)
+                    + $doc->coincidencias_utiles * 10000
+                    + min(9999, $doc->posible)
+                    - min(365, $doc->dias_cercanos ?? 365);
             })->values();
     }
 }
