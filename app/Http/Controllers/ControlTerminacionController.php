@@ -66,22 +66,7 @@ class ControlTerminacionController extends Controller
         $queryProduccion = DB::table('ot_trazabilidad as pt')
             ->join('ot as o', 'o.id_ot', '=', 'pt.id_ot')
             ->where('pt.proceso', $procesoProductoTerminado)
-            ->where(function ($q) use ($fechaDesde, $fechaHasta) {
-                // Incluir tanto PT del período como OTs despachadas en el período.
-                // Una OT terminada antes y remitida hoy no debe desaparecer.
-                $q->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta])
-                    ->orWhereExists(function ($remisiones) use ($fechaDesde, $fechaHasta) {
-                        $remisiones->select(DB::raw(1))
-                            ->from('ot_logistica_remisiones as r')
-                            ->whereColumn('r.id_ot', 'o.id_ot')
-                            ->whereBetween('r.fecha_remision', [$fechaDesde, $fechaHasta])
-                            ->where(function ($origen) {
-                                $origen->where('r.cod_sucursal_salida', 1)
-                                    ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')");
-                            })
-                            ->whereRaw("UPPER(COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')");
-                    });
-            });
+            ->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta]);
 
         if ($buscar !== '') {
             $queryProduccion->where(function ($q) use ($buscar) {
@@ -516,25 +501,68 @@ class ControlTerminacionController extends Controller
                 return (int) $item->devoluciones_emitidas > 0;
             })->sortByDesc('devoluciones_emitidas')->values();
 
-        $totalEnTransito = (int) $produccionTerminada
-            ->sum('en_transito');
+        // El tránsito documental se obtiene de las remisiones del período,
+        // independientemente del período de Producto Terminado.
+        $remisionesEnTransito = DB::table('ot_logistica_remisiones as r')
+            ->whereBetween('r.fecha_remision', [$fechaDesde, $fechaHasta])
+            ->where('r.cantidad', '>', 0)
+            ->whereRaw(\\App\\Support\\ConfirmacionTupi::sql('r') . ' IS NULL')
+            ->where(function ($q) {
+                $q->where('r.cod_sucursal_salida', 1)
+                    ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')");
+            })
+            ->where(function ($q) {
+                $q->whereNull('r.cod_sucursal_destino')
+                    ->orWhere('r.cod_sucursal_destino', '<>', 1);
+            })
+            ->whereRaw("UPPER(COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')")
+            ->when($buscar !== '', function ($q) use ($buscar) {
+                $q->where(function ($sub) use ($buscar) {
+                    $sub->where('r.codigo', 'ILIKE', '%' . $buscar . '%')
+                        ->orWhere('r.descripcion', 'ILIKE', '%' . $buscar . '%');
+                    if (is_numeric($buscar)) {
+                        $sub->orWhereExists(function ($ot) use ($buscar) {
+                            $ot->select(DB::raw(1))->from('ot as o')
+                                ->whereColumn('o.id_ot', 'r.id_ot')
+                                ->where('o.nro_ot', (int) $buscar);
+                        });
+                    }
+                });
+            })
+            ->select('r.id', 'r.id_ot', 'r.serie', 'r.numero_remision',
+                'r.codigo', 'r.descripcion', 'r.cantidad',
+                'r.fecha_remision', 'r.fecha_creacion', 'r.fecha_recepcion',
+                'r.cod_sucursal_salida', 'r.sucursal_salida',
+                'r.cod_sucursal_destino', 'r.sucursal_destino', 'r.sucursal_logistica')
+            ->get();
 
-        // Exactamente las OT del KPI, antes de la paginación.
-        $detalleEnTransitoOt = $produccionTerminada
-            ->filter(function ($item) {
-                return (int) $item->en_transito > 0;
-            })->sortByDesc('en_transito')->values();
-        $otsEnTransito = $detalleEnTransitoOt->count();
+        $otsTransito = DB::table('ot')
+            ->whereIn('id_ot', $remisionesEnTransito->pluck('id_ot')->filter()->unique()->all())
+            ->get(['id_ot', 'nro_ot'])->keyBy('id_ot');
+        $hoyTransito = now()->startOfDay();
+        foreach ($remisionesEnTransito as $linea) {
+            $ot = $otsTransito->get($linea->id_ot);
+            $linea->nro_ot = $ot->nro_ot ?? null;
+            $linea->vinculo_ot = $ot ? 'ID OT' : 'Sin OT vinculada';
+            $linea->fecha_documento = $linea->fecha_remision ?: $linea->fecha_creacion;
+            $linea->dias_transito = $linea->fecha_documento
+                ? max(0, \\Carbon\\Carbon::parse($linea->fecha_documento)->startOfDay()
+                    ->diffInDays($hoyTransito, false)) : null;
+            $linea->destino_real = $linea->sucursal_destino ?: $linea->sucursal_logistica;
+            $origen = strtoupper(trim((string) $linea->sucursal_salida));
+            $linea->tipo_movimiento = ((int) $linea->cod_sucursal_salida === 1
+                || in_array($origen, ['CASA CENTRAL', 'MATRIZ'], true))
+                ? 'CENTRAL A LOCAL' : 'ENTRE LOCALES';
+        }
 
-        // Remisiones originales sin fecha_recepcion. Se mantiene separado
-        // el total documental del KPI neto/efectivo por OT.
-        $remisionesEnTransito = $this->detalleRemisionesSinRecepcion(
-            $detalleEnTransitoOt
-        );
-        $remisionesEnTransitoPorOt = $remisionesEnTransito
-            ->groupBy('id_ot');
-        $totalDocumentalEnTransito = (int) $remisionesEnTransito
-            ->sum('cantidad');
+        $remisionesEnTransito = $remisionesEnTransito->sortByDesc('dias_transito')->values();
+        $totalEnTransito = (int) $remisionesEnTransito->sum('cantidad');
+        $totalDocumentalEnTransito = $totalEnTransito;
+        $remisionesEnTransitoPorOt = $remisionesEnTransito->groupBy('id_ot');
+        $otsEnTransito = $remisionesEnTransito->pluck('id_ot')->filter()->unique()->count();
+        $detalleEnTransitoOt = $produccionTerminada->filter(function ($item) {
+            return (int) $item->en_transito > 0;
+        })->sortByDesc('en_transito')->values();
 
         $totalRecepcionLocal = (int) $produccionTerminada
             ->sum('recibido_efectivo');
