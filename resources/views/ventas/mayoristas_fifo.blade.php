@@ -2,7 +2,7 @@
 @section('content')
 <section class="content"><div class="container-fluid py-3">
 <h2>Conciliación masiva FIFO · Comercial Matriz</h2>
-<p class="text-muted">Propuesta documental por código completo, remisiones de Casa Central y locales recibidas antes de la factura. No acredita stock físico ni demuestra procedencia individual. Sin modificaciones hasta aprobar.</p>
+<p class="text-muted">Propuesta documental por código completo, remisiones de Casa Central y locales, incluso si la remisión o recepción es posterior a la factura. FIFO documental por código y saldo, sin demostrar disponibilidad física en la fecha de venta. No acredita stock físico ni demuestra procedencia individual. Sin modificaciones hasta aprobar.</p>
 @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
 @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
 <form method="GET" action="{{ route('ventas.mayoristas.fifo') }}" class="form-inline mb-3">
@@ -22,7 +22,7 @@
 <thead><tr><th>Factura</th><th>Fecha factura</th><th>Código completo</th><th>Remisión</th><th>Origen</th><th>Emisión</th><th>Recepción</th><th class="text-right">Unidades</th></tr></thead><tbody>
 @foreach($resultado['filas'] as $fila)
 <tr><td>{{ $fila->comprobante }}</td><td>{{ $fila->fecha_factura }}</td><td>{{ $fila->codigo }}</td>
-<td>{{ $fila->serie }} {{ $fila->numero }}</td><td>{{ $fila->origen }}</td><td>{{ $fila->fecha_remision }}</td><td>{{ $fila->fecha_recepcion }}</td><td class="text-right">{{ $fila->cantidad }}</td></tr>
+<td>{{ $fila->serie }} {{ $fila->numero }}</td><td>{{ $fila->origen }}</td><td>{{ $fila->fecha_remision }}</td><td>{{ $fila->fecha_recepcion }} @if($fila->posterior)<span class="badge badge-warning">Posterior a la factura</span>@endif</td><td class="text-right">{{ $fila->cantidad }}</td></tr>
 @endforeach
 </tbody></table></div></div>
 <form method="POST" action="{{ route('ventas.mayoristas.fifo.aprobar') }}" onsubmit="return confirm('¿Aprobar masivamente las asociaciones FIFO? El sistema recalculará saldos antes de guardar.');" class="card card-body mb-3">
