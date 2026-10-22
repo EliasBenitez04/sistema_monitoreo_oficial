@@ -54,6 +54,11 @@ class MayoristaFifoController extends Controller
         $vinculos = DB::table('mayorista_vinculos')->whereIn('factura_clave', $claves)
             ->select('factura_clave', 'codigo')->selectRaw('SUM(cantidad) as cantidad')
             ->groupBy('factura_clave', 'codigo')->get();
+        $paresExistentes = DB::table('mayorista_vinculos')
+            ->whereIn('factura_clave', $claves)
+            ->get(['factura_clave', 'remision_id'])
+            ->groupBy('factura_clave')
+            ->map(function ($grupo) { return $grupo->pluck('remision_id')->flip(); });
         $ocupacionFactura = [];
         foreach ($vinculos as $v) {
             $codigo = Conciliador::codigo($v->codigo);
@@ -119,6 +124,7 @@ class MayoristaFifoController extends Controller
                 if (!$pendiente) continue;
                 foreach ($pool[$codigo] ?? [] as $r) {
                     if (!$pendiente) break;
+                    if (isset($paresExistentes[$f->clave]) && $paresExistentes[$f->clave]->has($r->id)) continue;
                     if ($r->saldo <= 0 || $r->fecha_remision > $f->fecha
                         || substr((string)$r->fecha_recepcion, 0, 10) > $f->fecha) continue;
                     $usar = min($r->saldo, $pendiente);
