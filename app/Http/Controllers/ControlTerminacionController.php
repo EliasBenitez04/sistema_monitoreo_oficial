@@ -66,7 +66,22 @@ class ControlTerminacionController extends Controller
         $queryProduccion = DB::table('ot_trazabilidad as pt')
             ->join('ot as o', 'o.id_ot', '=', 'pt.id_ot')
             ->where('pt.proceso', $procesoProductoTerminado)
-            ->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta]);
+            ->where(function ($q) use ($fechaDesde, $fechaHasta) {
+                // Incluir tanto PT del período como OTs despachadas en el período.
+                // Una OT terminada antes y remitida hoy no debe desaparecer.
+                $q->whereBetween('pt.fecha_proceso', [$fechaDesde, $fechaHasta])
+                    ->orWhereExists(function ($remisiones) use ($fechaDesde, $fechaHasta) {
+                        $remisiones->select(DB::raw(1))
+                            ->from('ot_logistica_remisiones as r')
+                            ->whereColumn('r.id_ot', 'o.id_ot')
+                            ->whereBetween('r.fecha_remision', [$fechaDesde, $fechaHasta])
+                            ->where(function ($origen) {
+                                $origen->where('r.cod_sucursal_salida', 1)
+                                    ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')");
+                            })
+                            ->whereRaw("UPPER(COALESCE(NULLIF(TRIM(r.sucursal_destino), ''), NULLIF(TRIM(r.sucursal_logistica), ''), '')) NOT IN ('', 'CASA CENTRAL', 'MATRIZ')");
+                    });
+            });
 
         if ($buscar !== '') {
             $queryProduccion->where(function ($q) use ($buscar) {
