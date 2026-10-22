@@ -89,9 +89,7 @@ class MayoristaFifoController extends Controller
             $query = VentaMayoristaController::entradas()
                 ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
                 ->whereIn(DB::raw('UPPER(BTRIM(r.codigo))'), $grupo)
-                ->where('r.fecha_remision', '<=', $hasta)
                 ->whereNotNull('r.fecha_recepcion')
-                ->where('r.fecha_recepcion', '<=', $hasta)
                 ->where('r.cantidad', '>', 0)
                 ->select('r.id', 'r.codigo', 'r.cantidad', 'r.fecha_remision', 'r.fecha_recepcion',
                     'r.numero_remision', 'r.serie', 'r.sucursal_salida', 'r.cod_sucursal_salida');
@@ -125,8 +123,7 @@ class MayoristaFifoController extends Controller
                 foreach ($pool[$codigo] ?? [] as $r) {
                     if (!$pendiente) break;
                     if (isset($paresExistentes[$f->clave]) && $paresExistentes[$f->clave]->has($r->id)) continue;
-                    if ($r->saldo <= 0 || $r->fecha_remision > $f->fecha
-                        || substr((string)$r->fecha_recepcion, 0, 10) > $f->fecha) continue;
+                    if ($r->saldo <= 0) continue;
                     $usar = min($r->saldo, $pendiente);
                     $filas->push((object)[
                         'clave' => $f->clave, 'comprobante' => $f->comprobante,
@@ -134,6 +131,7 @@ class MayoristaFifoController extends Controller
                         'remision_id' => $r->id, 'serie' => $r->serie, 'numero' => $r->numero_remision,
                         'origen' => $r->sucursal_salida, 'fecha_remision' => $r->fecha_remision,
                         'fecha_recepcion' => $r->fecha_recepcion, 'cantidad' => $usar,
+                        'posterior' => $r->fecha_remision > $f->fecha || substr((string)$r->fecha_recepcion, 0, 10) > $f->fecha,
                     ]);
                     $r->saldo -= $usar;
                     $pendiente -= $usar;
@@ -141,7 +139,7 @@ class MayoristaFifoController extends Controller
                 if ($pendiente) $excepciones->push((object)[
                     'comprobante' => $f->comprobante, 'fecha' => $f->fecha,
                     'codigo' => $codigo, 'cantidad' => $pendiente,
-                    'motivo' => 'Sin saldo recibido antes de la factura o sin remisión coincidente',
+                    'motivo' => 'Sin remisión recibida con código coincidente o sin saldo documental',
                 ]);
             }
         }
@@ -174,7 +172,7 @@ class MayoristaFifoController extends Controller
                     'fecha_factura' => $fila->fecha_factura, 'codigo' => $fila->codigo,
                     'remision_id' => $fila->remision_id, 'cantidad' => $fila->cantidad,
                     'usuario_id' => $request->user()->id,
-                    'observacion' => 'FIFO masivo · ' . $datos['referencia'],
+                    'observacion' => 'FIFO documental sin límite cronológico · ' . $datos['referencia'],
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
                 DB::table('mayorista_auditoria')->insert([
@@ -182,7 +180,7 @@ class MayoristaFifoController extends Controller
                     'remision_id' => $fila->remision_id, 'codigo' => $fila->codigo,
                     'cantidad' => $fila->cantidad, 'separacion_id' => null,
                     'usuario_id' => $request->user()->id,
-                    'detalle' => 'FIFO MASIVO · vínculo ' . $id . ' · ' . $datos['referencia'],
+                    'detalle' => 'FIFO DOCUMENTAL SIN LÍMITE DE FECHA · vínculo ' . $id . ' · ' . $datos['referencia'],
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
                 $cantidad += $fila->cantidad;
