@@ -7,7 +7,10 @@
         <h2 class="mb-1"><i class="fas fa-file-invoice-dollar text-primary mr-2"></i>Ventas mayoristas · COMERCIAL MATRIZ</h2>
         <p class="text-muted mb-0">Facturas reales, detalle de artículos y conciliación de remisiones de Logística / Modelo Muestra.</p>
       </div>
-      <div class="badge badge-primary p-2 mt-2">Sucursal: 25 · COMERCIAL MATRIZ</div>
+      <div class="d-flex align-items-center mt-2">
+        <a class="btn btn-success mr-2" href="{{ route('ventas.mayoristas.fifo',['desde'=>$desde ?? date('Y-m-01'),'hasta'=>$hasta ?? date('Y-m-d')]) }}"><i class="fas fa-layer-group mr-1"></i> Conciliación FIFO masiva</a>
+        <div class="badge badge-primary p-2 mt-2">Sucursal: 25 · COMERCIAL MATRIZ</div>
+      </div>
     </div>
     @if(!empty($sinFuentes))
       <div class="alert alert-warning">No se encontraron las tablas ventas y remisiones. Verificá los importadores y las migraciones antes de continuar.</div>
