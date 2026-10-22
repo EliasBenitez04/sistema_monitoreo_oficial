@@ -506,7 +506,7 @@ class ControlTerminacionController extends Controller
         $remisionesEnTransito = DB::table('ot_logistica_remisiones as r')
             ->whereBetween('r.fecha_remision', [$fechaDesde, $fechaHasta])
             ->where('r.cantidad', '>', 0)
-            ->whereRaw(\\App\\Support\\ConfirmacionTupi::sql('r') . ' IS NULL')
+            ->whereRaw(\App\Support\ConfirmacionTupi::sql('r') . ' IS NULL')
             ->where(function ($q) {
                 $q->where('r.cod_sucursal_salida', 1)
                     ->orWhereRaw("UPPER(TRIM(COALESCE(r.sucursal_salida, ''))) IN ('CASA CENTRAL', 'MATRIZ')");
@@ -546,7 +546,7 @@ class ControlTerminacionController extends Controller
             $linea->vinculo_ot = $ot ? 'ID OT' : 'Sin OT vinculada';
             $linea->fecha_documento = $linea->fecha_remision ?: $linea->fecha_creacion;
             $linea->dias_transito = $linea->fecha_documento
-                ? max(0, \\Carbon\\Carbon::parse($linea->fecha_documento)->startOfDay()
+                ? max(0, \Carbon\Carbon::parse($linea->fecha_documento)->startOfDay()
                     ->diffInDays($hoyTransito, false)) : null;
             $linea->destino_real = $linea->sucursal_destino ?: $linea->sucursal_logistica;
             $origen = strtoupper(trim((string) $linea->sucursal_salida));
