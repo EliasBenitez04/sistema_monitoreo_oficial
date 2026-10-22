@@ -347,6 +347,12 @@ Route::get('/ventas/mayoristas/remisiones/{id}',
     [MayoristaMatrizController::class, 'remision'])->whereNumber('id')->name('ventas.mayoristas.remision');
 
 // Conciliación factura-remisión: cada vínculo registra responsable y evidencia.
+// Conciliación masiva FIFO: vista previa y aprobación auditada.
+Route::get('/ventas/mayoristas/fifo',
+    [App\Http\Controllers\MayoristaFifoController::class, 'index'])->name('ventas.mayoristas.fifo');
+Route::post('/ventas/mayoristas/fifo/aprobar',
+    [App\Http\Controllers\MayoristaFifoController::class, 'aprobar'])->name('ventas.mayoristas.fifo.aprobar');
+
 Route::get('/ventas/mayoristas/facturas/{clave}',
     [MayoristaMatrizController::class, 'factura'])->name('ventas.mayoristas.factura');
 Route::post('/ventas/mayoristas/facturas/{clave}/vincular',
