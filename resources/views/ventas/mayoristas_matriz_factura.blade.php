@@ -56,6 +56,7 @@
       <div class="alert alert-warning m-2">Existen más de 3.000 líneas candidatas para estos códigos. La vista está limitada y NO permite concluir que se hayan encontrado todas las remisiones; acotá por período o revisá en PostgreSQL.</div>
     @endif
     <div class="card-body">
+      <p class="small text-muted mb-3">Las remisiones con el mismo código completo y saldo disponible, emitidas de 0 a 7 días antes de la factura, aparecen primero como <strong>posibles cruces</strong>. Se incluyen Casa Central y locales hacia Matriz. La fecha cercana no prueba una asociación: verificá origen, documento, recepción y cantidades antes de asignar.</p>
       @forelse($documentos as $doc)
         <details class="maym-documento mb-3" {{ $loop->first ? 'open' : '' }}>
           <summary class="p-3">
@@ -63,6 +64,9 @@
               <div>
                 <strong>Remisión {{ $doc->serie }}-{{ $doc->numero }}</strong>
                 <span class="small text-muted ml-2">{{ date('d/m/Y',strtotime($doc->fecha)) }}</span>
+                @if($doc->lineas_cercanas > 0)
+                  <span class="badge badge-warning ml-2">Posible cruce · {{ $doc->dias_cercanos }} día(s) antes de factura</span>
+                @endif
                 <small class="d-block text-muted">
                   <strong>Origen: {{ $doc->origen }}</strong>
                   <span class="mx-1">→</span> Destino: {{ $doc->destino ?: 'No informado' }}
@@ -101,6 +105,9 @@
                       @if($r->fecha_recepcion)<span class="text-success">{{ date('d/m/Y',strtotime($r->fecha_recepcion)) }}</span>
                       @else<span class="text-warning">Sin recepción</span>@endif
                       @if($r->modelo)<small class="d-block text-primary">Modelo Muestra</small>@endif
+                      @if($r->coincidencia_cercana && $r->maximo > 0)
+                        <small class="d-block text-warning font-weight-bold">{{ $r->sugerencia }}</small>
+                      @endif
                       @if($r->posterior)
                         <small class="d-block text-warning">Emitida después de la factura · solo revisión</small>
                       @elseif($r->recepcion_posterior && !$r->modelo)
