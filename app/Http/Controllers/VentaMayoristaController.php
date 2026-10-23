@@ -49,7 +49,7 @@ class VentaMayoristaController extends Controller
     public static function ventas()
     {
         return DB::table('ventas as v')
-            ->whereRaw("UPPER(BTRIM(COALESCE(v.local,''))) = 'COMERCIAL MATRIZ'");
+            ->whereRaw("UPPER(BTRIM(REGEXP_REPLACE(COALESCE(v.local,''), '[[:space:]]+', ' ', 'g'))) IN ('COMERCIAL MATRIZ', 'MATRIZ')");
     }
 
     public static function rango(string $mes): array
