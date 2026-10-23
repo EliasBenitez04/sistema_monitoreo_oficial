@@ -16,40 +16,55 @@
     @else
       @php
         $clienteFiltro = trim((string) request('cliente', ''));
-        // Catálogo histórico completo: las fechas solo restringen los resultados,
-        // no los clientes disponibles para seleccionar.
+        // Mantener clientes diferentes aun cuando el código se repita o falte.
+        // Las fechas nunca limitan las opciones disponibles.
         $clientesMatriz = \App\Http\Controllers\VentaMayoristaController::ventas()
-            ->where(function ($q) {
-                $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) <> ''")
-                  ->orWhereRaw("BTRIM(COALESCE(v.cliente,'')) <> ''");
-            })
             ->selectRaw("BTRIM(COALESCE(v.cli_cod,'')) as codigo")
             ->selectRaw("BTRIM(COALESCE(v.cliente,'')) as nombre")
-            ->distinct()
-            ->orderBy('nombre')
-            ->orderBy('codigo')
-            ->get()
+            ->distinct()->get()
+            ->filter(function ($c) { return $c->codigo !== '' || $c->nombre !== ''; })
             ->map(function ($c) {
-                $c->valor = $c->codigo !== '' ? $c->codigo : $c->nombre;
+                $c->valor = 'CLIENTE:'.base64_encode(json_encode([$c->codigo, $c->nombre]));
                 return $c;
-            })->unique('valor')->values();
+            })->sortBy(function ($c) { return mb_strtoupper($c->nombre.' '.$c->codigo); })->values();
+
+        // Compatibilidad con enlaces previos que pasaban el código sin prefijo.
+        $clienteCodigo = null;
+        $clienteNombre = null;
+        if (strpos($clienteFiltro, 'CLIENTE:') === 0) {
+            $partes = json_decode(base64_decode(substr($clienteFiltro, 8), true) ?: '', true);
+            if (is_array($partes) && count($partes) === 2 && is_string($partes[0]) && is_string($partes[1])) {
+                $clienteCodigo = trim($partes[0]);
+                $clienteNombre = trim($partes[1]);
+            } else {
+                $clienteFiltro = '';
+            }
+        } elseif ($clienteFiltro !== '') {
+            $clienteCodigo = $clienteFiltro;
+        }
 
         if ($clienteFiltro !== '') {
-            $facturas = $facturas->filter(function ($f) use ($clienteFiltro) {
+            $facturas = $facturas->filter(function ($f) use ($clienteCodigo, $clienteNombre) {
                 $codigo = trim((string) $f->cli_cod);
                 $nombre = trim((string) $f->cliente);
-                return ($codigo !== '' && $codigo === $clienteFiltro)
-                    || ($codigo === '' && $nombre === $clienteFiltro);
+                return $clienteNombre === null
+                    ? ($codigo === $clienteCodigo || ($codigo === '' && $nombre === $clienteCodigo))
+                    : ($codigo === $clienteCodigo && $nombre === $clienteNombre);
             })->values();
 
             $ventasCliente = \App\Http\Controllers\VentaMayoristaController::ventas()
                 ->whereBetween('v.fecha', [$desde, $hasta])
-                ->where(function ($q) use ($clienteFiltro) {
-                    $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteFiltro])
-                      ->orWhere(function ($sinCodigo) use ($clienteFiltro) {
-                          $sinCodigo->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ''")
-                              ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteFiltro]);
-                      });
+                ->where(function ($q) use ($clienteCodigo, $clienteNombre) {
+                    if ($clienteNombre !== null) {
+                        $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
+                          ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteNombre]);
+                    } else {
+                        $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
+                          ->orWhere(function ($sinCodigo) use ($clienteCodigo) {
+                              $sinCodigo->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ''")
+                                  ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteCodigo]);
+                          });
+                    }
                 });
 
             $resumen = (clone $ventasCliente)
