@@ -122,27 +122,43 @@
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div>
       </div>
       @php
-        // Distribución puramente ilustrativa: prorrateo de ventas brutas en proporción
-        // a las transferencias registradas. NO crea relaciones entre factura y remisión.
-        $baseDistribucion = (int) $transferenciasResumen->locales + (int) $transferenciasResumen->central;
-        $ventasBrutas = (int) $resumen->brutas;
-        $estimadoLocales = $baseDistribucion > 0 ? (int) round($ventasBrutas * (int) $transferenciasResumen->locales / $baseDistribucion) : 0;
-        $estimadoCentral = $baseDistribucion > 0 ? $ventasBrutas - $estimadoLocales : 0;
+        // Regla comercial: FAMILY GROUP se atribuye a Casa Central.
+        // Ninguna otra venta obtiene origen por simple prorrateo.
+        $consultaOrigen = \App\Http\Controllers\VentaMayoristaController::ventas()
+            ->whereBetween('v.fecha', [$desde, $hasta]);
+        if ($clienteFiltro !== '') {
+            $consultaOrigen->where(function ($q) use ($clienteCodigo, $clienteNombre) {
+                if ($clienteNombre !== null) {
+                    $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
+                      ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteNombre]);
+                } else {
+                    $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
+                      ->orWhere(function ($sinCodigo) use ($clienteCodigo) {
+                          $sinCodigo->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ''")
+                              ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteCodigo]);
+                      });
+                }
+            });
+        }
+        $familiaResumen = (clone $consultaOrigen)
+            ->whereRaw("UPPER(BTRIM(COALESCE(v.cliente,''))) LIKE 'FAMILY GROUP%'")
+            ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END),0) as brutas")
+            ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END),0) as devoluciones")
+            ->first();
+        $familiaBrutas = (int) ($familiaResumen->brutas ?? 0);
+        $familiaDevoluciones = (int) ($familiaResumen->devoluciones ?? 0);
+        $otrasBrutas = max(0, (int) $resumen->brutas - $familiaBrutas);
       @endphp
       <div class="card may2-card mb-3">
-        <div class="card-header bg-white"><strong><i class="fas fa-chart-pie mr-1 text-primary"></i>Distribución estimada de ventas por origen</strong><span class="badge badge-warning ml-2">SIMULACIÓN</span></div>
+        <div class="card-header bg-white"><strong><i class="fas fa-chart-pie mr-1 text-primary"></i>Origen comercial de ventas (reglas declaradas)</strong></div>
         <div class="card-body">
-          <p class="small text-muted mb-3">Ejemplo referencial: las ventas brutas se reparten proporcionalmente según las transferencias reales recibidas de locales y Casa Central. No existe conciliación por factura, código, talle o remisión. No modifica datos ni acredita la procedencia de las prendas vendidas.</p>
-          @if($baseDistribucion > 0)
-            <div class="row">
-              <div class="col-md-4 mb-2"><small class="text-muted d-block">Ventas atribuidas a locales (estimación)</small><strong>{{ number_format($estimadoLocales,0,',','.') }}</strong></div>
-              <div class="col-md-4 mb-2"><small class="text-muted d-block">Ventas atribuidas a Casa Central (estimación)</small><strong>{{ number_format($estimadoCentral,0,',','.') }}</strong></div>
-              <div class="col-md-4 mb-2"><small class="text-muted d-block">Total ventas brutas distribuidas</small><strong>{{ number_format($estimadoLocales + $estimadoCentral,0,',','.') }}</strong></div>
-            </div>
-            <small class="text-muted">Diferencia entre transferencias reales y ventas brutas: {{ number_format((int) $transferenciasResumen->remitidas - $ventasBrutas,0,',','.') }} unidades. No equivale a stock físico ni a saldo conciliado.</small>
-          @else
-            <p class="text-muted mb-0">No hay transferencias con origen identificado para calcular una distribución estimada.</p>
-          @endif
+          <p class="small text-muted mb-3">Las ventas de FAMILY GROUP se clasifican como provenientes de Casa Central → Matriz, según la regla comercial indicada. Las ventas de otros clientes quedan sin origen determinado hasta contar con otra regla o evidencia. Este informe no asocia facturas a remisiones ni modifica registros.</p>
+          <div class="row">
+            <div class="col-md-4 mb-2"><small class="text-muted d-block">FAMILY GROUP · Casa Central (regla)</small><strong>{{ number_format($familiaBrutas,0,',','.') }}</strong><small class="text-muted d-block">NC del cliente: {{ number_format($familiaDevoluciones,0,',','.') }} · Neto: {{ number_format($familiaBrutas - $familiaDevoluciones,0,',','.') }}</small></div>
+            <div class="col-md-4 mb-2"><small class="text-muted d-block">Otros clientes · Origen no determinado</small><strong>{{ number_format($otrasBrutas,0,',','.') }}</strong></div>
+            <div class="col-md-4 mb-2"><small class="text-muted d-block">Total ventas brutas</small><strong>{{ number_format($familiaBrutas + $otrasBrutas,0,',','.') }}</strong></div>
+          </div>
+          <small class="text-muted">Las transferencias documentadas ({{ number_format($transferenciasResumen->remitidas,0,',','.') }} unidades) no se restan de las ventas como si fueran inventario disponible: pueden corresponder a fechas y operaciones distintas.</small>
         </div>
       </div>
       <div class="card may2-card mb-3">
