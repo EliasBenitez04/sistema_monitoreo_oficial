@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\ToCollection;
@@ -366,6 +367,15 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         |--------------------------------------------------------------------------
         */
         $existentes = $this->precargarExistentes($filas);
+
+        // Un accesorio se vincula por código, sin inventar el FCO de origen.
+        $conAccesorios = Schema::hasTable('accesorios_articulos')
+            && Schema::hasColumn('ot_logistica_remisiones', 'accesorio_articulo_id');
+        $idsAccesorios = $conAccesorios
+            ? DB::table('accesorios_articulos')
+                ->whereIn('codigo', $filas->pluck('codigo')->unique()->all())
+                ->pluck('id', 'codigo')
+            : collect();
         $this->usoDetalle = $this->precargarUsoDetalles($vinculos);
 
         // El uso ya persistido se leyó de BD. Este acumulador solo corresponde
@@ -462,7 +472,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 $this->insertadas++;
             }
 
-            $registros[] = [
+            $registro = [
                 'id_ot' => $idOt,
                 'id_trazabilidad' => $idTrazabilidad,
                 'id_logistica_detalle' => $idLogisticaDetalle,
@@ -493,6 +503,14 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 'created_at' => $existente->created_at ?? $ahora,
                 'updated_at' => $ahora,
             ];
+
+            if ($conAccesorios) {
+                $registro['accesorio_articulo_id'] = $idsAccesorios->get(
+                    strtoupper(trim($fila['codigo']))
+                ) ?: ($existente->accesorio_articulo_id ?? null);
+            }
+
+            $registros[] = $registro;
         }
 
         /*
@@ -504,6 +522,17 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         | enviados a PostgreSQL 9.5 y sigue siendo muy rápido.
         |
         */
+        $columnasUpdate = [
+            'id_ot', 'id_trazabilidad', 'id_logistica_detalle',
+            'fecha_remision', 'fecha_creacion', 'fecha_recepcion',
+            'sucursal_salida', 'sucursal_destino', 'sucursal_logistica',
+            'descripcion', 'cantidad', 'precio_venta', 'costo_unitario',
+            'estado', 'updated_at',
+        ];
+        if ($conAccesorios) {
+            $columnasUpdate[] = 'accesorio_articulo_id';
+        }
+
         foreach (array_chunk($registros, 200) as $lote) {
             DB::table('ot_logistica_remisiones')->upsert(
                 $lote,
@@ -514,23 +543,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                     'cod_sucursal_salida',
                     'cod_sucursal_destino',
                 ],
-                [
-                    'id_ot',
-                    'id_trazabilidad',
-                    'id_logistica_detalle',
-                    'fecha_remision',
-                    'fecha_creacion',
-                    'fecha_recepcion',
-                    'sucursal_salida',
-                    'sucursal_destino',
-                    'sucursal_logistica',
-                    'descripcion',
-                    'cantidad',
-                    'precio_venta',
-                    'costo_unitario',
-                    'estado',
-                    'updated_at',
-                ]
+                $columnasUpdate
             );
         }
     }

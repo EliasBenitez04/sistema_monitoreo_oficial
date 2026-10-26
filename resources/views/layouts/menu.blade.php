@@ -86,6 +86,25 @@
         </ul>
     </li>
 
+    <li class="nav-item {{ request()->routeIs('accesorios.*') ? 'menu-open' : '' }}">
+        <a href="#" class="nav-link {{ request()->routeIs('accesorios.*') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-socks"></i>
+            <p>Accesorios <i class="right fas fa-angle-left"></i></p>
+        </a>
+        <ul class="nav nav-treeview">
+            <li class="nav-item">
+                <a href="{{ route('accesorios.index') }}" class="nav-link {{ request()->routeIs('accesorios.index', 'accesorios.show') ? 'active' : '' }}">
+                    <i class="fas fa-list nav-icon"></i><p>Seguimiento</p>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ route('accesorios.importar.form') }}" class="nav-link {{ request()->routeIs('accesorios.importar*') ? 'active' : '' }}">
+                    <i class="fas fa-file-import nav-icon"></i><p>Importar datos</p>
+                </a>
+            </li>
+        </ul>
+    </li>
+
     <li class="nav-item {{ $menuCargaDatos ? 'menu-open' : '' }}">
 
         <a href="#" class="nav-link {{ $menuCargaDatos ? 'active' : '' }}">

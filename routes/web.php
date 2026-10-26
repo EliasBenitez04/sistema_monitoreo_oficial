@@ -330,6 +330,11 @@ Route::post(
 |--------------------------------------------------------------------------
 */
 
+Route::get('/accesorios', [\App\Http\Controllers\AccesoriosController::class, 'index'])->name('accesorios.index');
+Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
+Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
+Route::get('/accesorios/{id}', [\App\Http\Controllers\AccesoriosController::class, 'show'])->whereNumber('id')->name('accesorios.show');
+
 Route::get(
     '/ventas',
     [VentaController::class, 'index']
