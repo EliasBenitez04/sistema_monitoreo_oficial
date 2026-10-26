@@ -333,6 +333,7 @@ Route::post(
 // Panel principal: fuente única para monitoreo y decisiones (sin Power BI).
 Route::get('/accesorios', [\App\Http\Controllers\AccesoriosDashboardController::class, 'index'])->name('accesorios.index');
 Route::get('/accesorios/dashboard/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportar'])->name('accesorios.exportar');
+Route::get('/accesorios/stock/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportarStock'])->name('accesorios.stock.exportar');
 Route::get('/accesorios/listado', [\App\Http\Controllers\AccesoriosController::class, 'index'])->name('accesorios.listado');
 Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
 Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
