@@ -37,6 +37,18 @@
         </div>
     </section>
 
+    <div class="acc-source-toolbar">
+        <strong><i class="fas fa-database mr-1"></i> Actualizar información:</strong>
+        <a href="{{ route('accesorios.importar.form') }}"><i class="fas fa-box-open"></i> Compras y FCO</a>
+        <a href="{{ route('ventas.importar.form') }}"><i class="fas fa-receipt"></i> Ventas</a>
+        @can('redistribucionsugerencia update')
+            <a href="{{ route('remisiones.index') }}"><i class="fas fa-truck"></i> Remisiones</a>
+        @endcan
+        @can('stocks importar')
+            <a href="{{ route('stocks.index') }}"><i class="fas fa-warehouse"></i> Stock de sucursales</a>
+        @endcan
+    </div>
+
     @if(session('error'))<div class="alert alert-danger mt-3">{{ session('error') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger mt-3">{{ $errors->first() }}</div>@endif
 
@@ -267,6 +279,10 @@
     #accdash .acc-btn-reset{color:#56647e;background:#eaf0f8}
     #accdash .acc-meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,.25);font-size:11px;color:#dceaff}
     #accdash .acc-meta i{margin-right:6px}
+    #accdash .acc-source-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px;color:#59708f;font-size:11px}
+    #accdash .acc-source-toolbar strong{font-size:11px;margin-right:4px}
+    #accdash .acc-source-toolbar a{display:inline-flex;align-items:center;gap:6px;color:#205ba4;background:#e8f0fc;border:1px solid #d3e2f6;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:700}
+    #accdash .acc-source-toolbar a:hover{background:#dceafd}
     #accdash .acc-filter-panel,#accdash .acc-panel{border:1px solid var(--acc-line);background:#fff;border-radius:12px;box-shadow:0 2px 9px rgba(20,54,99,.035)}
     #accdash .acc-filter-panel{padding:16px 18px;margin-bottom:14px}
     #accdash .acc-section-heading{font-weight:800;font-size:14px;margin-bottom:12px;color:#153c7c}
