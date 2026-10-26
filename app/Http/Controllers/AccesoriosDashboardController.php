@@ -431,6 +431,12 @@ class AccesoriosDashboardController extends Controller
         }
 
         $stockTotal = $conStock ? (int) $stockPorCodigo->sum('saldo') : null;
+        $demanda30 = (int) $velocidad->sum('unidades');
+        // Un stock parcial no puede convertirse en una cobertura global creíble.
+        $coberturaGlobal = $conStock && $productosConStock === $catalogo->count()
+            && $demanda30 > 0
+            ? round(max(0, $stockTotal / ($demanda30 / 30)), 1)
+            : null;
         $facturacion = (float) ($kpi->importe ?? 0);
         $margenEstimado = $facturacion > 0 && $ranking->every(function ($f) {
             return $f->unidades === 0 || $f->costo_promedio !== null;
@@ -447,7 +453,7 @@ class AccesoriosDashboardController extends Controller
             'rankingPagina', 'alertas', 'stockFuente', 'stockCorte', 'stockTotal',
             'productosCriticos', 'productosReponer', 'productosConStock',
             'gananciaEstimada', 'costoEstimado', 'margenEstimado', 'ticketPromedio',
-            'ultimaVenta', 'conVentas', 'conStock', 'conRemisiones'
+            'coberturaGlobal', 'ultimaVenta', 'conVentas', 'conStock', 'conRemisiones'
         );
     }
 }
