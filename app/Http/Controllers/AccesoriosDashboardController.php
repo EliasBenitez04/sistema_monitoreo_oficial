@@ -292,21 +292,33 @@ class AccesoriosDashboardController extends Controller
                 });
             }
 
+            // Indicadores por ETAPA del circuito; no se suman como inventario.
+            // El mismo artículo puede figurar en Depósito→Central y Central→local.
+            $origenCentral = "(r.cod_sucursal_salida = 1
+                OR (r.cod_sucursal_salida IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')))";
+            $destinoCentral = "(r.cod_sucursal_destino = 1
+                OR (r.cod_sucursal_destino IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) IN ('CASA CENTRAL','CENTRAL')))";
+            $origenDeposito = "(UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPOSITO%'
+                OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPÓSITO%'
+                OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%INSUMOS%'
+                OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%TEJIDOS%')";
+            $distribucion = "($origenCentral AND NOT $destinoCentral
+                AND (COALESCE(r.cod_sucursal_destino,0) > 0
+                     OR BTRIM(COALESCE(r.sucursal_destino,'')) <> ''))";
+
             $remisiones = (clone $baseRemisiones)->selectRaw("
                 COALESCE(SUM(r.cantidad),0) AS movimientos,
-                COALESCE(SUM(CASE WHEN r.fecha_recepcion <= ? THEN r.cantidad ELSE 0 END),0) AS recibidas,
-                COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NULL OR r.fecha_recepcion > ? THEN r.cantidad ELSE 0 END),0) AS transito,
-                COALESCE(SUM(CASE WHEN (
-                    UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPOSITO%'
-                    OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPÓSITO%'
-                    OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%INSUMOS%'
-                ) AND UPPER(COALESCE(r.sucursal_destino,'')) LIKE '%CASA CENTRAL%'
-                    THEN r.cantidad ELSE 0 END),0) AS deposito_central,
-                COALESCE(SUM(CASE WHEN UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%CASA CENTRAL%'
+                COALESCE(SUM(CASE WHEN $distribucion AND r.fecha_recepcion <= ?
+                    THEN r.cantidad ELSE 0 END),0) AS recibidas,
+                COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NULL OR r.fecha_recepcion > ?
+                    THEN r.cantidad ELSE 0 END),0) AS transito,
+                COALESCE(SUM(CASE WHEN $origenDeposito AND $destinoCentral
+                    AND r.fecha_recepcion <= ? THEN r.cantidad ELSE 0 END),0) AS deposito_central,
+                COALESCE(SUM(CASE WHEN $distribucion
                     THEN r.cantidad ELSE 0 END),0) AS central_locales,
                 COUNT(DISTINCT COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')
                     || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')) AS documentos
-            ", [$hasta, $hasta])->first();
+            ", [$hasta, $hasta, $hasta])->first();
 
             $pendientes = (clone $baseRemisiones)->where(function ($q) use ($hasta) {
                 $q->whereNull('r.fecha_recepcion')->orWhere('r.fecha_recepcion', '>', $hasta);
