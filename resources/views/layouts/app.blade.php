@@ -46,7 +46,6 @@
             padding: 0 !important;
             width: 100%;
             max-width: 100%;
-            overflow-x: clip;
         }
 
         body.modulo-accesorios .content-wrapper {
