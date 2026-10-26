@@ -121,6 +121,75 @@
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Venta neta registrada</small><strong>Gs {{ number_format($resumen->importe_neto,0,',','.') }}</strong><span>{{ number_format($resumen->lineas,0,',','.') }} líneas de venta importadas</span></div></div>
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div>
       </div>
+      <div class="card may2-card may2-client-ranking mb-3" id="top-clientes">
+        <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center" style="gap:12px">
+          <div>
+            <strong><i class="fas fa-users text-primary mr-2"></i>Top clientes · COMERCIAL MATRIZ</strong>
+            <small class="d-block text-muted">Ranking por venta neta real. Tickets = facturas distintas (no líneas de artículos); notas de crédito aparte.</small>
+          </div>
+          <div class="d-flex flex-wrap align-items-center" style="gap:8px">
+            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->count(),0,',','.') }} clientes</span>
+            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->sum('tickets'),0,',','.') }} tickets</span>
+            @if($topClientes->count() > 20)
+              <a class="btn btn-sm btn-outline-primary" href="{{ route('ventas.mayoristas.index', array_merge(request()->except(['page','remisiones_page','top_clientes']), ['desde'=>$desde,'hasta'=>$hasta,'top_clientes'=>request('top_clientes')==='todos' ? '20' : 'todos'])) }}#top-clientes">
+                <i class="fas fa-list mr-1"></i>{{ request('top_clientes')==='todos' ? 'Mostrar top 20' : 'Ver todos los clientes' }}
+              </a>
+            @endif
+          </div>
+        </div>
+        <div class="may2-clients-hint px-3 py-2">
+          <i class="fas fa-calendar-alt text-primary mr-1"></i>
+          Del <strong>{{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }}</strong> al
+          <strong>{{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</strong>.
+          Incluye todos los clientes del período, aunque hayas elegido uno en el filtro superior.
+          La venta y las unidades son netas de devoluciones.
+        </div>
+        <div class="table-responsive may2-client-scroll">
+          <table class="table table-sm table-hover may2-table may2-client-table mb-0">
+            <thead><tr>
+              <th class="text-center">#</th>
+              <th>Sucursal</th>
+              <th>Cliente</th>
+              <th class="text-right">Unid. netas</th>
+              <th class="text-right">Tickets</th>
+              <th class="text-right">Venta neta</th>
+              <th class="text-center">Acción</th>
+            </tr></thead>
+            <tbody>
+              @forelse(request('top_clientes') === 'todos' ? $topClientes : $topClientes->take(20) as $clienteTop)
+                <tr>
+                  <td class="text-center text-muted">{{ $loop->iteration }}</td>
+                  <td><span class="badge badge-light border">COMERCIAL MATRIZ</span></td>
+                  <td>
+                    <strong>{{ $clienteTop->nombre !== '' ? $clienteTop->nombre : 'SIN NOMBRE REGISTRADO' }}</strong>
+                    <small class="d-block text-muted">
+                      {{ $clienteTop->codigo !== '' ? 'Código: '.$clienteTop->codigo : 'Sin código de cliente' }}
+                      @if($clienteTop->notas_credito > 0)
+                        · {{ $clienteTop->notas_credito }} NC
+                      @endif
+                    </small>
+                  </td>
+                  <td class="text-right {{ $clienteTop->unidades < 0 ? 'text-danger' : '' }}">{{ number_format($clienteTop->unidades,0,',','.') }}</td>
+                  <td class="text-right font-weight-bold">{{ number_format($clienteTop->tickets,0,',','.') }}</td>
+                  <td class="text-right font-weight-bold {{ $clienteTop->venta_neta < 0 ? 'text-danger' : 'text-primary' }}">Gs {{ number_format($clienteTop->venta_neta,0,',','.') }}</td>
+                  <td class="text-center">
+                    <a class="btn btn-sm btn-outline-primary" href="{{ route('ventas.mayoristas.cliente', ['cliente'=>$clienteTop->token,'desde'=>$desde,'hasta'=>$hasta]) }}" title="Ver todas las facturas y tickets del cliente">
+                      <i class="fas fa-eye mr-1"></i>Ver
+                    </a>
+                  </td>
+                </tr>
+              @empty
+                <tr><td colspan="7" class="text-center text-muted py-4">No existen ventas de COMERCIAL MATRIZ en el período seleccionado.</td></tr>
+              @endforelse
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer bg-white small text-muted">
+          <i class="fas fa-info-circle mr-1"></i>
+          Los tickets se cuentan por fecha, número y tipo de comprobante de cada cliente. Cada factura cuenta una sola vez, aunque contenga varios códigos o talles.
+          El botón <strong>Ver</strong> muestra los comprobantes del cliente, con acceso al detalle de cada factura.
+        </div>
+      </div>
       @php
         // Regla comercial: FAMILY GROUP se atribuye a Casa Central.
         // Ninguna otra venta obtiene origen por simple prorrateo.
@@ -191,6 +260,16 @@
 @push('page_css')
 <style>
 .mayor-matriz .may2-card{border:1px solid #dee7f0;box-shadow:0 3px 10px rgba(25,45,75,.04);border-radius:9px;overflow:hidden}
+.mayor-matriz .may2-client-ranking{border-color:#d6e5f6}
+.mayor-matriz .may2-client-ranking .card-header strong{font-size:1.02rem;color:#214671}
+.mayor-matriz .may2-clients-hint{font-size:.78rem;color:#536c89;background:#f5f9fe;border-bottom:1px solid #e8eef7}
+.mayor-matriz .may2-client-scroll{max-height:600px;overflow:auto}
+.mayor-matriz .may2-client-table td{padding:11px 10px}
+.mayor-matriz .may2-client-table tbody tr:nth-child(even){background:#fafcff}
+.mayor-matriz .may2-client-table tbody tr:hover{background:#edf5ff}
+.mayor-matriz .may2-client-table .badge{font-size:.71rem;font-weight:700;color:#60738d}
+.mayor-matriz .may2-client-table .btn{white-space:nowrap}
+
 .mayor-matriz .may2-kpi{background:#fff;border:1px solid #dae3ef;border-radius:9px;min-height:122px;padding:16px}
 .mayor-matriz .may2-kpi small{display:block;color:#65798b;font-weight:700;font-size:.75rem;text-transform:uppercase}
 .mayor-matriz .may2-kpi strong{display:block;font-size:1.6rem;font-weight:750;color:#244365;margin:6px 0}
