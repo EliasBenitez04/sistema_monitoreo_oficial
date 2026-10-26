@@ -158,8 +158,9 @@
                         <th>Artículo</th>
                         <th>Línea</th>
                         <th class="accl-num" title="Unidades compradas por todos los FCO">Compradas</th>
-                        <th class="accl-num" title="Suma de movimientos de remisión, no prendas únicas">Remitidas</th>
-                        <th class="accl-num" title="Suma de remisiones con fecha de recepción">Recibidas</th>
+                        <th class="accl-num" title="Recepciones confirmadas de Depósito hacia Casa Central">Depósito → Central</th>
+                        <th class="accl-num" title="Unidades enviadas desde Casa Central hacia los locales (sin incluir el ingreso de Depósito)">Central → locales</th>
+                        <th class="accl-num" title="De lo distribuido desde Central, cuántas unidades tienen recepción registrada en locales">Recibidas en locales</th>
                         <th class="accl-num" title="Ventas netas acumuladas de los archivos importados">Ventas netas</th>
                         <th class="accl-num" title="Entradas recibidas menos salidas remitidas y ventas netas hasta hoy">Stock calculado</th>
                         <th class="accl-right">Acción</th>
@@ -185,7 +186,8 @@
                             </td>
                             <td><span class="accl-line-chip">{{ $articulo->linea ?: 'Sin línea' }}</span></td>
                             <td class="accl-num accl-strong">{{ $n($articulo->comprado) }}</td>
-                            <td class="accl-num">{{ $n($articulo->remitido) }}</td>
+                            <td class="accl-num">{{ $n($articulo->ingreso_deposito) }}</td>
+                            <td class="accl-num accl-strong">{{ $n($articulo->remitido) }}</td>
                             <td class="accl-num">{{ $n($articulo->recibido) }}</td>
                             <td class="accl-num accl-strong">{{ $n($articulo->vendido) }}</td>
                             <td class="accl-num">
@@ -213,7 +215,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9">
+                            <td colspan="10">
                                 <div class="accl-empty">
                                     <div class="accl-empty-icon"><i class="fas fa-search"></i></div>
                                     <h3>{{ $totalArticulos ? 'No encontramos artículos con esos filtros' : 'Todavía no hay accesorios cargados' }}</h3>
@@ -243,7 +245,11 @@
             <p>El <b>stock calculado</b> se obtiene por código y sucursal:
             <b>entradas con recepción confirmada − salidas remitidas − ventas netas acumuladas</b>.
             Las devoluciones registradas en ventas se descuentan con su signo y pueden aumentar el saldo.
-            Remitidas y recibidas son <b>totales de movimientos</b> y pueden contar una prenda más de una vez si cambia de local.
+            <b>Depósito → Central</b> es la entrada inicial recibida;
+            <b>Central → locales</b> es la distribución posterior; y
+            <b>Recibidas en locales</b> son únicamente las unidades de esa distribución cuya recepción ya fue confirmada.
+            <b>Son etapas, no cantidades para sumar</b>: si entran 7 y después salen esas mismas 7, se informan 7 por etapa, nunca 14 prendas.
+            Los traslados entre locales se reflejan en el stock por sucursal y pueden consultarse en el detalle.
             Las compras por FCO son registros de adquisición y no se agregan directamente al stock.
             El saldo refleja el historial importado hasta hoy; no sustituye un conteo físico.</p>
         </div>
