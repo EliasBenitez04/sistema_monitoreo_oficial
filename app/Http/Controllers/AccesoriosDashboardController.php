@@ -62,6 +62,46 @@ class AccesoriosDashboardController extends Controller
         }, $nombre, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    public function exportarStock(Request $request)
+    {
+        if (!Schema::hasTable('accesorios_articulos')
+            || !Schema::hasTable('accesorios_compras')) {
+            return redirect()->route('accesorios.index')->with(
+                'error', 'Primero completá la migración de Accesorios.'
+            );
+        }
+
+        $datos = $this->datos($request);
+        $catalogo = $datos['catalogo']->keyBy('id');
+        $filas = $datos['stockDatos']['detalle'];
+        $corte = $datos['hasta'];
+        return response()->streamDownload(function () use ($catalogo, $filas, $corte) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, [
+                'CODIGO', 'DESCRIPCION', 'SUCURSAL', 'ENTRADAS RECIBIDAS',
+                'SALIDAS REMITIDAS', 'VENTAS NETAS ACUMULADAS',
+                'EN TRANSITO AL DESTINO', 'STOCK CALCULADO', 'CORTE'
+            ], ';');
+            foreach ($filas as $articuloId => $locales) {
+                $articulo = $catalogo->get((int) $articuloId);
+                if (!$articulo) {
+                    continue;
+                }
+                foreach ($locales as $local) {
+                    fputcsv($out, [
+                        $articulo->codigo, $articulo->descripcion, $local->sucursal,
+                        $local->entradas, $local->salidas, $local->ventas,
+                        $local->en_transito, $local->saldo, $corte,
+                    ], ';');
+                }
+            }
+            fclose($out);
+        }, 'stock_accesorios_' . $corte . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     private function datos(Request $request): array
     {
         $request->validate([
