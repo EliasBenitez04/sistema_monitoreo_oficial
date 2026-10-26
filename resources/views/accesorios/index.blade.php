@@ -259,7 +259,8 @@
 
 @push('page_css')
 <style>
-    #acclist{--navy:#122c63;--blue:#2060b3;--ink:#20345b;--muted:#7284a1;--border:#e0e8f3;--back:#f4f7fc;font-family:Roboto,Arial,sans-serif;background:var(--back);color:var(--ink);padding:17px 17px 28px;margin:-16px -15px 0}
+    /* Misma contención que el dashboard /accesorios: no desplazar navbar/AdminLTE. */
+    #acclist{--navy:#122c63;--blue:#2060b3;--ink:#20345b;--muted:#7284a1;--border:#e0e8f3;--back:#f4f7fc;box-sizing:border-box;max-width:100%;width:100%;min-width:0;overflow-x:clip;font-family:Roboto,Arial,sans-serif;background:var(--back);color:var(--ink);padding:16px 15px 28px;margin:0}
     #acclist *,#acclist *::before,#acclist *::after{box-sizing:border-box}
     #acclist .accl-hero{background:linear-gradient(118deg,#0d285f 0%,#1550a2 78%,#2674d8 100%);color:#fff;padding:23px 25px 15px;border-radius:16px;margin-bottom:15px;box-shadow:0 10px 28px rgba(31,76,154,.16)}
     #acclist .accl-hero-main{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
@@ -384,7 +385,7 @@
         #acclist .accl-page-stat{border-left:0}
     }
     @media(max-width:575px){
-        #acclist{padding:12px 10px 22px;margin:-16px -15px 0}
+        #acclist{padding:12px 10px 22px;margin:0}
         #acclist .accl-hero{padding:20px 17px 13px}
         #acclist .accl-icon{display:none}
         #acclist .accl-hero-actions{width:100%}
