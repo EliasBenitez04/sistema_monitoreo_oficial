@@ -28,6 +28,37 @@
     @stack('page_css')
 
     <style>
+        /*
+         * Contención del módulo Accesorios:
+         * evitar que un margen exterior o un desbordamiento de sus tablas
+         * desplace la barra superior de AdminLTE. La clase se asigna
+         * exclusivamente a las rutas accesorios.*.
+         */
+        body.modulo-accesorios {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;
+            overflow-x: clip;
+        }
+
+        body.modulo-accesorios > .wrapper {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: clip;
+        }
+
+        body.modulo-accesorios .content-wrapper {
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        body.modulo-accesorios .main-header {
+            top: 0;
+            transform: none;
+        }
+
         body {
             font-family: 'Roboto', sans-serif;
         }
@@ -114,7 +145,7 @@
     });
 </script>
 
-<body class="hold-transition sidebar-mini layout-navbar-not-fixed">
+<body class="hold-transition sidebar-mini layout-navbar-not-fixed{{ request()->routeIs('accesorios.*') ? ' modulo-accesorios' : '' }}">
     <div class="wrapper">
 
         {{-- NAVBAR --}}
