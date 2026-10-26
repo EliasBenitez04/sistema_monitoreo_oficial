@@ -5,7 +5,6 @@
     $money = function ($v) { return $v === null ? 'Sin dato' : 'Gs ' . number_format((float) $v, 0, ',', '.'); };
     $whole = function ($v) { return number_format((int) $v, 0, ',', '.'); };
     $maxSuc = max(1, (float) $sucursales->max('importe'));
-    $maxEvolucion = max(1, (float) $evolucion->max('importe'), abs((float) $evolucion->min('importe')));
     $peligros = $rankingCompleto->filter(function ($p) {
         return $p->reposicion !== null && $p->reposicion > 0;
     })->sortByDesc('reposicion')->take(6);
@@ -270,30 +269,15 @@
             </div>
             <div class="acc-month-chart acc-chart-{{ $agrupacion }}">
                 @forelse($evolucion as $m)
-                    @php
-                        $fechaEvolucion = \Carbon\Carbon::parse($m->periodo . ($agrupacion === 'mes' ? '-01' : ''));
-                        $etiquetaEvolucion = $agrupacion === 'dia'
-                            ? $fechaEvolucion->format('d/m')
-                            : ($agrupacion === 'semana'
-                                ? $fechaEvolucion->format('d/m') . '–' . $fechaEvolucion->copy()->addDays(6)->format('d/m')
-                                : $fechaEvolucion->format('m/y'));
-                        $descripcionEvolucion = $agrupacion === 'dia'
-                            ? $fechaEvolucion->format('d/m/Y')
-                            : ($agrupacion === 'semana'
-                                ? 'Semana del ' . $fechaEvolucion->format('d/m/Y') . ' al ' . $fechaEvolucion->copy()->addDays(6)->format('d/m/Y')
-                                : $fechaEvolucion->format('m/Y'));
-                        $importeEvolucion = (float) $m->importe;
-                        $alto = max(3, min(100, abs($importeEvolucion) / $maxEvolucion * 100));
-                    @endphp
-                    <div class="acc-month" title="{{ $descripcionEvolucion }} · {{ $money($m->importe) }} · {{ $whole($m->unidades) }} unidades netas">
+                    <div class="acc-month" title="{{ $m->descripcion }} · {{ $money($m->importe) }} · {{ $whole($m->unidades) }} unidades netas">
                         <div class="acc-month-plot">
-                            @if($importeEvolucion != 0)
-                                <div class="acc-month-bar {{ $importeEvolucion < 0 ? 'is-negative' : '' }}" style="height: {{ $alto }}%"></div>
+                            @if((float) $m->importe != 0)
+                                <div class="acc-month-bar {{ $m->negativo ? 'is-negative' : '' }}" style="height: {{ $m->altura }}%"></div>
                             @else
                                 <div class="acc-month-no-sales" title="Sin facturación neta en este período"></div>
                             @endif
                         </div>
-                        <span>{{ $etiquetaEvolucion }}</span>
+                        <span>{{ $m->etiqueta }}</span>
                         <small>{{ $whole($m->unidades) }} un.</small>
                     </div>
                 @empty
