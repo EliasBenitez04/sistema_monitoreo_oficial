@@ -199,7 +199,10 @@
                 <h2><i class="fas fa-store"></i> Existencias calculadas por sucursal</h2>
                 <p>Todos los movimientos históricos hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }} · entradas recibidas − salidas remitidas − ventas netas</p>
             </div>
-            <span class="acc-light-tag">Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</span>
+            <div class="d-flex align-items-center flex-wrap" style="gap:8px">
+                <span class="acc-light-tag">Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</span>
+                <a href="{{ route('accesorios.stock.exportar', request()->query()) }}" class="acc-btn acc-btn-primary"><i class="fas fa-file-csv"></i> Exportar stock por local</a>
+            </div>
         </div>
         <div class="acc-table-scroll">
             <table class="acc-table">
