@@ -116,9 +116,30 @@ class AccesoriosController extends Controller
             ->where('articulo_id', $id)
             ->orderBy('fecha_envio')->orderBy('fco_nro')->get();
 
+        // Orden del circuito documental:
+        // 1) depósito de insumos/tejidos -> Casa Central (ingreso);
+        // 2) Casa Central -> sucursales (distribución);
+        // 3) otros movimientos.
+        // Dentro de cada etapa, primero las fechas y remisiones más antiguas.
         $remisiones = DB::table('ot_logistica_remisiones')
             ->where('accesorio_articulo_id', $id)
-            ->orderByDesc('fecha_remision')->orderByDesc('id')
+            ->orderByRaw("
+                CASE
+                    WHEN (
+                        COALESCE(sucursal_salida, '') ILIKE '%DEPOSITO%'
+                        OR COALESCE(sucursal_salida, '') ILIKE '%DEPÓSITO%'
+                        OR COALESCE(sucursal_salida, '') ILIKE '%INSUMOS%'
+                    )
+                    AND COALESCE(sucursal_destino, '') ILIKE '%CASA CENTRAL%'
+                    THEN 0
+                    WHEN COALESCE(sucursal_salida, '') ILIKE '%CASA CENTRAL%'
+                    THEN 1
+                    ELSE 2
+                END
+            ")
+            ->orderByRaw('fecha_remision ASC NULLS LAST')
+            ->orderBy('numero_remision')
+            ->orderBy('id')
             ->paginate(25, ['*'], 'pagina_remision');
 
         $resumenRemisiones = DB::table('ot_logistica_remisiones')
