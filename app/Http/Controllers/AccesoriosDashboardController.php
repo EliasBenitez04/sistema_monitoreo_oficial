@@ -295,9 +295,9 @@ class AccesoriosDashboardController extends Controller
             // Indicadores por ETAPA del circuito; no se suman como inventario.
             // El mismo artículo puede figurar en Depósito→Central y Central→local.
             $origenCentral = "(r.cod_sucursal_salida = 1
-                OR (r.cod_sucursal_salida IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')))";
+                OR (COALESCE(r.cod_sucursal_salida,0) = 0 AND UPPER(BTRIM(COALESCE(r.sucursal_salida,''))) IN ('CASA CENTRAL','CENTRAL')))";
             $destinoCentral = "(r.cod_sucursal_destino = 1
-                OR (r.cod_sucursal_destino IS NULL AND UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) IN ('CASA CENTRAL','CENTRAL')))";
+                OR (COALESCE(r.cod_sucursal_destino,0) = 0 AND UPPER(BTRIM(COALESCE(r.sucursal_destino,''))) IN ('CASA CENTRAL','CENTRAL')))";
             $origenDeposito = "(UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPOSITO%'
                 OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPÓSITO%'
                 OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%INSUMOS%'
