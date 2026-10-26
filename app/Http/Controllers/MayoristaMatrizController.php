@@ -6,6 +6,7 @@ use App\Support\MayoristaConciliacion as Conciliador;
 use App\Support\MayoristaCruceDocumento;
 use App\Support\MayoristaOrigenRemision as OrigenRemision;
 use App\Support\MayoristaTopClientes;
+use App\Support\MayoristaExportacionVentas;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -150,6 +151,12 @@ class MayoristaMatrizController extends Controller
         list($desde, $hasta) = $this->fechas($request);
         if ($request->query('exportar') === 'ventas') {
             return $this->exportarVentas($desde, $hasta);
+        }
+        if ($request->query('exportar') === 'historico') {
+            return $this->exportarVentas(null, null);
+        }
+        if ($request->query('exportar') === 'auditoria') {
+            return $this->exportarVentasAuditoria($desde, $hasta);
         }
         $facturas = $this->facturasEntre($desde, $hasta);
         // Ranking por comprobante agrupado, NO por líneas de venta.
@@ -517,7 +524,56 @@ class MayoristaMatrizController extends Controller
         ));
     }
 
-    private function exportarVentas(string $desde, string $hasta)
+    /**
+     * CSV de las 12 columnas originales del importador, sin campos
+     * técnicos (id, hash, timestamps). Se exporta por LÍNEA, no factura:
+     * así se preservan cantidades y talles sin agrupar ni perder datos.
+     *
+     * Los negativos de las notas de crédito se conservan exactamente.
+     * Si no hay rango, se exporta todo el historial de COMERCIAL MATRIZ.
+     */
+    private function exportarVentas(?string $desde, ?string $hasta)
+    {
+        $nombre = $desde !== null && $hasta !== null
+            ? 'ventas_matriz_importacion_' . $desde . '_al_' . $hasta . '.csv'
+            : 'ventas_matriz_historico_completo.csv';
+
+        return response()->streamDownload(function () use ($desde, $hasta) {
+            $archivo = fopen('php://output', 'w');
+            fwrite($archivo, "\xEF\xBB\xBF"); // UTF-8 Excel y acentos en clientes.
+            fputcsv($archivo, MayoristaExportacionVentas::ENCABEZADOS, ';');
+
+            $consulta = VentaMayoristaController::ventas();
+            if ($desde !== null && $hasta !== null) {
+                $consulta->whereBetween('v.fecha', [$desde, $hasta]);
+            }
+
+            $campos = [
+                'v.id', 'v.local', 'v.codigo', 'v.descripcion',
+                'v.cli_cod', 'v.cliente', 'v.vendedor', 'v.p_lista',
+                'v.descuento', 'v.p_venta', 'v.fecha',
+                'v.cantidad', 'v.comprobante',
+            ];
+
+            // chunkById evita limitar la descarga a las 100 líneas
+            // mostradas por página y no carga todo el histórico en RAM.
+            $consulta->select($campos)->chunkById(1000, function ($ventas) use ($archivo) {
+                foreach ($ventas as $venta) {
+                    fputcsv($archivo, MayoristaExportacionVentas::fila($venta), ';');
+                }
+            }, 'v.id', 'id');
+
+            fclose($archivo);
+        }, $nombre, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Descarga técnica anterior con metadatos de importación; se mantiene
+     * disponible de forma separada para auditoría sin mezclar formatos.
+     */
+    private function exportarVentasAuditoria(string $desde, string $hasta)
     {
         // CSV completo, independiente de la paginación visual. Las cifras
         // proceden exclusivamente de la tabla ventas en COMERCIAL MATRIZ.
