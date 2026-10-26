@@ -93,6 +93,9 @@ class AccesoriosDashboardController extends Controller
         }
 
         $sucursal = trim((string) $request->input('sucursal', ''));
+        $stockServicio = new \App\Services\AccesoriosStockService();
+        $aliasesSucursal = $sucursal !== '' ? $stockServicio->aliasesPara($sucursal) : [];
+        $codigoSucursalFiltro = $sucursal !== '' ? $stockServicio->codigoPara($sucursal) : null;
         $fco = trim((string) $request->input('fco', ''));
         $fechaEnvio = (string) $request->input('fecha_envio', '');
         $linea = trim((string) $request->input('linea', ''));
@@ -174,8 +177,8 @@ class AccesoriosDashboardController extends Controller
                     $join->on(DB::raw('UPPER(BTRIM(v.codigo))'), '=', 'a.codigo');
                 })
                 ->whereIn('a.id', $ids)
-                ->when($sucursal !== '', function ($q) use ($sucursal) {
-                    $q->where('v.local', $sucursal);
+                ->when($sucursal !== '', function ($q) use ($aliasesSucursal) {
+                    $q->whereIn(DB::raw('UPPER(BTRIM(v.local))'), $aliasesSucursal);
                 });
 
             $periodoVentas = (clone $baseVentas)->whereBetween('v.fecha', [$desde, $hasta]);
@@ -217,8 +220,7 @@ class AccesoriosDashboardController extends Controller
         // Saldo de accesorios por local: recepciones - salidas - ventas netas.
         // Se acumula desde el inicio histórico hasta "hasta"; "desde" filtra
         // las estadísticas comerciales, no recorta el saldo del inventario.
-        $stockDatos = (new \App\Services\AccesoriosStockService())
-            ->calcular($ids, $hasta, $sucursal);
+        $stockDatos = $stockServicio->calcular($ids, $hasta, $sucursal);
         $stockPorCodigo = $stockDatos['porCodigo'];
         $saldosSucursal = $stockDatos['porSucursal'];
         $stockFuente = 'Cálculo documental: entradas recibidas - salidas - ventas netas';
@@ -240,14 +242,10 @@ class AccesoriosDashboardController extends Controller
                 ->whereBetween('r.fecha_remision', [$desde, $hasta]);
 
             if ($sucursal !== '') {
-                $codigoSucursal = Schema::hasTable('sucursal')
-                    ? DB::table('sucursal')->whereRaw(
-                        'UPPER(BTRIM(suc_descri)) = UPPER(BTRIM(?))', [$sucursal]
-                    )->value('cod_suc') : null;
-                $baseRemisiones->where(function ($q) use ($sucursal, $codigoSucursal) {
-                    $q->whereRaw('UPPER(BTRIM(r.sucursal_destino)) = UPPER(BTRIM(?))', [$sucursal]);
-                    if ($codigoSucursal !== null) {
-                        $q->orWhere('r.cod_sucursal_destino', $codigoSucursal);
+                $baseRemisiones->where(function ($q) use ($aliasesSucursal, $codigoSucursalFiltro) {
+                    $q->whereIn(DB::raw('UPPER(BTRIM(r.sucursal_destino))'), $aliasesSucursal);
+                    if ($codigoSucursalFiltro !== null) {
+                        $q->orWhere('r.cod_sucursal_destino', $codigoSucursalFiltro);
                     }
                 });
             }
