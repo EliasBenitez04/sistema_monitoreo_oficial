@@ -58,11 +58,6 @@ class AccesoriosController extends Controller
             ->selectRaw('articulo_id, SUM(cantidad_compra) AS cantidad')
             ->groupBy('articulo_id')->pluck('cantidad', 'articulo_id');
 
-        $remisiones = DB::table('ot_logistica_remisiones')
-            ->whereIn('accesorio_articulo_id', $ids)
-            ->selectRaw('accesorio_articulo_id, SUM(cantidad) AS remitido, SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END) AS recibido')
-            ->groupBy('accesorio_articulo_id')->get()->keyBy('accesorio_articulo_id');
-
         $ventas = Schema::hasTable('ventas')
             ? DB::table('ventas')->whereIn('codigo', $codigos)
                 ->selectRaw('codigo, SUM(cantidad) AS cantidad')
@@ -72,11 +67,18 @@ class AccesoriosController extends Controller
         $calculoStock = (new \App\Services\AccesoriosStockService())
             ->calcular($ids, now()->toDateString());
         $stocks = $calculoStock['porCodigo'];
+        $flujos = $calculoStock['flujoPorCodigo'];
 
-        $articulos->getCollection()->transform(function ($articulo) use ($compras, $remisiones, $ventas, $stocks) {
+        $articulos->getCollection()->transform(function ($articulo) use ($compras, $flujos, $ventas, $stocks) {
             $articulo->comprado = (int) ($compras[$articulo->id] ?? 0);
-            $articulo->remitido = (int) ($remisiones[$articulo->id]->remitido ?? 0);
-            $articulo->recibido = (int) ($remisiones[$articulo->id]->recibido ?? 0);
+            $flujo = $flujos->get((int) $articulo->id, []);
+            // La recepción inicial y la distribución son etapas, no stock
+            // adicional. Por ejemplo: 7 Depósito→Central + 7 Central→locales
+            // significa 7 distribuidas, no 14 prendas diferentes.
+            $articulo->ingreso_deposito = (int) ($flujo['ingreso_deposito'] ?? 0);
+            $articulo->remitido = (int) ($flujo['distribuido_central'] ?? 0);
+            $articulo->recibido = (int) ($flujo['recibido_locales'] ?? 0);
+            $articulo->traslado_locales = (int) ($flujo['traslado_locales'] ?? 0);
             $articulo->vendido = (int) ($ventas[$articulo->codigo] ?? 0);
             $articulo->stock_calculado = isset($stocks[$articulo->id])
                 ? (int) $stocks[$articulo->id]->saldo : null;
@@ -192,12 +194,6 @@ class AccesoriosController extends Controller
             ->orderBy('id')
             ->paginate(25, ['*'], 'pagina_remision');
 
-        $resumenRemisiones = DB::table('ot_logistica_remisiones')
-            ->where('accesorio_articulo_id', $id)
-            ->selectRaw('COALESCE(SUM(cantidad),0) AS remitido,
-                COALESCE(SUM(CASE WHEN fecha_recepcion IS NOT NULL THEN cantidad ELSE 0 END),0) AS recibido')
-            ->first();
-
         $ventasPorLocal = Schema::hasTable('ventas')
             ? DB::table('ventas')->where('codigo', $articulo->codigo)
                 ->selectRaw('local, SUM(cantidad) AS cantidad')
@@ -212,11 +208,18 @@ class AccesoriosController extends Controller
         $calculoStock = (new \App\Services\AccesoriosStockService())
             ->calcular([$id], now()->toDateString());
         $saldosStock = collect($calculoStock['detalle']->get($id, []));
+        $etapasRemision = $calculoStock['flujoPorCodigo']->get($id, [
+            'ingreso_deposito' => 0,
+            'distribuido_central' => 0,
+            'recibido_locales' => 0,
+            'traslado_locales' => 0,
+            'otros_movimientos' => 0,
+        ]);
         $stockCalculado = $calculoStock['porCodigo']->has($id)
             ? $calculoStock['porCodigo']->get($id)->saldo : null;
 
         return view('accesorios.show', compact(
-            'articulo', 'compras', 'remisiones', 'resumenRemisiones',
+            'articulo', 'compras', 'remisiones', 'etapasRemision',
             'ventasPorLocal', 'totalComprado', 'totalVendido',
             'saldosStock', 'stockCalculado'
         ));
