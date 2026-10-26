@@ -167,14 +167,15 @@
 
         <div class="acc-side">
             <div class="acc-panel">
-                <div class="acc-panel-head"><div><h2><i class="fas fa-route"></i> Circuito de distribución</h2><p>Movimientos del período (no unidades únicas)</p></div></div>
+                <div class="acc-panel-head"><div><h2><i class="fas fa-route"></i> Circuito de distribución</h2><p>Etapas documentales: no sumar las cantidades entre sí</p></div></div>
                 <div class="acc-flow">
-                    <div class="acc-flow-item"><span class="acc-flow-icon"><i class="fas fa-warehouse"></i></span><div><b>Depósito → Casa Central</b><small>Ingreso documental</small></div><strong>{{ $whole($remisiones->deposito_central) }}</strong></div>
+                    <div class="acc-flow-item"><span class="acc-flow-icon"><i class="fas fa-warehouse"></i></span><div><b>Depósito → Casa Central</b><small>Entrada recibida en Central</small></div><strong>{{ $whole($remisiones->deposito_central) }}</strong></div>
                     <div class="acc-flow-arrow"><i class="fas fa-arrow-down"></i></div>
-                    <div class="acc-flow-item"><span class="acc-flow-icon"><i class="fas fa-truck-loading"></i></span><div><b>Casa Central → destinos</b><small>Despachos registrados</small></div><strong>{{ $whole($remisiones->central_locales) }}</strong></div>
+                    <div class="acc-flow-item"><span class="acc-flow-icon"><i class="fas fa-truck-loading"></i></span><div><b>Casa Central → locales</b><small>Distribución (mismas prendas, nueva etapa)</small></div><strong>{{ $whole($remisiones->central_locales) }}</strong></div>
                     <div class="acc-flow-divider"></div>
-                    <div class="acc-flow-duo"><div><small>Movimientos totales</small><b>{{ $whole($remisiones->movimientos) }}</b></div><div><small>Con recepción</small><b>{{ $whole($remisiones->recibidas) }}</b></div></div>
-                    <div class="acc-flow-duo"><div><small>En tránsito</small><b class="acc-danger">{{ $whole($remisiones->transito) }}</b></div><div><small>Documentos</small><b>{{ $whole($remisiones->documentos) }}</b></div></div>
+                    <div class="acc-flow-duo"><div><small>Recibidas en locales desde Central</small><b>{{ $whole($remisiones->recibidas) }}</b></div><div><small>Documentos del período</small><b>{{ $whole($remisiones->documentos) }}</b></div></div>
+                    <div class="acc-flow-duo"><div><small>En tránsito documental</small><b class="acc-danger">{{ $whole($remisiones->transito) }}</b></div><div><small>Movimientos entre etapas*</small><b>{{ $whole($remisiones->movimientos) }}</b></div></div>
+                    <p class="small text-muted mb-0">* Suma técnica de líneas de remisión (puede repetir las mismas prendas). No equivale a stock ni a cantidad comprada.</p>
                     <div class="acc-flow-divider"></div>
                     <div class="acc-flow-duo">
                         <div><small>Cobertura global estimada</small><b>{{ $coberturaGlobal === null ? 'Sin dato' : number_format($coberturaGlobal, 1, ',', '.') . ' días' }}</b></div>
