@@ -82,14 +82,15 @@
         </tr></thead>
         <tbody>
           @forelse($facturasPagina as $facturaCliente)
-            @php($esNC = \App\Support\MayoristaTopClientes::esNotaCredito($facturaCliente))
             <tr>
               <td>{{ \Carbon\Carbon::parse($facturaCliente->fecha)->format('d/m/Y') }}</td>
               <td class="font-weight-bold">{{ $facturaCliente->comprobante }}</td>
               <td>
-                <span class="badge badge-{{ $esNC ? 'warning' : 'info' }}">
-                  {{ $esNC ? 'Nota de crédito' : ($facturaCliente->tipo_comprobante ?: 'Venta') }}
-                </span>
+                @if(\App\Support\MayoristaTopClientes::esNotaCredito($facturaCliente))
+                  <span class="badge badge-warning">Nota de crédito</span>
+                @else
+                  <span class="badge badge-info">{{ $facturaCliente->tipo_comprobante ?: 'Venta' }}</span>
+                @endif
               </td>
               <td class="text-right">{{ number_format($facturaCliente->brutas,0,',','.') }}</td>
               <td class="text-right">{{ number_format($facturaCliente->devoluciones,0,',','.') }}</td>
