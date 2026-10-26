@@ -174,8 +174,8 @@
                     <div class="acc-flow-item"><span class="acc-flow-icon"><i class="fas fa-truck-loading"></i></span><div><b>Casa Central → locales</b><small>Distribución (mismas prendas, nueva etapa)</small></div><strong>{{ $whole($remisiones->central_locales) }}</strong></div>
                     <div class="acc-flow-divider"></div>
                     <div class="acc-flow-duo"><div><small>Recibidas en locales desde Central</small><b>{{ $whole($remisiones->recibidas) }}</b></div><div><small>Documentos del período</small><b>{{ $whole($remisiones->documentos) }}</b></div></div>
-                    <div class="acc-flow-duo"><div><small>En tránsito documental</small><b class="acc-danger">{{ $whole($remisiones->transito) }}</b></div><div><small>Movimientos entre etapas*</small><b>{{ $whole($remisiones->movimientos) }}</b></div></div>
-                    <p class="small text-muted mb-0">* Suma técnica de líneas de remisión (puede repetir las mismas prendas). No equivale a stock ni a cantidad comprada.</p>
+                    <div class="acc-flow-duo"><div><small>En tránsito documental</small><b class="acc-danger">{{ $whole($remisiones->transito) }}</b></div><div><small>Distribuidas desde Central aún sin recepción</small><b>{{ $whole(max(0, (int) $remisiones->central_locales - (int) $remisiones->recibidas)) }}</b></div></div>
+                    <p class="small text-muted mb-0">Cada cifra corresponde a una etapa. Las prendas que llegan de Depósito y luego se distribuyen desde Central <strong>no se suman dos veces</strong>.</p>
                     <div class="acc-flow-divider"></div>
                     <div class="acc-flow-duo">
                         <div><small>Cobertura global estimada</small><b>{{ $coberturaGlobal === null ? 'Sin dato' : number_format($coberturaGlobal, 1, ',', '.') . ' días' }}</b></div>
