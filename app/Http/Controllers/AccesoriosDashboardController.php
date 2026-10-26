@@ -17,11 +17,23 @@ class AccesoriosDashboardController extends Controller
 
     public function index(Request $request)
     {
+        if (!Schema::hasTable('accesorios_articulos')
+            || !Schema::hasTable('accesorios_compras')
+            || !Schema::hasColumn('ot_logistica_remisiones', 'accesorio_articulo_id')) {
+            return view('accesorios.configurar');
+        }
+
         return view('accesorios.dashboard', $this->datos($request));
     }
 
     public function exportar(Request $request)
     {
+        if (!Schema::hasTable('accesorios_articulos')
+            || !Schema::hasTable('accesorios_compras')) {
+            return redirect()->route('accesorios.index')
+                ->with('error', 'Primero hay que ejecutar la migración de Accesorios.');
+        }
+
         $datos = $this->datos($request);
         $filas = $datos['rankingCompleto'];
         $nombre = 'monitoreo_accesorios_' . $datos['desde'] . '_' . $datos['hasta'] . '.csv';
