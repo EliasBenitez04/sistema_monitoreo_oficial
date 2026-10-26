@@ -115,6 +115,7 @@ class AccesoriosDashboardController extends Controller
             'linea' => 'nullable|string|max:100',
             'buscar' => 'nullable|string|max:100',
             'orden' => 'nullable|in:ventas,importe,stock,margen,cobertura',
+            'agrupacion' => 'nullable|in:dia,semana,mes',
         ]);
 
         $conVentas = Schema::hasTable('ventas');
@@ -143,6 +144,7 @@ class AccesoriosDashboardController extends Controller
         $linea = trim((string) $request->input('linea', ''));
         $buscar = trim((string) $request->input('buscar', ''));
         $orden = (string) $request->input('orden', 'ventas');
+        $agrupacion = (string) $request->input('agrupacion', 'mes');
         $diasPeriodo = max(1, Carbon::parse($desde)->diffInDays(Carbon::parse($hasta)) + 1);
 
         $opciones = [
@@ -206,7 +208,8 @@ class AccesoriosDashboardController extends Controller
         $baseVentas = null;
         $ventaPorCodigo = collect();
         $sucursales = collect();
-        $meses = collect();
+        $evolucion = collect();
+        $evolucionPeriodosCompletos = true;
         $velocidad = collect();
         $kpi = (object) [
             'importe' => 0, 'lista' => 0, 'descuento' => 0,
@@ -247,11 +250,56 @@ class AccesoriosDashboardController extends Controller
                 ->selectRaw('SUM(v.p_venta) AS importe, SUM(v.cantidad) AS unidades')
                 ->groupBy('v.local')->orderByRaw('SUM(v.p_venta) DESC')->limit(12)->get();
 
-            $meses = (clone $periodoVentas)
-                ->selectRaw("TO_CHAR(v.fecha, 'YYYY-MM') AS mes")
+            // La evolución mantiene exactamente los filtros aplicados a ventas.
+            // Semana: lunes a domingo según DATE_TRUNC('week') de PostgreSQL.
+            // Para rangos habituales también rellenamos días/semanas/meses sin
+            // ventas con cero, evitando saltos engañosos en el gráfico.
+            $expresionPeriodo = $agrupacion === 'dia'
+                ? "TO_CHAR(v.fecha, 'YYYY-MM-DD')"
+                : ($agrupacion === 'semana'
+                    ? "TO_CHAR(DATE_TRUNC('week', v.fecha), 'YYYY-MM-DD')"
+                    : "TO_CHAR(v.fecha, 'YYYY-MM')");
+
+            $serieReal = (clone $periodoVentas)
+                ->selectRaw($expresionPeriodo . ' AS periodo')
                 ->selectRaw('SUM(v.p_venta) AS importe, SUM(v.cantidad) AS unidades')
-                ->groupByRaw("TO_CHAR(v.fecha, 'YYYY-MM')")
-                ->orderBy('mes')->get();
+                ->groupByRaw($expresionPeriodo)
+                ->orderBy('periodo')
+                ->get()
+                ->keyBy('periodo');
+
+            $cursor = Carbon::parse($desde);
+            if ($agrupacion === 'semana') {
+                $cursor->startOfWeek(Carbon::MONDAY);
+            } elseif ($agrupacion === 'mes') {
+                $cursor->startOfMonth();
+            }
+            $finPeriodo = Carbon::parse($hasta);
+            $periodos = collect();
+            while ($cursor->lte($finPeriodo) && $periodos->count() < 370) {
+                $clave = $cursor->format($agrupacion === 'mes' ? 'Y-m' : 'Y-m-d');
+                $real = $serieReal->get($clave);
+                $periodos->push((object) [
+                    'periodo' => $clave,
+                    'importe' => (float) ($real->importe ?? 0),
+                    'unidades' => (int) ($real->unidades ?? 0),
+                ]);
+                if ($agrupacion === 'dia') {
+                    $cursor->addDay();
+                } elseif ($agrupacion === 'semana') {
+                    $cursor->addWeek();
+                } else {
+                    $cursor->addMonthNoOverflow();
+                }
+            }
+
+            // Para rangos extraordinariamente largos no ocultamos las ventas:
+            // mostramos los períodos con movimiento y advertimos que se omiten
+            // intervalos sin ventas para mantener el gráfico manejable.
+            $evolucionPeriodosCompletos = $cursor->gt($finPeriodo);
+            $evolucion = $evolucionPeriodosCompletos
+                ? $periodos
+                : $serieReal->values();
 
             $inicio30 = Carbon::parse($hasta)->subDays(29)->toDateString();
             $velocidad = (clone $baseVentas)->whereBetween('v.fecha', [$inicio30, $hasta])
@@ -478,7 +526,8 @@ class AccesoriosDashboardController extends Controller
         return compact(
             'desde', 'hasta', 'sucursal', 'fco', 'fechaEnvio', 'linea', 'buscar',
             'orden', 'diasPeriodo', 'opciones', 'catalogo', 'kpi', 'comprasFiltradas',
-            'remisiones', 'pendientes', 'sucursales', 'meses', 'rankingCompleto',
+            'remisiones', 'pendientes', 'sucursales', 'evolucion', 'agrupacion',
+            'evolucionPeriodosCompletos', 'rankingCompleto',
             'rankingPagina', 'alertas', 'stockFuente', 'stockCorte', 'stockTotal',
             'saldosSucursal', 'stockDatos',
             'productosCriticos', 'productosReponer', 'productosConStock',
