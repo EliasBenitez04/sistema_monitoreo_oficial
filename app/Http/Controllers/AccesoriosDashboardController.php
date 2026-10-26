@@ -73,7 +73,9 @@ class AccesoriosDashboardController extends Controller
         $desde = $request->input('desde') ?: Carbon::parse($fechaReferencia)->startOfYear()->toDateString();
         $hasta = $request->input('hasta') ?: $fechaReferencia;
         if ($desde > $hasta) {
-            return redirect()->route('accesorios.index')->with('error', 'La fecha desde no puede ser posterior a hasta.')->getData();
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'hasta' => 'La fecha de inicio no puede ser posterior a la fecha final.',
+            ]);
         }
 
         $sucursal = trim((string) $request->input('sucursal', ''));
