@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Support\MayoristaConciliacion as Conciliador;
 use App\Support\MayoristaCruceDocumento;
 use App\Support\MayoristaOrigenRemision as OrigenRemision;
+use App\Support\MayoristaTopClientes;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -150,6 +152,10 @@ class MayoristaMatrizController extends Controller
             return $this->exportarVentas($desde, $hasta);
         }
         $facturas = $this->facturasEntre($desde, $hasta);
+        // Ranking por comprobante agrupado, NO por líneas de venta.
+        // Se calcula antes del filtro visual de cliente, para mostrar
+        // los principales clientes de todo el período consultado.
+        $topClientes = MayoristaTopClientes::ranking($facturas);
         $vinculadas = $this->vinculos($facturas->pluck('clave'));
 
         $facturas->each(function ($f) use ($vinculadas) {
@@ -282,10 +288,56 @@ class MayoristaMatrizController extends Controller
 
         return view('ventas.mayoristas_matriz', compact(
             'desde','hasta','facturas','resumen','ventasDetalle','porCodigo',
-            'transferenciasOrigen','transferenciasResumen','remisionesDocumentos'
+            'transferenciasOrigen','transferenciasResumen','remisionesDocumentos',
+            'topClientes'
         ));
     }
 
+
+    /**
+     * Historial comercial de un cliente en COMERCIAL MATRIZ.
+     *
+     * El token preserva (código, nombre), porque un mismo código puede
+     * repetirse con distintas denominaciones en la exportación.
+     * Las facturas se cuentan una vez por documento y no por artículo.
+     */
+    public function cliente(Request $request)
+    {
+        abort_unless(Schema::hasTable('ventas'), 404);
+        list($desde, $hasta) = $this->fechas($request);
+        $datos = $request->validate([
+            'cliente' => 'required|string|max:1000',
+            'page' => 'nullable|integer|min:1',
+        ]);
+
+        $identidad = MayoristaTopClientes::identidad($datos['cliente']);
+        abort_unless($identidad !== null, 404, 'Cliente mayorista no válido.');
+        list($codigoCliente, $nombreCliente) = $identidad;
+
+        $facturas = MayoristaTopClientes::seleccionar(
+            $this->facturasEntre($desde, $hasta),
+            $codigoCliente,
+            $nombreCliente
+        )->sort(function ($a, $b) {
+            return strcmp($b->fecha . '|' . $b->comprobante,
+                $a->fecha . '|' . $a->comprobante);
+        })->values();
+
+        $resumenCliente = MayoristaTopClientes::resumen($facturas);
+        $pagina = max(1, (int) $request->query('page', 1));
+        $facturasPagina = new LengthAwarePaginator(
+            $facturas->forPage($pagina, 30)->values(),
+            $facturas->count(),
+            30,
+            $pagina,
+            ['path' => $request->url(), 'query' => $request->except('page')]
+        );
+
+        return view('ventas.mayoristas_cliente', compact(
+            'desde', 'hasta', 'codigoCliente', 'nombreCliente',
+            'resumenCliente', 'facturasPagina'
+        ));
+    }
 
     /**
      * Navegación documental: sucursal de origen -> sus remisiones emitidas
