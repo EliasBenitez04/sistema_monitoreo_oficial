@@ -104,6 +104,13 @@
         <div class="acc-mini"><i class="fas fa-calculator"></i><div><span>Costo de ventas estimado</span><strong>{{ $money($costoEstimado) }}</strong><small>Por costo promedio de compra</small></div></div>
         <div class="acc-mini"><i class="fas fa-tags"></i><div><span>Descuentos registrados</span><strong>{{ $money($kpi->descuento) }}</strong><small>Según archivo de ventas</small></div></div>
         <div class="acc-mini acc-mini-warn"><i class="fas fa-truck"></i><div><span>En tránsito documental</span><strong>{{ $whole($remisiones->transito) }}</strong><small>Sin recepción, remisiones del período</small></div></div>
+        <div class="acc-mini {{ $conStock && $productosCriticos > 0 ? 'acc-mini-warn' : '' }}">
+            <i class="fas fa-exclamation-circle"></i>
+            <div><span>Estado de reposición</span>
+                <strong>{{ !$conStock ? 'SIN DATOS' : ($productosCriticos > 0 ? 'URGENTE' : ($productosReponer > 0 ? 'REVISAR' : 'SIN ALERTAS')) }}</strong>
+                <small>{{ $conStock ? $whole($productosCriticos) . ' códigos con cobertura menor a 7 días' : 'Requiere corte de stock' }}</small>
+            </div>
+        </div>
     </section>
 
     <section class="acc-main-grid">
@@ -277,13 +284,14 @@
     #accdash .acc-kpi strong{display:block;color:#123472;font-size:clamp(17px,1.5vw,25px);font-weight:900;letter-spacing:-.6px;margin-top:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #accdash .acc-kpi small{display:block;color:#72809a;margin-top:5px;font-size:10px;line-height:1.35}
     #accdash .acc-kpi-unavailable strong{color:#748198}
-    #accdash .acc-second-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
+    #accdash .acc-second-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
     #accdash .acc-mini{background:#fff;border:1px solid var(--acc-line);border-radius:11px;padding:12px;display:flex;align-items:center;gap:11px;min-width:0}
     #accdash .acc-mini>i{flex-shrink:0;background:#edf4ff;color:#2261b3;border-radius:9px;min-width:41px;height:41px;display:grid;place-items:center}
     #accdash .acc-mini span{display:block;font-size:11px;color:#536a89;font-weight:700}
     #accdash .acc-mini strong{display:block;color:#123472;font-size:20px;font-weight:900;margin:4px 0}
     #accdash .acc-mini small{display:block;font-size:10px;color:#8993a5}
     #accdash .acc-mini-warn>i{color:#b75b12;background:#fff4e6}
+    #accdash .acc-mini-warn strong{color:#b75b12}
     #accdash .acc-main-grid{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(310px,.78fr);gap:14px;margin-bottom:14px;align-items:start}
     #accdash .acc-panel{overflow:hidden}
     #accdash .acc-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #e7edf6;padding:16px 17px}
