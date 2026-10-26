@@ -15,6 +15,42 @@ class AccesoriosStockServiceTest extends TestCase
         $this->assertSame(6, AccesoriosStockService::saldo(6, 0, 0));
     }
 
+    public function test_una_compra_de_siete_no_se_duplica_al_distribuir_desde_central(): void
+    {
+        // I-52569: Depósito -> Casa Central, 7 unidades efectivamente recibidas.
+        $ingreso = AccesoriosStockService::clasificarFlujo(null, 'S:1', true, true, 7);
+        // 1-43889: Casa Central -> local, las MISMAS 7 unidades.
+        $envio = AccesoriosStockService::clasificarFlujo('S:1', 'S:16', false, true, 7);
+
+        $this->assertSame(7, $ingreso['ingreso_deposito']);
+        $this->assertSame(0, $ingreso['distribuido_central']);
+        $this->assertSame(0, $ingreso['recibido_locales']);
+
+        $this->assertSame(0, $envio['ingreso_deposito']);
+        $this->assertSame(7, $envio['distribuido_central']);
+        $this->assertSame(7, $envio['recibido_locales']);
+
+        // En lugar de presentar 7+7=14 como "remitidas", mostramos
+        // 7 por etapa. Luego descontar 4 ventas produce un stock de 3.
+        $this->assertSame(3, AccesoriosStockService::saldo(7, 0, 4));
+        $this->assertSame(0, AccesoriosStockService::saldo(7, 7, 0));
+    }
+
+    public function test_remision_sin_recepcion_aun_no_suma_en_recibidas_del_local(): void
+    {
+        $envio = AccesoriosStockService::clasificarFlujo('S:1', 'S:16', false, false, 7);
+        $this->assertSame(7, $envio['distribuido_central']);
+        $this->assertSame(0, $envio['recibido_locales']);
+    }
+
+    public function test_traslado_entre_locales_es_otro_movimiento_y_no_otra_compra(): void
+    {
+        $mov = AccesoriosStockService::clasificarFlujo('S:16', 'S:4', false, true, 2);
+        $this->assertSame(2, $mov['traslado_locales']);
+        $this->assertSame(0, $mov['ingreso_deposito']);
+        $this->assertSame(0, $mov['distribuido_central']);
+    }
+
     public function test_venta_y_transferencia_recibida_afectan_el_saldo_una_vez(): void
     {
         $this->assertSame(2, AccesoriosStockService::saldo(6, 0, 4));
