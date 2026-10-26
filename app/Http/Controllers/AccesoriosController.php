@@ -21,6 +21,20 @@ class AccesoriosController extends Controller
     public function index(Request $request)
     {
         $buscar = trim((string) $request->input('buscar', ''));
+        $linea = trim((string) $request->input('linea', ''));
+        $orden = (string) $request->input('orden', 'codigo');
+        $ordenesPermitidos = ['codigo', 'descripcion', 'linea'];
+        if (!in_array($orden, $ordenesPermitidos, true)) {
+            $orden = 'codigo';
+        }
+
+        $lineas = DB::table('accesorios_articulos')
+            ->whereNotNull('linea')
+            ->where('linea', '<>', '')
+            ->distinct()
+            ->orderBy('linea')
+            ->pluck('linea');
+
         $articulos = DB::table('accesorios_articulos')
             ->when($buscar !== '', function ($consulta) use ($buscar) {
                 $consulta->where(function ($q) use ($buscar) {
@@ -29,7 +43,13 @@ class AccesoriosController extends Controller
                         ->orWhere('linea', 'ilike', '%' . $buscar . '%');
                 });
             })
-            ->orderBy('codigo')->paginate(30)->appends($request->query());
+            ->when($linea !== '', function ($consulta) use ($linea) {
+                $consulta->where('linea', $linea);
+            })
+            ->orderBy($orden)
+            ->orderBy('codigo')
+            ->paginate(30)
+            ->appends($request->query());
 
         $ids = $articulos->getCollection()->pluck('id')->all();
         $codigos = $articulos->getCollection()->pluck('codigo')->all();
@@ -68,7 +88,29 @@ class AccesoriosController extends Controller
             ->first();
         $totalArticulos = DB::table('accesorios_articulos')->count();
 
-        return view('accesorios.index', compact('articulos', 'buscar', 'resumen', 'totalArticulos'));
+        // Indicadores del bloque visible: no se confunden con totales generales.
+        $filasVisibles = $articulos->getCollection();
+        $indicadoresPagina = [
+            'unidades_compradas' => (int) $filasVisibles->sum('comprado'),
+            'ventas_netas' => (int) $filasVisibles->sum('vendido'),
+            'stock_conocido' => (int) $filasVisibles->filter(function ($item) {
+                return $item->stock_calculado !== null;
+            })->sum('stock_calculado'),
+            'sin_datos' => $filasVisibles->filter(function ($item) {
+                return $item->stock_calculado === null;
+            })->count(),
+            'saldo_negativo' => $filasVisibles->filter(function ($item) {
+                return $item->stock_calculado !== null && $item->stock_calculado < 0;
+            })->count(),
+            'sin_stock' => $filasVisibles->filter(function ($item) {
+                return $item->stock_calculado !== null && $item->stock_calculado === 0;
+            })->count(),
+        ];
+
+        return view('accesorios.index', compact(
+            'articulos', 'buscar', 'linea', 'lineas', 'orden',
+            'resumen', 'totalArticulos', 'indicadoresPagina'
+        ));
     }
 
     public function importarForm()
