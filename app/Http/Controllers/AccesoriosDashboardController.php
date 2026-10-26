@@ -19,6 +19,7 @@ class AccesoriosDashboardController extends Controller
     {
         if (!Schema::hasTable('accesorios_articulos')
             || !Schema::hasTable('accesorios_compras')
+            || !Schema::hasTable('ot_logistica_remisiones')
             || !Schema::hasColumn('ot_logistica_remisiones', 'accesorio_articulo_id')) {
             return view('accesorios.configurar');
         }
