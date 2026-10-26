@@ -32,7 +32,7 @@
                 <thead class="thead-light"><tr>
                     <th>Código</th><th>Descripción / Línea</th>
                     <th class="text-right">Compradas</th><th class="text-right">Remitidas*</th>
-                    <th class="text-right">Recibidas*</th><th class="text-right">Ventas netas</th><th></th>
+                    <th class="text-right">Recibidas*</th><th class="text-right">Ventas netas</th><th class="text-right">Stock calculado</th><th></th>
                 </tr></thead><tbody>
                 @forelse($articulos as $articulo)
                     <tr>
@@ -42,14 +42,21 @@
                         <td class="text-right">{{ number_format($articulo->remitido, 0, ',', '.') }}</td>
                         <td class="text-right">{{ number_format($articulo->recibido, 0, ',', '.') }}</td>
                         <td class="text-right">{{ number_format($articulo->vendido, 0, ',', '.') }}</td>
+                        <td class="text-right">
+                            @if($articulo->stock_calculado === null)
+                                <span class="text-muted">Sin movimientos</span>
+                            @else
+                                <span class="badge badge-{{ $articulo->stock_calculado < 0 ? 'danger' : ($articulo->stock_calculado === 0 ? 'secondary' : 'success') }}" style="font-size:12px">{{ number_format($articulo->stock_calculado, 0, ',', '.') }}</span>
+                            @endif
+                        </td>
                         <td class="text-right"><a href="{{ route('accesorios.show', $articulo->id) }}" class="btn btn-outline-primary btn-sm">Ver seguimiento</a></td>
                     </tr>
-                @empty <tr><td colspan="7" class="text-center text-muted p-4">Sin accesorios cargados.</td></tr> @endforelse
+                @empty <tr><td colspan="8" class="text-center text-muted p-4">Sin accesorios cargados.</td></tr> @endforelse
                 </tbody>
             </table>
         </div>
         <div class="card-footer">{{ $articulos->links() }}</div>
     </div>
-    <p class="small text-muted">* Remitidas y recibidas representan movimientos documentales; una prenda puede transferirse más de una vez. Las ventas son netas de los archivos importados. No se calcula stock físico ni se presume conciliación por FCO.</p>
+    <p class="small text-muted">* Remitidas y recibidas son movimientos documentales: pueden incluir varias transferencias de las mismas prendas. El <strong>stock calculado</strong> sí descuenta salidas y ventas por sucursal e incorpora únicamente recepciones confirmadas; corte al día de hoy. Los saldos negativos se mantienen para revisión. No es un inventario físico ni una conciliación por FCO.</p>
 </div></section>
 @endsection
