@@ -120,6 +120,40 @@ class AccesoriosStockService
         return $id > 0 ? 'S:' . $id : 'T:' . $limpio;
     }
 
+    /**
+     * Variantes de nombre para comparar ventas/remisiones al filtrar sucursal.
+     * Evita perder unidades cuando el export usa "RURAL" y remisiones "LA RURAL".
+     */
+    public function aliasesPara(?string $nombre): array
+    {
+        $key = $this->identificar(null, $nombre);
+        $aliases = [strtoupper(trim((string) $nombre))];
+        if ($key !== null && strpos($key, 'S:') === 0) {
+            $id = (int) substr($key, 2);
+            foreach (self::ALIAS as $alias => $codigo) {
+                if ($codigo === $id) {
+                    $aliases[] = $alias;
+                }
+            }
+            if (isset(self::NOMBRES[$id])) {
+                $aliases[] = strtoupper(self::NOMBRES[$id]);
+            }
+            if (isset($this->nombresBd[$id])) {
+                $aliases[] = strtoupper($this->nombresBd[$id]);
+            }
+        }
+        return array_values(array_unique(array_filter($aliases, function ($a) {
+            return trim((string) $a) !== '';
+        })));
+    }
+
+    public function codigoPara(?string $nombre): ?int
+    {
+        $key = $this->identificar(null, $nombre);
+        return $key && strpos($key, 'S:') === 0
+            ? (int) substr($key, 2) : null;
+    }
+
     private function nombre(string $clave, string $importado): string
     {
         if (strpos($clave, 'S:') === 0) {
