@@ -5,7 +5,7 @@
     $money = function ($v) { return $v === null ? 'Sin dato' : 'Gs ' . number_format((float) $v, 0, ',', '.'); };
     $whole = function ($v) { return number_format((int) $v, 0, ',', '.'); };
     $maxSuc = max(1, (float) $sucursales->max('importe'));
-    $maxMes = max(1, (float) $meses->max('importe'));
+    $maxEvolucion = max(1, (float) $evolucion->max('importe'), abs((float) $evolucion->min('importe')));
     $peligros = $rankingCompleto->filter(function ($p) {
         return $p->reposicion !== null && $p->reposicion > 0;
     })->sortByDesc('reposicion')->take(6);
@@ -53,6 +53,7 @@
     <section class="acc-filter-panel">
         <div class="acc-section-heading"><i class="fas fa-filter"></i> Filtros del monitoreo <small>Los filtros se aplican al presionar Consultar</small></div>
         <form action="{{ route('accesorios.index') }}" method="GET" class="acc-filter-grid">
+            <input type="hidden" name="agrupacion" value="{{ $agrupacion }}">
             <div><label for="acc-desde">Venta desde</label><input id="acc-desde" type="date" name="desde" value="{{ $desde }}" class="form-control form-control-sm"></div>
             <div><label for="acc-hasta">Venta hasta</label><input id="acc-hasta" type="date" name="hasta" value="{{ $hasta }}" class="form-control form-control-sm"></div>
             <div><label for="acc-sucursal">Sucursal</label>
@@ -250,17 +251,67 @@
                 @empty<div class="acc-empty">No hay ventas para el período seleccionado.</div>@endforelse
             </div>
         </div>
-        <div class="acc-panel">
-            <div class="acc-panel-head"><div><h2><i class="fas fa-chart-area"></i> Evolución mensual</h2><p>Facturación neta real durante el período filtrado</p></div></div>
-            <div class="acc-month-chart">
-                @forelse($meses as $m)
-                    @php($alto = max(2, min(100, (float)$m->importe / $maxMes * 100)))
-                    <div class="acc-month" title="{{ $m->mes }} · {{ $money($m->importe) }} · {{ $whole($m->unidades) }} unidades">
-                        <div class="acc-month-plot"><div class="acc-month-bar" style="height: {{ $alto }}%"></div></div>
-                        <span>{{ \Carbon\Carbon::parse($m->mes . '-01')->format('m/y') }}</span>
+        <div class="acc-panel" id="acc-evolucion">
+            <div class="acc-panel-head acc-evolution-head">
+                <div>
+                    <h2><i class="fas fa-chart-area"></i> Evolución de ventas</h2>
+                    <p>Facturación neta real · agrupación {{ ['dia' => 'diaria', 'semana' => 'semanal', 'mes' => 'mensual'][$agrupacion] }}</p>
+                </div>
+                <nav class="acc-evolution-switch" aria-label="Agrupar evolución de ventas">
+                    @foreach(['dia' => ['Día', 'fa-calendar-day'], 'semana' => ['Semana', 'fa-calendar-week'], 'mes' => ['Mes', 'fa-calendar-alt']] as $modo => $opcion)
+                        <a href="{{ route('accesorios.index', array_merge(request()->except(['page', 'agrupacion']), ['agrupacion' => $modo])) }}#acc-evolucion"
+                           class="acc-evolution-option {{ $agrupacion === $modo ? 'active' : '' }}"
+                           aria-current="{{ $agrupacion === $modo ? 'true' : 'false' }}"
+                           title="Agrupar facturación por {{ strtolower($opcion[0]) }} sin cambiar los filtros">
+                            <i class="fas {{ $opcion[1] }}"></i> {{ $opcion[0] }}
+                        </a>
+                    @endforeach
+                </nav>
+            </div>
+            <div class="acc-month-chart acc-chart-{{ $agrupacion }}">
+                @forelse($evolucion as $m)
+                    @php
+                        $fechaEvolucion = \Carbon\Carbon::parse($m->periodo . ($agrupacion === 'mes' ? '-01' : ''));
+                        $etiquetaEvolucion = $agrupacion === 'dia'
+                            ? $fechaEvolucion->format('d/m')
+                            : ($agrupacion === 'semana'
+                                ? $fechaEvolucion->format('d/m') . '–' . $fechaEvolucion->copy()->addDays(6)->format('d/m')
+                                : $fechaEvolucion->format('m/y'));
+                        $descripcionEvolucion = $agrupacion === 'dia'
+                            ? $fechaEvolucion->format('d/m/Y')
+                            : ($agrupacion === 'semana'
+                                ? 'Semana del ' . $fechaEvolucion->format('d/m/Y') . ' al ' . $fechaEvolucion->copy()->addDays(6)->format('d/m/Y')
+                                : $fechaEvolucion->format('m/Y'));
+                        $importeEvolucion = (float) $m->importe;
+                        $alto = max(3, min(100, abs($importeEvolucion) / $maxEvolucion * 100));
+                    @endphp
+                    <div class="acc-month" title="{{ $descripcionEvolucion }} · {{ $money($m->importe) }} · {{ $whole($m->unidades) }} unidades netas">
+                        <div class="acc-month-plot">
+                            @if($importeEvolucion != 0)
+                                <div class="acc-month-bar {{ $importeEvolucion < 0 ? 'is-negative' : '' }}" style="height: {{ $alto }}%"></div>
+                            @else
+                                <div class="acc-month-no-sales" title="Sin facturación neta en este período"></div>
+                            @endif
+                        </div>
+                        <span>{{ $etiquetaEvolucion }}</span>
                         <small>{{ $whole($m->unidades) }} un.</small>
                     </div>
-                @empty<div class="acc-empty">Sin datos mensuales para graficar.</div>@endforelse
+                @empty
+                    <div class="acc-empty">No hay ventas para mostrar en el período seleccionado.</div>
+                @endforelse
+            </div>
+            <div class="acc-evolution-footer">
+                <i class="fas fa-info-circle"></i>
+                El gráfico respeta el rango {{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }}–{{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }} y los demás filtros.
+                @if($agrupacion === 'semana')
+                    Cada semana comienza el lunes; las semanas incompletas incluyen solo las fechas seleccionadas.
+                @endif
+                @if($diasPeriodo === 1)
+                    Elegiste un solo día. Ampliá el rango Desde/Hasta para comparar varios días, semanas o meses.
+                @endif
+                @unless($evolucionPeriodosCompletos)
+                    El rango es muy amplio: se muestran los períodos con movimientos; los intervalos sin ventas se omiten.
+                @endunless
             </div>
         </div>
     </section>
@@ -418,6 +469,21 @@
     #accdash .acc-track{height:13px;background:#e9f1fc;border-radius:5px;overflow:hidden}
     #accdash .acc-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,#225fba,#58a0f0)}
     #accdash .acc-month-chart{padding:18px;display:flex;gap:9px;min-height:235px;overflow-x:auto;align-items:stretch}
+    #accdash .acc-evolution-head{flex-wrap:wrap}
+    #accdash .acc-evolution-switch{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;padding:4px;border:1px solid #dce6f5;background:#f2f6fc;border-radius:9px}
+    #accdash .acc-evolution-option{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;font-size:11px;font-weight:800;border-radius:6px;color:#6580a3;text-decoration:none!important;transition:background .15s,color .15s}
+    #accdash .acc-evolution-option:hover{color:#144b99;background:#e3efff}
+    #accdash .acc-evolution-option.active{background:#1d5eac;color:#fff;box-shadow:0 2px 5px rgba(25,77,158,.18)}
+    #accdash .acc-evolution-option.active:hover{background:#164d99;color:#fff}
+    #accdash .acc-evolution-option i{font-size:11px}
+    #accdash .acc-evolution-footer{padding:10px 17px 14px;border-top:1px solid #e8eef7;color:#7689a5;font-size:10px;line-height:1.6}
+    #accdash .acc-evolution-footer i{color:#3579c5;margin-right:5px}
+    #accdash .acc-chart-dia .acc-month{min-width:44px}
+    #accdash .acc-chart-semana .acc-month{min-width:75px}
+    #accdash .acc-chart-mes .acc-month{min-width:40px}
+    #accdash .acc-month-bar.is-negative{background:linear-gradient(180deg,#c9515b,#e99a9f)}
+    #accdash .acc-month-no-sales{width:18px;height:3px;background:#c4d1e2;border-radius:2px}
+
     #accdash .acc-month{flex:1;min-width:36px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;text-align:center;color:#60728f;font-size:10px}
     #accdash .acc-month-plot{height:145px;min-height:145px;width:100%;display:flex;align-items:flex-end;justify-content:center;border-bottom:1px solid #dbe5f3;background:repeating-linear-gradient(to top,transparent 0,transparent 35px,#f1f5fb 36px)}
     #accdash .acc-month-bar{width:min(42px,66%);min-height:3px;border-radius:5px 5px 0 0;background:linear-gradient(180deg,#256cca,#75abec)}
