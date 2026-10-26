@@ -307,6 +307,37 @@ class AccesoriosDashboardController extends Controller
                 ->groupBy('a.id')->get()->keyBy('id');
         }
 
+        // Preparar las etiquetas del gráfico en el controlador y no dentro de
+        // directivas Blade del ciclo: así cada barra tiene su título/altura
+        // inicializados tanto con datos como en períodos sin ventas.
+        $escalaEvolucion = max(
+            1,
+            abs((float) $evolucion->max('importe')),
+            abs((float) $evolucion->min('importe'))
+        );
+        $evolucion = $evolucion->map(function ($p) use ($agrupacion, $escalaEvolucion) {
+            $fecha = Carbon::parse($p->periodo . ($agrupacion === 'mes' ? '-01' : ''));
+            if ($agrupacion === 'dia') {
+                $etiqueta = $fecha->format('d/m');
+                $descripcion = $fecha->format('d/m/Y');
+            } elseif ($agrupacion === 'semana') {
+                $finSemana = $fecha->copy()->addDays(6);
+                $etiqueta = $fecha->format('d/m') . '–' . $finSemana->format('d/m');
+                $descripcion = 'Semana del ' . $fecha->format('d/m/Y')
+                    . ' al ' . $finSemana->format('d/m/Y');
+            } else {
+                $etiqueta = $fecha->format('m/y');
+                $descripcion = $fecha->format('m/Y');
+            }
+
+            $importe = (float) $p->importe;
+            $p->etiqueta = $etiqueta;
+            $p->descripcion = $descripcion;
+            $p->altura = max(3, min(100, abs($importe) / $escalaEvolucion * 100));
+            $p->negativo = $importe < 0;
+            return $p;
+        })->values();
+
         // Saldo de accesorios por local: recepciones - salidas - ventas netas.
         // Se acumula desde el inicio histórico hasta "hasta"; "desde" filtra
         // las estadísticas comerciales, no recorta el saldo del inventario.
