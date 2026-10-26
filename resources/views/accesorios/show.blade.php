@@ -9,8 +9,9 @@
     <div class="row">
         @foreach([
             ['Compradas', $totalComprado, 'primary'],
-            ['Remitidas (movimientos)', $resumenRemisiones->remitido, 'info'],
-            ['Con recepción registrada', $resumenRemisiones->recibido, 'success'],
+            ['Entrada Depósito → Central', $etapasRemision['ingreso_deposito'], 'primary'],
+            ['Distribuidas desde Central', $etapasRemision['distribuido_central'], 'info'],
+            ['Recibidas en locales desde Central', $etapasRemision['recibido_locales'], 'success'],
             ['Ventas netas registradas', $totalVendido, 'secondary'],
             ['Stock calculado', $stockCalculado, ($stockCalculado !== null && $stockCalculado < 0 ? 'danger' : 'success')]
         ] as $kpi)
@@ -18,6 +19,15 @@
                 <div class="text-muted small">{{ $kpi[0] }}</div><h3 class="mb-0">{{ $kpi[1] === null ? 'Sin datos' : number_format($kpi[1], 0, ',', '.') }}</h3>
             </div></div></div>
         @endforeach
+    </div>
+    <div class="alert alert-light border small">
+        <i class="fas fa-info-circle text-primary mr-1"></i>
+        <strong>Seguimiento por etapas:</strong> las unidades que ingresan de Depósito a Casa Central
+        y después salen de Casa Central hacia los locales <strong>son las mismas prendas</strong>.
+        Cada cifra corresponde a una etapa diferente y <strong>no se suma entre etapas</strong>.
+        Las transferencias entre locales se presentan aparte:
+        <strong>{{ number_format($etapasRemision['traslado_locales'] ?? 0, 0, ',', '.') }} unidades movidas</strong>.
+        No representan prendas nuevas.
     </div>
     <div class="card card-outline card-success shadow-sm">
         <div class="card-header"><h3 class="card-title"><i class="fas fa-balance-scale mr-2"></i>Stock calculado por sucursal</h3></div>
@@ -76,7 +86,7 @@
     </div>
     <div class="card card-outline card-info">
         <div class="card-header">
-            <h3 class="card-title">Recorrido de remisiones · orden de ingreso y distribución</h3>
+            <h3 class="card-title">Historial documental de remisiones · movimientos de las mismas unidades</h3>
         </div>
         <div class="px-3 py-2 bg-light border-bottom small">
             <i class="fas fa-warehouse text-primary mr-1"></i><strong>1. Depósito → Casa Central</strong>
@@ -84,7 +94,11 @@
             <i class="fas fa-truck text-info mr-1"></i><strong>2. Casa Central → Locales</strong>
             <span class="mx-2 text-muted">→</span>
             <span class="text-muted">3. Otros movimientos</span>
-            <div class="text-muted mt-1">Dentro de cada etapa: fecha de remisión ascendente y número de remisión.</div>
+            <div class="text-muted mt-1">
+                Dentro de cada etapa: fecha de remisión ascendente y número de remisión.
+                Una misma prenda puede figurar en dos o más remisiones; las cantidades de esta tabla
+                <strong>no deben sumarse para obtener stock ni compras.</strong>
+            </div>
         </div>
         <div class="card-body table-responsive p-0"><table class="table table-striped table-sm mb-0">
             <thead><tr><th>Remisión</th><th>Fecha</th><th>Origen</th><th>Destino</th><th class="text-right">Cantidad</th><th>Recepción</th><th>Estado</th></tr></thead><tbody>
