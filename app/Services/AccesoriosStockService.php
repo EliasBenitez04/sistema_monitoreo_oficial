@@ -101,6 +101,46 @@ class AccesoriosStockService
         return $entradas - $salidas - $ventasNetas;
     }
 
+    /**
+     * Desglosa las etapas, sin sumar dos veces la misma prenda al informar
+     * ingreso inicial y posterior distribución. Son métricas por ETAPA.
+     * Una transferencia repetida puede representar el mismo artículo otra
+     * vez; por eso no se llama "unidades únicas" a los despachos.
+     */
+    public static function clasificarFlujo(
+        ?string $origen,
+        ?string $destino,
+        bool $origenDeposito,
+        bool $recibida,
+        int $cantidad
+    ): array {
+        $etapas = [
+            'ingreso_deposito' => 0,
+            'distribuido_central' => 0,
+            'recibido_locales' => 0,
+            'traslado_locales' => 0,
+            'otros_movimientos' => 0,
+        ];
+
+        if ($cantidad <= 0 || $origen === $destino) {
+            return $etapas;
+        }
+        if ($origenDeposito && $destino === 'S:1') {
+            // Stock disponible en Central solo después de recibir.
+            $etapas['ingreso_deposito'] = $recibida ? $cantidad : 0;
+        } elseif ($origen === 'S:1' && $destino !== null) {
+            $etapas['distribuido_central'] = $cantidad;
+            $etapas['recibido_locales'] = $recibida ? $cantidad : 0;
+        } elseif ($origen !== null && $origen !== 'S:1'
+            && $destino !== null && $destino !== 'S:1') {
+            $etapas['traslado_locales'] = $cantidad;
+        } else {
+            $etapas['otros_movimientos'] = $cantidad;
+        }
+
+        return $etapas;
+    }
+
     private function identificar($codigo, ?string $nombre): ?string
     {
         if (self::esDeposito($nombre)) {
@@ -171,6 +211,7 @@ class AccesoriosStockService
         $sinDestino = 0;
         $ventasSinLocal = 0;
         $movimientosNoRecibidos = 0;
+        $flujoPorCodigo = [];
 
         $asegurar = function (int $id, string $clave, string $nombre) use (&$agrupado) {
             if (!isset($agrupado[$id][$clave])) {
@@ -208,6 +249,21 @@ class AccesoriosStockService
                 }
                 $salida = $this->identificar($r->cod_sucursal_salida, $r->sucursal_salida);
                 $destino = $this->identificar($r->cod_sucursal_destino, $r->sucursal_destino);
+                $recibida = $r->fecha_recepcion
+                    && substr((string) $r->fecha_recepcion, 0, 10) <= $corte;
+                $etapas = self::clasificarFlujo(
+                    $salida,
+                    $destino,
+                    self::esDeposito($r->sucursal_salida),
+                    (bool) $recibida,
+                    $cantidad
+                );
+                if (!isset($flujoPorCodigo[$id])) {
+                    $flujoPorCodigo[$id] = array_fill_keys(array_keys($etapas), 0);
+                }
+                foreach ($etapas as $etapa => $unidades) {
+                    $flujoPorCodigo[$id][$etapa] += $unidades;
+                }
 
                 if (!$salida && !self::esDeposito($r->sucursal_salida)) {
                     $sinOrigen++;
@@ -219,7 +275,7 @@ class AccesoriosStockService
                     $asegurar($id, $salida, (string) $r->sucursal_salida)->salidas += $cantidad;
                 }
                 if ($destino && $destino !== $salida) {
-                    if ($r->fecha_recepcion && substr((string) $r->fecha_recepcion, 0, 10) <= $corte) {
+                    if ($recibida) {
                         $asegurar($id, $destino, (string) $r->sucursal_destino)->entradas += $cantidad;
                     } else {
                         $asegurar($id, $destino, (string) $r->sucursal_destino)->en_transito += $cantidad;
@@ -314,6 +370,7 @@ class AccesoriosStockService
             ->sortBy('sucursal')->values();
 
         return [
+            'flujoPorCodigo' => collect($flujoPorCodigo),
             'porCodigo' => $porCodigo,
             'porSucursal' => $sucursales,
             'detalle' => collect($detalle),
