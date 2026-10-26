@@ -177,6 +177,11 @@
                     <div class="acc-flow-divider"></div>
                     <div class="acc-flow-duo"><div><small>Movimientos totales</small><b>{{ $whole($remisiones->movimientos) }}</b></div><div><small>Con recepción</small><b>{{ $whole($remisiones->recibidas) }}</b></div></div>
                     <div class="acc-flow-duo"><div><small>En tránsito</small><b class="acc-danger">{{ $whole($remisiones->transito) }}</b></div><div><small>Documentos</small><b>{{ $whole($remisiones->documentos) }}</b></div></div>
+                    <div class="acc-flow-divider"></div>
+                    <div class="acc-flow-duo">
+                        <div><small>Cobertura global estimada</small><b>{{ $coberturaGlobal === null ? 'Sin dato' : number_format($coberturaGlobal, 1, ',', '.') . ' días' }}</b></div>
+                        <div><small>Códigos críticos</small><b class="{{ $productosCriticos > 0 ? 'acc-danger' : '' }}">{{ $conStock ? $whole($productosCriticos) : 'Sin dato' }}</b></div>
+                    </div>
                 </div>
             </div>
             <div class="acc-panel">
