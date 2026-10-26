@@ -11,12 +11,54 @@
             ['Compradas', $totalComprado, 'primary'],
             ['Remitidas (movimientos)', $resumenRemisiones->remitido, 'info'],
             ['Con recepción registrada', $resumenRemisiones->recibido, 'success'],
-            ['Ventas netas registradas', $totalVendido, 'secondary']
+            ['Ventas netas registradas', $totalVendido, 'secondary'],
+            ['Stock calculado', $stockCalculado, ($stockCalculado !== null && $stockCalculado < 0 ? 'danger' : 'success')]
         ] as $kpi)
             <div class="col-md-3 col-6"><div class="card border-{{ $kpi[2] }} shadow-sm"><div class="card-body">
-                <div class="text-muted small">{{ $kpi[0] }}</div><h3 class="mb-0">{{ number_format($kpi[1], 0, ',', '.') }}</h3>
+                <div class="text-muted small">{{ $kpi[0] }}</div><h3 class="mb-0">{{ $kpi[1] === null ? 'Sin datos' : number_format($kpi[1], 0, ',', '.') }}</h3>
             </div></div></div>
         @endforeach
+    </div>
+    <div class="card card-outline card-success shadow-sm">
+        <div class="card-header"><h3 class="card-title"><i class="fas fa-balance-scale mr-2"></i>Stock calculado por sucursal</h3></div>
+        <div class="px-3 py-2 bg-light small text-muted">
+            Corte: {{ now()->format('d/m/Y') }}. Fórmula por sucursal:
+            <strong>remisiones recibidas − remisiones enviadas − ventas netas históricas</strong>.
+            Las devoluciones (notas de crédito negativas) incrementan el saldo. Las remisiones sin recepción no suman al destino.
+        </div>
+        <div class="card-body table-responsive p-0">
+            <table class="table table-striped table-hover table-sm mb-0">
+                <thead><tr>
+                    <th>Sucursal</th>
+                    <th class="text-right">Entradas recibidas</th>
+                    <th class="text-right">Salidas remitidas</th>
+                    <th class="text-right">Ventas netas</th>
+                    <th class="text-right">En tránsito hacia local</th>
+                    <th class="text-right">Stock calculado</th>
+                </tr></thead>
+                <tbody>
+                @forelse($saldosStock as $fila)
+                    <tr>
+                        <td class="font-weight-bold">{{ $fila->sucursal }}</td>
+                        <td class="text-right text-success">+{{ number_format($fila->entradas, 0, ',', '.') }}</td>
+                        <td class="text-right text-danger">−{{ number_format($fila->salidas, 0, ',', '.') }}</td>
+                        <td class="text-right">−{{ number_format($fila->ventas, 0, ',', '.') }}</td>
+                        <td class="text-right">{{ number_format($fila->en_transito, 0, ',', '.') }}</td>
+                        <td class="text-right">
+                            <span class="badge badge-{{ $fila->saldo < 0 ? 'danger' : ($fila->saldo === 0 ? 'secondary' : 'success') }}" style="font-size:13px">
+                                {{ number_format($fila->saldo, 0, ',', '.') }}
+                            </span>
+                        </td>
+                    </tr>
+                @empty <tr><td colspan="6" class="text-center text-muted p-3">No hay movimientos ni ventas vinculadas para calcular el saldo.</td></tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer small">
+            <strong>Atención:</strong> un saldo negativo no se oculta: puede indicar una venta anterior a las remisiones importadas, una recepción faltante o una discrepancia de sucursal.
+            El saldo supone que el historial documental importado está completo.
+        </div>
     </div>
     <div class="card card-outline card-primary">
         <div class="card-header"><h3 class="card-title">Historial de compras · FCO</h3></div>
@@ -67,6 +109,6 @@
             @empty <tr><td colspan="2" class="text-muted text-center p-3">Sin ventas importadas.</td></tr> @endforelse
             </tbody></table></div>
     </div>
-    <div class="alert alert-light border small"><strong>Alcance:</strong> el FCO identifica cada compra, pero remisiones y ventas no tienen FCO. Se relacionan por código completo; los movimientos pueden repetir unidades en transferencias. No constituyen stock físico ni conciliación por lote.</div>
+    <div class="alert alert-light border small"><strong>Alcance:</strong> las compras por FCO se conservan como referencia, pero no se suman directamente al stock. El saldo se calcula una sola vez en cada sucursal, a partir de las recepciones, los envíos y las ventas netas acumuladas. Es un <strong>stock documental estimado</strong>, no un conteo físico. Las unidades en tránsito quedan fuera de las existencias del destino hasta su recepción.</div>
 </div></section>
 @endsection
