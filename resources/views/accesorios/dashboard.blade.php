@@ -44,9 +44,7 @@
         @can('redistribucionsugerencia update')
             <a href="{{ route('remisiones.index') }}"><i class="fas fa-truck"></i> Remisiones</a>
         @endcan
-        @can('stocks importar')
-            <a href="{{ route('stocks.index') }}"><i class="fas fa-warehouse"></i> Stock de sucursales</a>
-        @endcan
+        <span class="acc-stock-source"><i class="fas fa-calculator"></i> Stock calculado con las importaciones anteriores</span>
     </div>
 
     @if(session('error'))<div class="alert alert-danger mt-3">{{ session('error') }}</div>@endif
@@ -107,7 +105,7 @@
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Margen bruto estimado</span><i class="fas fa-percent"></i></div><strong>{{ $margenEstimado === null ? 'Sin dato' : number_format($margenEstimado, 1, ',', '.') . '%' }}</strong><small>Basado en compras históricas; no atribuido por FCO</small></div>
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Unidades vendidas netas</span><i class="fas fa-shopping-bag"></i></div><strong>{{ $whole($kpi->unidades) }}</strong><small>{{ $whole($kpi->brutas) }} brutas · {{ $whole($kpi->devoluciones) }} devueltas</small></div>
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Ticket promedio</span><i class="fas fa-receipt"></i></div><strong>{{ $money($ticketPromedio) }}</strong><small>{{ $whole($kpi->tickets) }} comprobantes positivos distintos</small></div>
-        <div class="acc-kpi {{ !$conStock ? 'acc-kpi-unavailable' : '' }}"><div class="acc-kpi-top"><span>Stock importado</span><i class="fas fa-boxes"></i></div><strong>{{ $conStock ? $whole($stockTotal) : 'Sin dato' }}</strong><small>{{ $stockFuente ?: 'Sin códigos coincidentes en stock importado' }}</small></div>
+        <div class="acc-kpi {{ !$conStock ? 'acc-kpi-unavailable' : '' }}"><div class="acc-kpi-top"><span>Stock calculado</span><i class="fas fa-boxes"></i></div><strong>{{ $conStock ? $whole($stockTotal) : 'Sin dato' }}</strong><small>{{ $stockFuente ?: 'Sin movimientos para calcular stock' }}</small></div>
     </section>
 
     <section class="acc-second-grid">
@@ -120,7 +118,7 @@
             <i class="fas fa-exclamation-circle"></i>
             <div><span>Estado de reposición</span>
                 <strong>{{ !$conStock ? 'SIN DATOS' : ($productosCriticos > 0 ? 'URGENTE' : ($productosReponer > 0 ? 'REVISAR' : 'SIN ALERTAS')) }}</strong>
-                <small>{{ $conStock ? $whole($productosCriticos) . ' códigos con cobertura menor a 7 días' : 'Requiere corte de stock' }}</small>
+                <small>{{ $conStock ? $whole($productosCriticos) . ' códigos con cobertura menor a 7 días' : 'No hay remisiones/ventas vinculadas' }}</small>
             </div>
         </div>
     </section>
@@ -128,7 +126,7 @@
     <section class="acc-main-grid">
         <div class="acc-panel acc-ranking">
             <div class="acc-panel-head">
-                <div><h2><i class="fas fa-trophy"></i> Ranking de artículos</h2><p>Desempeño comercial, stock importado y reposición orientativa</p></div>
+                <div><h2><i class="fas fa-trophy"></i> Ranking de artículos</h2><p>Desempeño comercial y saldos documentales calculados</p></div>
                 <span class="acc-light-tag">{{ $whole($rankingCompleto->count()) }} artículos</span>
             </div>
             <div class="acc-table-scroll">
@@ -162,7 +160,7 @@
                 </table>
             </div>
             <div class="acc-panel-foot">
-                <span>* Corte importado, no cálculo de compras menos ventas. ** Objetivo orientativo de 30 días según ventas netas recientes.</span>
+                <span>* Saldo documental calculado con todo el historial hasta la fecha Hasta (no depende de Desde). ** Objetivo orientativo de 30 días según ventas netas recientes.</span>
                 <div>{{ $rankingPagina->links() }}</div>
             </div>
         </div>
@@ -195,6 +193,49 @@
         </div>
     </section>
 
+    <section class="acc-panel mb-3">
+        <div class="acc-panel-head">
+            <div>
+                <h2><i class="fas fa-store"></i> Existencias calculadas por sucursal</h2>
+                <p>Todos los movimientos históricos hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }} · entradas recibidas − salidas remitidas − ventas netas</p>
+            </div>
+            <span class="acc-light-tag">Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</span>
+        </div>
+        <div class="acc-table-scroll">
+            <table class="acc-table">
+                <thead><tr>
+                    <th>Sucursal</th>
+                    <th class="acc-num">Entradas recibidas</th>
+                    <th class="acc-num">Salidas enviadas</th>
+                    <th class="acc-num">Ventas netas</th>
+                    <th class="acc-num">En tránsito hacia local</th>
+                    <th class="acc-num">Stock calculado</th>
+                    <th>Códigos con movimientos</th>
+                </tr></thead>
+                <tbody>
+                    @forelse($saldosSucursal as $local)
+                        <tr>
+                            <td><strong>{{ $local->sucursal }}</strong></td>
+                            <td class="acc-num">{{ $whole($local->entradas) }}</td>
+                            <td class="acc-num">{{ $whole($local->salidas) }}</td>
+                            <td class="acc-num">{{ $whole($local->ventas) }}</td>
+                            <td class="acc-num">{{ $whole($local->en_transito) }}</td>
+                            <td class="acc-num">
+                                <span class="acc-status {{ $local->saldo < 0 ? 'acc-red' : ($local->saldo == 0 ? 'acc-amber' : 'acc-green') }}">
+                                    {{ $whole($local->saldo) }}
+                                </span>
+                            </td>
+                            <td>{{ $whole($local->codigos) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="acc-empty">No existen remisiones ni ventas relacionadas para este corte.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="acc-panel-foot">Cuando un local recibe una transferencia de cualquier origen, sus entradas aumentan. Las ventas se descuentan una sola vez; las notas de crédito negativas revierten ventas.</div>
+    </section>
+
     <section class="acc-charts-grid">
         <div class="acc-panel">
             <div class="acc-panel-head"><div><h2><i class="fas fa-store"></i> Ventas netas por sucursal</h2><p>Importes reales según sucursal del comprobante</p></div></div>
@@ -225,13 +266,13 @@
             <div class="acc-panel-head"><div><h2><i class="fas fa-lightbulb"></i> Decisiones sugeridas</h2><p>Prioridades calculadas con las ventas recientes y stock disponible</p></div></div>
             <div class="acc-decisions">
                 @if(!$conStock)
-                    <div class="acc-decision"><span>1</span><p><strong>Cargar un corte de stock actualizado.</strong> Sin stock importado no es posible evaluar cobertura ni recomendar reposición confiable.</p></div>
+                    <div class="acc-decision"><span>1</span><p><strong>Importar remisiones y ventas.</strong> El saldo se calcula automáticamente por código y sucursal cuando existan movimientos enlazados.</p></div>
                 @elseif($peligros->isNotEmpty())
                     @foreach($peligros as $i => $p)
                         <div class="acc-decision"><span>{{ $i + 1 }}</span><p><strong>Revisar {{ $p->codigo }}.</strong> Reposición orientativa de {{ $whole($p->reposicion) }} unidades para alcanzar 30 días de demanda reciente. <a href="{{ route('accesorios.show', $p->id) }}">Ver trazabilidad</a>.</p></div>
                     @endforeach
                 @else
-                    <div class="acc-decision"><span><i class="fas fa-check"></i></span><p>Con la velocidad comercial disponible, no hay reposiciones sugeridas dentro del corte de stock analizado.</p></div>
+                    <div class="acc-decision"><span><i class="fas fa-check"></i></span><p>Con la velocidad comercial disponible, no hay reposiciones sugeridas con el historial de remisiones y ventas analizado.</p></div>
                 @endif
                 @foreach($bajaRentabilidad as $p)
                     <div class="acc-decision"><span><i class="fas fa-percentage"></i></span><p><strong>Revisar rentabilidad de {{ $p->codigo }}</strong>: margen bruto estimado {{ number_format($p->margen, 1, ',', '.') }}%. Verificar costo real y descuentos antes de ajustar precios.</p></div>
@@ -256,7 +297,7 @@
         <i class="fas fa-info-circle"></i>
         <div><strong>Criterios de interpretación.</strong>
             Ventas e importes provienen de <code>ventas</code>; compras y costos de <code>accesorios_compras</code>; logística de <code>ot_logistica_remisiones</code>.
-            El stock se muestra solo cuando existe un corte importado con códigos coincidentes: {{ $stockFuente ?: 'sin fuente coincidente' }}{{ $stockCorte ? ' · Actualizado: ' . \Carbon\Carbon::parse($stockCorte)->format('d/m/Y H:i') : '' }}.
+            El stock se recalcula desde cero al abrir el panel, con el historial de remisiones y ventas desde el primer registro hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}. No se utiliza un Excel externo de stock ni se suman compras/FCO al saldo. Envíos pendientes reducen el stock del origen, pero no aumentan el del destino hasta su fecha de recepción. Saldos negativos se muestran para revisión. El cálculo supone que las importaciones históricas son completas.
             El costo de las unidades vendidas y el margen se <strong>estiman</strong> con costo promedio ponderado de todas las compras del código, sin asignación por FCO. Reposición y cobertura requieren ventas en los últimos 30 días terminados en {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}.
             Las remisiones pueden volver a transportar la misma unidad, por eso sus totales no equivalen a stock. No se incluyen gastos operativos ni se calcula utilidad neta real.
         </div>
@@ -286,6 +327,7 @@
     #accdash .acc-meta i{margin-right:6px}
     #accdash .acc-source-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 14px;color:#59708f;font-size:11px}
     #accdash .acc-source-toolbar strong{font-size:11px;margin-right:4px}
+    #accdash .acc-stock-source{display:inline-flex;gap:6px;align-items:center;background:#e9f5ed;color:#24734c;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:700}
     #accdash .acc-source-toolbar a{display:inline-flex;align-items:center;gap:6px;color:#205ba4;background:#e8f0fc;border:1px solid #d3e2f6;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:700}
     #accdash .acc-source-toolbar a:hover{background:#dceafd}
     #accdash .acc-filter-panel,#accdash .acc-panel{border:1px solid var(--acc-line);background:#fff;border-radius:12px;box-shadow:0 2px 9px rgba(20,54,99,.035)}
