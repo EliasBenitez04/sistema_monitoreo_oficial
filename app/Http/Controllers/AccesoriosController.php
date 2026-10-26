@@ -13,7 +13,9 @@ class AccesoriosController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth', 'permission:pedido_compras index']);
+        // Acceso exclusivo al rol ADMIN (Spatie Permission).
+        // Se aplica también a solicitudes directas fuera del menú.
+        $this->middleware(['auth', 'role:ADMIN']);
     }
 
     public function index(Request $request)
