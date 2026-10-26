@@ -111,9 +111,27 @@
             </select>
           </div>
           <div><button class="btn btn-primary"><i class="fas fa-search mr-1"></i>Consultar ventas</button></div>
-          <div><a class="btn btn-outline-success" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'exportar'=>'ventas']) }}"><i class="fas fa-file-csv mr-1"></i>Exportar todos los registros</a></div>
+          <div class="d-flex align-items-center flex-wrap" style="gap:7px">
+            <a class="btn btn-success" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'exportar'=>'ventas']) }}"
+               title="Descargar las 12 columnas originales compatibles con Importar ventas">
+              <i class="fas fa-file-csv mr-1"></i>Exportar formato de importación
+            </a>
+            <a class="btn btn-outline-success" href="{{ route('ventas.mayoristas.index',['exportar'=>'historico']) }}"
+               title="Todas las ventas históricas de COMERCIAL MATRIZ, sin límite de fechas">
+              <i class="fas fa-history mr-1"></i>Exportar histórico completo
+            </a>
+            <a class="btn btn-outline-secondary" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'exportar'=>'auditoria']) }}"
+               title="Archivo anterior con ID, hash, fechas de importación y otros datos técnicos">
+              <i class="fas fa-clipboard-list mr-1"></i>CSV auditoría técnica
+            </a>
+          </div>
         </div>
-        <small class="text-muted mt-2">El selector incluye todos los clientes históricos de COMERCIAL MATRIZ; las fechas y el cliente elegido filtran los resultados.</small>
+        <small class="text-muted mt-2">
+          El selector incluye todos los clientes históricos de COMERCIAL MATRIZ; las fechas y el cliente elegido filtran los resultados.
+          <strong>Exportar formato de importación</strong> descarga todas las líneas del período de la sucursal 25 (sin limitarse a la paginación ni al cliente del selector).
+          El CSV utiliza exactamente: LOCAL, CODIGO, DESCRIPCION, CLI COD, CLIENTE, VENDEDOR, PLISTA, DTO, PVTA, FECHA, CANTIDAD y COMPROBANTE.
+          Los importes negativos de notas de crédito se conservan. <strong>Histórico completo</strong> no aplica límite de fechas.
+        </small>
       </form>
       <div class="row">
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Unidades netas vendidas</small><strong>{{ number_format($resumen->unidades_netas,0,',','.') }}</strong><span>{{ number_format($resumen->brutas,0,',','.') }} brutas · {{ number_format($resumen->notas_credito,0,',','.') }} notas de crédito</span></div></div>
