@@ -86,30 +86,6 @@
         </ul>
     </li>
 
-    <li class="nav-item {{ request()->routeIs('accesorios.*') ? 'menu-open' : '' }}">
-        <a href="#" class="nav-link {{ request()->routeIs('accesorios.*') ? 'active' : '' }}">
-            <i class="nav-icon fas fa-socks"></i>
-            <p>Accesorios <i class="right fas fa-angle-left"></i></p>
-        </a>
-        <ul class="nav nav-treeview">
-            <li class="nav-item">
-                <a href="{{ route('accesorios.index') }}" class="nav-link {{ request()->routeIs('accesorios.index', 'accesorios.exportar') ? 'active' : '' }}">
-                    <i class="fas fa-chart-pie nav-icon"></i><p>Panel de monitoreo</p>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="{{ route('accesorios.listado') }}" class="nav-link {{ request()->routeIs('accesorios.listado', 'accesorios.show') ? 'active' : '' }}">
-                    <i class="fas fa-list nav-icon"></i><p>Artículos y seguimiento</p>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="{{ route('accesorios.importar.form') }}" class="nav-link {{ request()->routeIs('accesorios.importar*') ? 'active' : '' }}">
-                    <i class="fas fa-file-import nav-icon"></i><p>Importar datos</p>
-                </a>
-            </li>
-        </ul>
-    </li>
-
     <li class="nav-item {{ $menuCargaDatos ? 'menu-open' : '' }}">
 
         <a href="#" class="nav-link {{ $menuCargaDatos ? 'active' : '' }}">
@@ -231,6 +207,32 @@
 
 @endcan
 
+{{-- Accesorios: exclusivo para el rol ADMIN. Independiente del permiso de Pedidos. --}}
+@role('ADMIN')
+    <li class="nav-item {{ request()->routeIs('accesorios.*') ? 'menu-open' : '' }}">
+        <a href="#" class="nav-link {{ request()->routeIs('accesorios.*') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-socks"></i>
+            <p>Accesorios <i class="right fas fa-angle-left"></i></p>
+        </a>
+        <ul class="nav nav-treeview">
+            <li class="nav-item">
+                <a href="{{ route('accesorios.index') }}" class="nav-link {{ request()->routeIs('accesorios.index', 'accesorios.exportar') ? 'active' : '' }}">
+                    <i class="fas fa-chart-pie nav-icon"></i><p>Panel de monitoreo</p>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ route('accesorios.listado') }}" class="nav-link {{ request()->routeIs('accesorios.listado', 'accesorios.show') ? 'active' : '' }}">
+                    <i class="fas fa-list nav-icon"></i><p>Artículos y seguimiento</p>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ route('accesorios.importar.form') }}" class="nav-link {{ request()->routeIs('accesorios.importar*') ? 'active' : '' }}">
+                    <i class="fas fa-file-import nav-icon"></i><p>Importar datos</p>
+                </a>
+            </li>
+        </ul>
+    </li>
+@endrole
 
 
 {{-- ===================== PEDIDOS ===================== --}}
