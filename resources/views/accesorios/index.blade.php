@@ -4,9 +4,10 @@
 <section class="content-header">
     <div class="container-fluid d-flex justify-content-between align-items-center flex-wrap">
         <div>
-            <h1><i class="fas fa-socks mr-2"></i>Accesorios</h1>
+            <h1><i class="fas fa-socks mr-2"></i>Accesorios · Artículos</h1>
             <p class="text-muted">Seguimiento de compras, remisiones, recepciones y ventas por código.</p>
         </div>
+        <a href="{{ route('accesorios.index') }}" class="btn btn-outline-primary mr-2"><i class="fas fa-chart-line mr-1"></i>Panel de monitoreo</a>
         <a href="{{ route('accesorios.importar.form') }}" class="btn btn-primary"><i class="fas fa-file-import mr-1"></i>Importar datos</a>
     </div>
 </section>
@@ -20,10 +21,10 @@
     </div>
     <div class="card shadow-sm">
         <div class="card-header">
-            <form method="GET" action="{{ route('accesorios.index') }}" class="form-inline">
+            <form method="GET" action="{{ route('accesorios.listado') }}" class="form-inline">
                 <input class="form-control mr-2 mb-2" name="buscar" value="{{ $buscar }}" placeholder="Código, descripción o línea" style="min-width:270px">
                 <button class="btn btn-outline-primary mb-2" type="submit"><i class="fas fa-search"></i> Buscar</button>
-                <a href="{{ route('accesorios.index') }}" class="btn btn-light mb-2 ml-2">Limpiar</a>
+                <a href="{{ route('accesorios.listado') }}" class="btn btn-light mb-2 ml-2">Limpiar</a>
             </form>
         </div>
         <div class="card-body table-responsive p-0">
