@@ -33,7 +33,17 @@
             </tbody></table></div>
     </div>
     <div class="card card-outline card-info">
-        <div class="card-header"><h3 class="card-title">Remisiones vinculadas por código</h3></div>
+        <div class="card-header">
+            <h3 class="card-title">Recorrido de remisiones · orden de ingreso y distribución</h3>
+        </div>
+        <div class="px-3 py-2 bg-light border-bottom small">
+            <i class="fas fa-warehouse text-primary mr-1"></i><strong>1. Depósito → Casa Central</strong>
+            <span class="mx-2 text-muted">→</span>
+            <i class="fas fa-truck text-info mr-1"></i><strong>2. Casa Central → Locales</strong>
+            <span class="mx-2 text-muted">→</span>
+            <span class="text-muted">3. Otros movimientos</span>
+            <div class="text-muted mt-1">Dentro de cada etapa: fecha de remisión ascendente y número de remisión.</div>
+        </div>
         <div class="card-body table-responsive p-0"><table class="table table-striped table-sm mb-0">
             <thead><tr><th>Remisión</th><th>Fecha</th><th>Origen</th><th>Destino</th><th class="text-right">Cantidad</th><th>Recepción</th><th>Estado</th></tr></thead><tbody>
             @forelse($remisiones as $remision)
