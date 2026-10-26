@@ -47,11 +47,17 @@ class AccesoriosController extends Controller
                 ->groupBy('codigo')->pluck('cantidad', 'codigo')
             : collect();
 
-        $articulos->getCollection()->transform(function ($articulo) use ($compras, $remisiones, $ventas) {
+        $calculoStock = (new \App\Services\AccesoriosStockService())
+            ->calcular($ids, now()->toDateString());
+        $stocks = $calculoStock['porCodigo'];
+
+        $articulos->getCollection()->transform(function ($articulo) use ($compras, $remisiones, $ventas, $stocks) {
             $articulo->comprado = (int) ($compras[$articulo->id] ?? 0);
             $articulo->remitido = (int) ($remisiones[$articulo->id]->remitido ?? 0);
             $articulo->recibido = (int) ($remisiones[$articulo->id]->recibido ?? 0);
             $articulo->vendido = (int) ($ventas[$articulo->codigo] ?? 0);
+            $articulo->stock_calculado = isset($stocks[$articulo->id])
+                ? (int) $stocks[$articulo->id]->saldo : null;
             return $articulo;
         });
 
@@ -157,9 +163,18 @@ class AccesoriosController extends Controller
         $totalComprado = $compras->sum('cantidad_compra');
         $totalVendido = $ventasPorLocal->sum('cantidad');
 
+        // Cada sucursal tiene saldo propio. Transferencias recibidas desde
+        // cualquier origen vuelven a sumar; salidas reducen el origen.
+        $calculoStock = (new \App\Services\AccesoriosStockService())
+            ->calcular([$id], now()->toDateString());
+        $saldosStock = collect($calculoStock['detalle']->get($id, []));
+        $stockCalculado = $calculoStock['porCodigo']->has($id)
+            ? $calculoStock['porCodigo']->get($id)->saldo : null;
+
         return view('accesorios.show', compact(
             'articulo', 'compras', 'remisiones', 'resumenRemisiones',
-            'ventasPorLocal', 'totalComprado', 'totalVendido'
+            'ventasPorLocal', 'totalComprado', 'totalVendido',
+            'saldosStock', 'stockCalculado'
         ));
     }
 }
