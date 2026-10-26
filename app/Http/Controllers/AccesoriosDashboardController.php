@@ -46,7 +46,7 @@ class AccesoriosDashboardController extends Controller
                 'CODIGO', 'DESCRIPCION', 'LINEA', 'VENTAS NETAS UN',
                 'INGRESOS NETOS Gs', 'DESCUENTOS Gs', 'COSTO PROMEDIO Gs',
                 'COSTO VENDIDO ESTIMADO Gs', 'MARGEN BRUTO ESTIMADO %',
-                'STOCK IMPORTADO', 'VENTAS ULTIMOS 30 DIAS',
+                'STOCK CALCULADO', 'VENTAS ULTIMOS 30 DIAS',
                 'COBERTURA ESTIMADA DIAS', 'REPOSICION SUGERIDA 30 DIAS'
             ], ';');
             foreach ($filas as $fila) {
@@ -82,7 +82,8 @@ class AccesoriosDashboardController extends Controller
                 $join->on(DB::raw('UPPER(BTRIM(v.codigo))'), '=', 'a.codigo');
             })->max('v.fecha') : null;
 
-        $fechaReferencia = $ultimaVenta ?: now()->toDateString();
+        // El corte del stock corresponde a "hasta"; por defecto, hoy.
+        $fechaReferencia = now()->toDateString();
         $desde = $request->input('desde') ?: Carbon::parse($fechaReferencia)->startOfYear()->toDateString();
         $hasta = $request->input('hasta') ?: $fechaReferencia;
         if ($desde > $hasta) {
@@ -213,55 +214,19 @@ class AccesoriosDashboardController extends Controller
                 ->groupBy('a.id')->get()->keyBy('id');
         }
 
-        // Stock: solo saldos efectivamente importados, jamás compras menos transferencias.
-        $stockPorCodigo = collect();
-        $stockFuente = null;
-        $stockCorte = null;
-        $stockPeriodo = null;
+        // Saldo de accesorios por local: recepciones - salidas - ventas netas.
+        // Se acumula desde el inicio histórico hasta "hasta"; "desde" filtra
+        // las estadísticas comerciales, no recorta el saldo del inventario.
+        $stockDatos = (new \App\Services\AccesoriosStockService())
+            ->calcular($ids, $hasta, $sucursal);
+        $stockPorCodigo = $stockDatos['porCodigo'];
+        $saldosSucursal = $stockDatos['porSucursal'];
+        $stockFuente = 'Cálculo documental: entradas recibidas - salidas - ventas netas';
+        $stockCorte = $hasta;
 
-        if (count($ids) && Schema::hasTable('stock_sucursales')) {
-            $consulta = DB::table('stock_sucursales as st')
-                ->join('accesorios_articulos as a', function ($join) {
-                    $join->on(DB::raw('UPPER(BTRIM(st.codigo))'), '=', 'a.codigo');
-                })
-                ->whereIn('a.id', $ids)
-                ->when($sucursal !== '', function ($q) use ($sucursal) {
-                    $q->whereRaw('UPPER(BTRIM(st.sucursal)) = UPPER(BTRIM(?))', [$sucursal]);
-                })
-                ->select('a.id')
-                ->selectRaw('SUM(st.cantidad) AS saldo, MAX(st.updated_at) AS fecha')
-                ->groupBy('a.id')->get()->keyBy('id');
-
-            if ($consulta->isNotEmpty()) {
-                $stockPorCodigo = $consulta;
-                $stockFuente = 'Stock importado · stock_sucursales';
-                $stockCorte = $consulta->max('fecha');
-            }
-        }
-
-        if ($stockPorCodigo->isEmpty() && count($ids) && Schema::hasTable('stock_ventas_sucursales')) {
-            $baseStock = DB::table('stock_ventas_sucursales as st')
-                ->join('accesorios_articulos as a', function ($join) {
-                    $join->on(DB::raw('UPPER(BTRIM(st.codigo))'), '=', 'a.codigo');
-                })
-                ->whereIn('a.id', $ids)
-                ->when($sucursal !== '', function ($q) use ($sucursal) {
-                    $q->join('sucursal as suc', 'suc.cod_suc', '=', 'st.sucursal_id')
-                        ->whereRaw('UPPER(BTRIM(suc.suc_descri)) = UPPER(BTRIM(?))', [$sucursal]);
-                });
-            $stockPeriodo = (clone $baseStock)->max('st.periodo');
-            if ($stockPeriodo) {
-                $consulta = (clone $baseStock)->where('st.periodo', $stockPeriodo)
-                    ->select('a.id')
-                    ->selectRaw('SUM(st.stock_actual) AS saldo, MAX(st.fecha_importacion) AS fecha')
-                    ->groupBy('a.id')->get()->keyBy('id');
-                if ($consulta->isNotEmpty()) {
-                    $stockPorCodigo = $consulta;
-                    $stockFuente = 'Corte ' . $stockPeriodo . ' · stock_ventas_sucursales';
-                    $stockCorte = $consulta->max('fecha');
-                }
-            }
-        }
+        $opciones['sucursales'] = collect($opciones['sucursales'])
+            ->merge($stockDatos['sucursalesDisponibles'])
+            ->unique()->sort()->values()->all();
 
         $remisiones = (object) [
             'movimientos' => 0, 'recibidas' => 0, 'transito' => 0,
@@ -402,13 +367,10 @@ class AccesoriosDashboardController extends Controller
 
         $alertas = [];
         if (!$conStock) {
-            $alertas[] = ['tipo' => 'warning', 'titulo' => 'Sin stock verificable',
-                'texto' => 'No hay coincidencias de accesorios en los archivos de stock. Importá un corte de stock para habilitar coberturas y reposición.'];
+            $alertas[] = ['tipo' => 'warning', 'titulo' => 'Sin movimientos para calcular stock',
+                'texto' => 'No hay remisiones ni ventas enlazadas a los códigos seleccionados hasta el corte indicado.'];
         } else {
-            if ($stockCorte && Carbon::parse($stockCorte)->diffInDays(now()) > 14) {
-                $alertas[] = ['tipo' => 'warning', 'titulo' => 'Stock desactualizado',
-                    'texto' => 'Último corte registrado: ' . Carbon::parse($stockCorte)->format('d/m/Y') . '. Verificá existencias antes de reponer.'];
-            }
+            // El stock documental se recalcula al abrir, sin depender del último Excel de stock.
             if ($productosCriticos) {
                 $alertas[] = ['tipo' => 'danger', 'titulo' => $productosCriticos . ' códigos con cobertura crítica',
                     'texto' => 'Menos de 7 días estimados, usando ventas netas de los últimos 30 días.'];
@@ -419,8 +381,20 @@ class AccesoriosDashboardController extends Controller
             }
             if ($productosConStock < $catalogo->count()) {
                 $alertas[] = ['tipo' => 'info', 'titulo' => 'Stock parcialmente informado',
-                    'texto' => ($catalogo->count() - $productosConStock) . ' códigos no aparecen en el corte importado; no se asumen como stock cero.'];
+                    'texto' => ($catalogo->count() - $productosConStock) . ' códigos no tienen remisiones ni ventas históricas registradas hasta el corte; no se asumen como stock cero.'];
             }
+        }
+        if ($stockDatos['sinOrigen'] > 0 || $stockDatos['sinDestino'] > 0 || $stockDatos['ventasSinLocal'] > 0) {
+            $alertas[] = ['tipo' => 'warning', 'titulo' => 'Movimientos pendientes de identificar',
+                'texto' => 'Remisiones sin origen: ' . $stockDatos['sinOrigen']
+                    . ' · Sin destino: ' . $stockDatos['sinDestino']
+                    . ' · Unidades vendidas sin sucursal: ' . $stockDatos['ventasSinLocal']
+                    . '. Revisar antes de cerrar saldos.'];
+        }
+        $negativos = $saldosSucursal->filter(function ($s) { return $s->saldo < 0; });
+        if ($negativos->isNotEmpty()) {
+            $alertas[] = ['tipo' => 'danger', 'titulo' => $negativos->count() . ' sucursales con saldo negativo',
+                'texto' => 'Hay más salidas y ventas registradas que entradas recibidas. No se ocultan ni corrigen automáticamente.'];
         }
         if ((int) $remisiones->transito > 0) {
             $alertas[] = ['tipo' => 'info', 'titulo' => number_format((int) $remisiones->transito, 0, ',', '.') . ' unidades en tránsito documental',
@@ -452,6 +426,7 @@ class AccesoriosDashboardController extends Controller
             'orden', 'diasPeriodo', 'opciones', 'catalogo', 'kpi', 'comprasFiltradas',
             'remisiones', 'pendientes', 'sucursales', 'meses', 'rankingCompleto',
             'rankingPagina', 'alertas', 'stockFuente', 'stockCorte', 'stockTotal',
+            'saldosSucursal', 'stockDatos',
             'productosCriticos', 'productosReponer', 'productosConStock',
             'gananciaEstimada', 'costoEstimado', 'margenEstimado', 'ticketPromedio',
             'coberturaGlobal', 'ultimaVenta', 'conVentas', 'conStock', 'conRemisiones'
