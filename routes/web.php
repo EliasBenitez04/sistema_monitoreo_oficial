@@ -358,6 +358,10 @@ Route::get(
     [MayoristaMatrizController::class, 'index']
 )->name('ventas.mayoristas.index');
 
+// Ranking de clientes: cliente -> comprobantes/tickets -> detalle de factura.
+Route::get('/ventas/mayoristas/clientes', [MayoristaMatrizController::class, 'cliente'])
+    ->name('ventas.mayoristas.cliente');
+
 // Consulta de transferencias: sucursal -> documentos -> líneas de remisión.
 Route::get('/ventas/mayoristas/sucursales',
     [MayoristaMatrizController::class, 'sucursal'])->name('ventas.mayoristas.sucursal');
