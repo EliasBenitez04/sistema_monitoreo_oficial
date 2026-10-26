@@ -93,8 +93,13 @@
         </a>
         <ul class="nav nav-treeview">
             <li class="nav-item">
-                <a href="{{ route('accesorios.index') }}" class="nav-link {{ request()->routeIs('accesorios.index', 'accesorios.show') ? 'active' : '' }}">
-                    <i class="fas fa-list nav-icon"></i><p>Seguimiento</p>
+                <a href="{{ route('accesorios.index') }}" class="nav-link {{ request()->routeIs('accesorios.index', 'accesorios.exportar') ? 'active' : '' }}">
+                    <i class="fas fa-chart-pie nav-icon"></i><p>Panel de monitoreo</p>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ route('accesorios.listado') }}" class="nav-link {{ request()->routeIs('accesorios.listado', 'accesorios.show') ? 'active' : '' }}">
+                    <i class="fas fa-list nav-icon"></i><p>Artículos y seguimiento</p>
                 </a>
             </li>
             <li class="nav-item">
