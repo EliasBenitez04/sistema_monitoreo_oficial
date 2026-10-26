@@ -254,8 +254,8 @@ class AccesoriosDashboardController extends Controller
 
             $remisiones = (clone $baseRemisiones)->selectRaw("
                 COALESCE(SUM(r.cantidad),0) AS movimientos,
-                COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) AS recibidas,
-                COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NULL THEN r.cantidad ELSE 0 END),0) AS transito,
+                COALESCE(SUM(CASE WHEN r.fecha_recepcion <= ? THEN r.cantidad ELSE 0 END),0) AS recibidas,
+                COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NULL OR r.fecha_recepcion > ? THEN r.cantidad ELSE 0 END),0) AS transito,
                 COALESCE(SUM(CASE WHEN (
                     UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPOSITO%'
                     OR UPPER(COALESCE(r.sucursal_salida,'')) LIKE '%DEPÓSITO%'
@@ -266,9 +266,11 @@ class AccesoriosDashboardController extends Controller
                     THEN r.cantidad ELSE 0 END),0) AS central_locales,
                 COUNT(DISTINCT COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')
                     || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')) AS documentos
-            ")->first();
+            ", [$hasta, $hasta])->first();
 
-            $pendientes = (clone $baseRemisiones)->whereNull('r.fecha_recepcion')
+            $pendientes = (clone $baseRemisiones)->where(function ($q) use ($hasta) {
+                $q->whereNull('r.fecha_recepcion')->orWhere('r.fecha_recepcion', '>', $hasta);
+            })
                 ->orderBy('r.fecha_remision')->orderBy('r.id')
                 ->limit(8)
                 ->get(['r.serie', 'r.numero_remision', 'r.codigo', 'r.cantidad',
