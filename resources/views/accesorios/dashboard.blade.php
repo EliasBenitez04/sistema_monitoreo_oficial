@@ -347,7 +347,7 @@
 
 @push('page_css')
 <style>
-    #accdash{--acc-navy:#0c2351;--acc-blue:#17499b;--acc-blue2:#2869c6;--acc-line:#dfe7f3;--acc-muted:#63718a;--acc-bg:#f4f7fc;color:#172d52;background:var(--acc-bg);padding:17px 17px 28px;margin:-16px -15px 0;font-family:Roboto,Arial,sans-serif}
+    #accdash{--acc-navy:#0c2351;--acc-blue:#17499b;--acc-blue2:#2869c6;--acc-line:#dfe7f3;--acc-muted:#63718a;--acc-bg:#f4f7fc;box-sizing:border-box;max-width:100%;width:100%;min-width:0;overflow-x:clip;color:#172d52;background:var(--acc-bg);padding:16px 15px 28px;margin:0;font-family:Roboto,Arial,sans-serif}
     #accdash *{box-sizing:border-box}
     #accdash .acc-hero{background:linear-gradient(113deg,#0d2e73,#1652ad 70%,#2471d4);color:#fff;padding:23px 25px 15px;border-radius:16px;box-shadow:0 10px 28px rgba(23,72,155,.16);margin-bottom:15px}
     #accdash .acc-hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
@@ -490,6 +490,6 @@
     @media(max-width:1500px){#accdash .acc-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}#accdash .acc-second-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
     @media(max-width:1150px){#accdash .acc-main-grid{grid-template-columns:1fr}#accdash .acc-side{display:grid;grid-template-columns:1fr 1fr}#accdash .acc-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
     @media(max-width:800px){#accdash .acc-kpi-grid,#accdash .acc-second-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#accdash .acc-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#accdash .acc-side,#accdash .acc-charts-grid,#accdash .acc-bottom-grid{grid-template-columns:1fr}#accdash .acc-hero{padding:20px}#accdash .acc-meta{gap:10px}#accdash .acc-brand-icon{display:none}}
-    @media(max-width:500px){#accdash .acc-kpi-grid,#accdash .acc-second-grid{grid-template-columns:1fr}#accdash .acc-filter-grid{grid-template-columns:1fr}#accdash .acc-actions{width:100%}#accdash .acc-actions .acc-btn{flex:1 1 auto}#accdash .acc-meta{grid-template-columns:1fr}#accdash .acc-bar-row{grid-template-columns:82px 1fr 85px}#accdash .acc-hero h1{font-size:24px}}
+    @media(max-width:500px){#accdash{padding:12px 10px 22px}#accdash .acc-kpi-grid,#accdash .acc-second-grid{grid-template-columns:1fr}#accdash .acc-filter-grid{grid-template-columns:1fr}#accdash .acc-actions{width:100%}#accdash .acc-actions .acc-btn{flex:1 1 auto}#accdash .acc-meta{grid-template-columns:1fr}#accdash .acc-bar-row{grid-template-columns:82px 1fr 85px}#accdash .acc-hero h1{font-size:24px}}
 </style>
 @endpush
