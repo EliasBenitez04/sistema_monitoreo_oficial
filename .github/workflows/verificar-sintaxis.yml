@@ -1,0 +1,38 @@
+name: Verificar sintaxis PHP y Blade
+'on':
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  sintaxis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: mbstring, xml, zip, pdo_pgsql, gd, intl, bcmath
+          tools: composer:v2
+      - name: Verificar sintaxis PHP
+        run: |
+          find app routes database tests -type f -name '*.php' -print0 | xargs -0 -n 1 php -l
+      - name: Instalar dependencias para el compilador Blade
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
+      - name: Compilar vistas Blade de Accesorios y verificar sintaxis
+        run: |
+          php -r '
+            require "vendor/autoload.php";
+            $filesystem = new \Illuminate\Filesystem\Filesystem();
+            $compiler = new \Illuminate\View\Compilers\BladeCompiler($filesystem, sys_get_temp_dir());
+            foreach (glob("resources/views/accesorios/*.blade.php") as $path) {
+              $compiled = $compiler->compileString(file_get_contents($path));
+              $target = sys_get_temp_dir() . "/" . sha1($path) . ".php";
+              file_put_contents($target, $compiled);
+              $output = [];
+              $status = 0;
+              exec(escapeshellarg(PHP_BINARY) . " -l " . escapeshellarg($target) . " 2>&1", $output, $status);
+              echo $path, ": ", implode(" ", $output), PHP_EOL;
+              if ($status !== 0) exit(1);
+            }
+          '
