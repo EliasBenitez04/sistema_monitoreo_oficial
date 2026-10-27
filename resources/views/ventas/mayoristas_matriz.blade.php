@@ -111,7 +111,7 @@
             </select>
           </div>
           <div><button class="btn btn-primary"><i class="fas fa-search mr-1"></i>Consultar ventas</button></div>
-          <div class="d-flex align-items-center flex-wrap" style="gap:7px">
+          {{-- <div class="d-flex align-items-center flex-wrap" style="gap:7px">
             <a class="btn btn-success" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'exportar'=>'ventas']) }}"
                title="Descargar las 12 columnas originales compatibles con Importar ventas">
               <i class="fas fa-file-csv mr-1"></i>Exportar formato de importación
@@ -124,20 +124,20 @@
                title="Archivo anterior con ID, hash, fechas de importación y otros datos técnicos">
               <i class="fas fa-clipboard-list mr-1"></i>CSV auditoría técnica
             </a>
-          </div>
+          </div> --}}
         </div>
-        <small class="text-muted mt-2">
+        {{-- <small class="text-muted mt-2">
           El selector incluye todos los clientes históricos de COMERCIAL MATRIZ; las fechas y el cliente elegido filtran los resultados.
           <strong>Exportar formato de importación</strong> descarga todas las líneas del período de la sucursal 25 (sin limitarse a la paginación ni al cliente del selector).
           El CSV utiliza exactamente: LOCAL, CODIGO, DESCRIPCION, CLI COD, CLIENTE, VENDEDOR, PLISTA, DTO, PVTA, FECHA, CANTIDAD y COMPROBANTE.
           Los importes negativos de notas de crédito se conservan. <strong>Histórico completo</strong> no aplica límite de fechas.
-        </small>
+        </small> --}}
       </form>
       <div class="row">
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Unidades netas vendidas</small><strong>{{ number_format($resumen->unidades_netas,0,',','.') }}</strong><span>{{ number_format($resumen->brutas,0,',','.') }} brutas · {{ number_format($resumen->notas_credito,0,',','.') }} notas de crédito</span></div></div>
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Importe de lista</small><strong>Gs {{ number_format($resumen->importe_lista,0,',','.') }}</strong><span>Descuentos: Gs {{ number_format($resumen->descuentos,0,',','.') }}</span></div></div>
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Venta neta registrada</small><strong>Gs {{ number_format($resumen->importe_neto,0,',','.') }}</strong><span>{{ number_format($resumen->lineas,0,',','.') }} líneas de venta importadas</span></div></div>
-        <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div>
+        {{-- <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div> --}}
       </div>
       <div class="card may2-card may2-client-ranking mb-3" id="top-clientes">
         <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center" style="gap:12px">
@@ -236,7 +236,7 @@
         $familiaDevoluciones = (int) ($familiaResumen->devoluciones ?? 0);
         $otrasBrutas = max(0, (int) $resumen->brutas - $familiaBrutas);
       @endphp
-      <div class="card may2-card mb-3">
+      {{-- <div class="card may2-card mb-3">
         <div class="card-header bg-white"><strong><i class="fas fa-chart-pie mr-1 text-primary"></i>Origen comercial de ventas (reglas declaradas)</strong></div>
         <div class="card-body">
           <p class="small text-muted mb-3">Las ventas de FAMILY GROUP se clasifican como provenientes de Casa Central → Matriz, según la regla comercial indicada. Las ventas de otros clientes quedan sin origen determinado hasta contar con otra regla o evidencia. Este informe no asocia facturas a remisiones ni modifica registros.</p>
@@ -247,7 +247,7 @@
           </div>
           <small class="text-muted">Las transferencias documentadas ({{ number_format($transferenciasResumen->remitidas,0,',','.') }} unidades) no se restan de las ventas como si fueran inventario disponible: pueden corresponder a fechas y operaciones distintas.</small>
         </div>
-      </div>
+      </div> --}}
       <div class="card may2-card mb-3">
         <div class="card-header bg-white"><strong><i class="fas fa-exchange-alt mr-1 text-primary"></i>1. Asignaciones de Logística hacia COMERCIAL MATRIZ</strong><small class="d-block text-muted">Seleccioná una sucursal para consultar sus números de remisión y cantidades; después presioná <strong>Ver</strong> para consultar los códigos y talles de cada documento. Destino: código 25 / MATRIZ.</small></div>
         <div class="row no-gutters may2-transfer-kpis">
