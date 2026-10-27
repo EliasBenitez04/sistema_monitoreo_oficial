@@ -345,7 +345,7 @@
 </div>
 
 
-<div class="modal fade" id="accDetalleModal" tabindex="-1" role="dialog" aria-labelledby="accDetalleTitulo" aria-hidden="true">
+<div class="modal fade" id="accDetalleModal" data-url="{{ route('accesorios.detalle.resumen') }}" tabindex="-1" role="dialog" aria-labelledby="accDetalleTitulo" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -543,16 +543,13 @@
 @endpush
 
 @push('page_scripts')
-@php
-    $accDetalleUrl = route('accesorios.detalle.resumen', request()->except(['page', 'tipo', 'orden_detalle']));
-@endphp
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var modal = document.getElementById('accDetalleModal');
     var contenido = document.getElementById('accDetalleContenido');
     var titulo = document.getElementById('accDetalleTitulo');
     var selector = document.getElementById('accDetalleOrden');
-    var urlBase = @json($accDetalleUrl);
+    var urlBase = modal.getAttribute('data-url');
     var tipoActual = 'ventas';
     var peticion = null;
 
@@ -560,6 +557,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (peticion) peticion.abort();
         peticion = new AbortController();
         var url = new URL(urlBase, window.location.href);
+        var filtros = new URLSearchParams(window.location.search);
+        filtros.forEach(function (valor, clave) {
+            if (clave !== 'page' && clave !== 'tipo' && clave !== 'orden_detalle') {
+                url.searchParams.append(clave, valor);
+            }
+        });
         url.searchParams.set('tipo', tipoActual);
         url.searchParams.set('orden_detalle', selector.value);
         contenido.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando detalle...</div>';
