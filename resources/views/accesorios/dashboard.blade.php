@@ -543,13 +543,16 @@
 @endpush
 
 @push('page_scripts')
+@php
+    $accDetalleUrl = route('accesorios.detalle.resumen', request()->except(['page', 'tipo', 'orden_detalle']));
+@endphp
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var modal = document.getElementById('accDetalleModal');
     var contenido = document.getElementById('accDetalleContenido');
     var titulo = document.getElementById('accDetalleTitulo');
     var selector = document.getElementById('accDetalleOrden');
-    var urlBase = @json(route('accesorios.detalle.resumen', request()->except(['page', 'tipo', 'orden_detalle'])));
+    var urlBase = @json($accDetalleUrl);
     var tipoActual = 'ventas';
     var peticion = null;
 
