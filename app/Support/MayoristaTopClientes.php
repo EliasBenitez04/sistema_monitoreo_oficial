@@ -89,7 +89,8 @@ class MayoristaTopClientes
     }
 
     /**
-     * Última factura de venta y frecuencia calculadas al cierre consultado.
+     * Totales monetarios: solo facturas del período seleccionado.
+     * Última factura y frecuencia: historial completo hasta el cierre.
      * Los documentos NCR no representan compras ni reinician la antigüedad.
      *
      * Estado orientativo, no predicción de abandono:
@@ -97,19 +98,29 @@ class MayoristaTopClientes
      * - Ocasional: compra reciente, pero sin esa recurrencia.
      * - Sin compras recientes: ningún ticket de venta en los últimos 90 días.
      */
-    public static function ranking(Collection $facturas, ?string $hasta = null): Collection
+    public static function ranking(Collection $facturas, ?string $hasta = null, ?Collection $historicas = null): Collection
     {
         $corte = CarbonImmutable::parse($hasta ?: ($facturas->max('fecha') ?: 'today'))->startOfDay();
         $inicioReciente = $corte->subDays(89)->format('Y-m-d');
+        $porPeriodo = $facturas->groupBy(function ($factura) {
+            return self::token((string) ($factura->cli_cod ?? ''), (string) ($factura->cliente ?? ''));
+        });
 
-        return $facturas->groupBy(function ($factura) {
+        // Clientes anteriores sin movimientos en el filtro también aparecen:
+        // son necesarios para conocer quién dejó de comprar recientemente.
+        $historial = ($historicas ?? $facturas)->filter(function ($factura) use ($corte) {
+            return substr((string) ($factura->fecha ?? ''), 0, 10) <= $corte->format('Y-m-d');
+        });
+        return $historial->groupBy(function ($factura) {
             return self::token(
                 (string) ($factura->cli_cod ?? ''),
                 (string) ($factura->cliente ?? '')
             );
-        })->map(function (Collection $grupo, string $token) use ($corte, $inicioReciente) {
+        })->map(function (Collection $grupo, string $token) use ($corte, $inicioReciente, $porPeriodo) {
             $primera = $grupo->first();
-            $resumen = self::resumen($grupo);
+            $facturasPeriodo = $porPeriodo->get($token, collect());
+            $resumen = self::resumen($facturasPeriodo);
+            $resumenHistorico = self::resumen($grupo);
             $tickets = [];
             foreach ($grupo as $factura) {
                 if (!self::esTicket($factura)) {
@@ -155,6 +166,8 @@ class MayoristaTopClientes
                 'brutas' => $resumen->brutas,
                 'devoluciones' => $resumen->devoluciones,
                 'tickets' => $resumen->tickets,
+                'tickets_historicos' => $resumenHistorico->tickets,
+                'con_movimientos_periodo' => $facturasPeriodo->isNotEmpty(),
                 'notas_credito' => $resumen->notas_credito,
                 'venta_neta' => $resumen->venta_neta,
                 'ultima_fecha' => $fechaUltima,
@@ -165,7 +178,10 @@ class MayoristaTopClientes
                 'estado_frecuencia' => $estado,
             ];
         })->sort(function ($a, $b) {
-            return ($b->venta_neta <=> $a->venta_neta)
+            // Primero clientes con movimientos del período (incluso si el
+            // neto fue negativo por NC); después los históricos sin actividad.
+            return ((int) $b->con_movimientos_periodo <=> (int) $a->con_movimientos_periodo)
+                ?: ($b->venta_neta <=> $a->venta_neta)
                 ?: ($b->tickets <=> $a->tickets)
                 ?: strcmp($a->nombre, $b->nombre);
         })->values();

@@ -151,4 +151,77 @@ class MayoristaTopClientesTest extends TestCase
         $this->assertSame(26, $top->dias_sin_compra);
         $this->assertSame('RECURRENTE', $top->estado_frecuencia);
     }
+
+    public function test_periodo_octubre_con_historial_completo_no_marca_ocasional_por_error(): void
+    {
+        $periodo = collect([
+            $this->factura('FAMILY GROUP SRL','25','2026-10-26','FCO F01 177',10,10,400000),
+            $this->factura('TUPI','25','2026-10-23','FCR F01 175',5,5,200000),
+        ]);
+        $historial = $periodo->concat([
+            $this->factura('FAMILY GROUP SRL','25','2026-09-10','FCR F01 122',6,6,180000),
+            $this->factura('FAMILY GROUP SRL','25','2026-08-15','FCR F01 100',4,4,120000),
+            $this->factura('TUPI','25','2026-06-10','FCR 8',1,1,10000),
+            $this->factura('CLIENTE SIN MOVIMIENTO','25','2026-04-12','FCR 1',10,10,200000),
+        ]);
+        $ranking = MayoristaTopClientes::ranking($periodo,'2026-10-26',$historial);
+
+        $this->assertCount(3,$ranking);
+        $family = $ranking->first(function ($c) {return $c->nombre==='FAMILY GROUP SRL';});
+        $this->assertSame(1,$family->tickets);
+        $this->assertSame(3,$family->tickets_historicos);
+        $this->assertSame('2026-10-26',$family->ultima_fecha);
+        $this->assertSame('RECURRENTE',$family->estado_frecuencia);
+        $this->assertSame(3,$family->fechas_compra_recientes);
+        $this->assertSame(400000.0,$family->venta_neta);
+
+        $sinPeriodo = $ranking->first(function ($c) {return $c->nombre==='CLIENTE SIN MOVIMIENTO';});
+        $this->assertSame('SIN COMPRAS RECIENTES',$sinPeriodo->estado_frecuencia);
+        $this->assertFalse($sinPeriodo->con_movimientos_periodo);
+        $this->assertSame('2026-04-12',$sinPeriodo->ultima_fecha);
+        $this->assertSame(0,$sinPeriodo->tickets);
+        $this->assertSame(1,$sinPeriodo->tickets_historicos);
+        $this->assertSame(0.0,$sinPeriodo->venta_neta);
+    }
+
+    public function test_nota_de_credito_actual_no_cambia_ultima_compra_ni_hace_recurrente(): void
+    {
+        $credito = $this->factura('FAMILY GROUP','25','2026-10-26','NCR F01 70',0,-68,-8493000,'NCR');
+        $periodo = collect([$credito]);
+        $historial = $periodo->concat([
+            $this->factura('FAMILY GROUP','25','2026-05-15','FCR F01 11',100,100,2000000),
+        ]);
+        $top = MayoristaTopClientes::ranking($periodo,'2026-10-26',$historial)->first();
+        $this->assertTrue($top->con_movimientos_periodo);
+        $this->assertSame(-8493000.0,$top->venta_neta);
+        $this->assertSame(0,$top->tickets);
+        $this->assertSame(1,$top->notas_credito);
+        $this->assertSame('2026-05-15',$top->ultima_fecha);
+        $this->assertSame('SIN COMPRAS RECIENTES',$top->estado_frecuencia);
+    }
+
+    public function test_historicos_sin_movimiento_no_ocultan_un_cliente_con_saldo_negativo_del_periodo(): void
+    {
+        $credito = $this->factura('DEVOLUCION','25','2026-10-26','NCR F01 99',0,-3,-50000,'NCR');
+        $ventas = collect([$credito]);
+        $historial = $ventas->concat([
+            $this->factura('INACTIVO','25','2026-01-10','FCR 1',100,100,1000000),
+        ]);
+        $ranking = MayoristaTopClientes::ranking($ventas,'2026-10-26',$historial);
+        $this->assertSame('DEVOLUCION',$ranking->first()->nombre);
+        $this->assertSame('INACTIVO',$ranking->last()->nombre);
+    }
+
+    public function test_no_usa_documentos_futuros_para_ultima_factura(): void
+    {
+        $periodo = collect([
+            $this->factura('CLIENTE','25','2026-09-25','FCR 1',1,1,10000),
+        ]);
+        $historial = $periodo->concat([
+            $this->factura('CLIENTE','25','2026-11-01','FCR 2',1,1,10000),
+        ]);
+        $c = MayoristaTopClientes::ranking($periodo,'2026-10-26',$historial)->first();
+        $this->assertSame('2026-09-25',$c->ultima_fecha);
+        $this->assertSame(1,$c->tickets_historicos);
+    }
 }

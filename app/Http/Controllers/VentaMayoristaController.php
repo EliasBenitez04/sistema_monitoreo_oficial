@@ -71,7 +71,21 @@ class VentaMayoristaController extends Controller
     public static function facturas(string $mes)
     {
         list($desde, $hasta) = self::rango($mes);
-        return self::ventas()->whereBetween('v.fecha', [$desde, $hasta])
+        return self::facturasRango($desde, $hasta);
+    }
+
+    /**
+     * Facturas agrupadas por comprobante único, sin limitar la ventana a
+     * un mes. El ranking histórico consume los documentos hasta el corte,
+     * mientras los totales del período conservan sus fechas filtradas.
+     */
+    public static function facturasRango(?string $desde, string $hasta)
+    {
+        return self::ventas()
+            ->when($desde !== null, function ($q) use ($desde) {
+                $q->where('v.fecha', '>=', $desde);
+            })
+            ->where('v.fecha', '<=', $hasta)
             ->select('v.fecha','v.comprobante','v.cli_cod','v.cliente','v.tipo_comprobante')
             ->selectRaw('SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END) as brutas')
             ->selectRaw('SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END) as devoluciones')

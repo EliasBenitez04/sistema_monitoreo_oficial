@@ -139,16 +139,28 @@
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Venta neta registrada</small><strong>Gs {{ number_format($resumen->importe_neto,0,',','.') }}</strong><span>{{ number_format($resumen->lineas,0,',','.') }} líneas de venta importadas</span></div></div>
         {{-- <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div> --}}
       </div>
+        @php
+          $actividadClientes = in_array(request('actividad_clientes'), ['todos','periodo','sin_periodo','sin_recientes'], true)
+              ? request('actividad_clientes') : 'todos';
+          $topClientesFiltrados = $topClientes->filter(function ($c) use ($actividadClientes) {
+              if ($actividadClientes === 'periodo') return $c->con_movimientos_periodo;
+              if ($actividadClientes === 'sin_periodo') return !$c->con_movimientos_periodo;
+              if ($actividadClientes === 'sin_recientes') return $c->estado_frecuencia === 'SIN COMPRAS RECIENTES';
+              return true;
+          })->values();
+        @endphp
       <div class="card may2-card may2-client-ranking mb-3" id="top-clientes">
         <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center" style="gap:12px">
           <div>
             <strong><i class="fas fa-users text-primary mr-2"></i>Top clientes · COMERCIAL MATRIZ</strong>
-            <small class="d-block text-muted">Ranking por venta neta real. Tickets = facturas distintas (no líneas de artículos); notas de crédito aparte.</small>
+            <small class="d-block text-muted">Importes del período seleccionado; última compra y frecuencia según el historial disponible hasta el corte.</small>
           </div>
           <div class="d-flex flex-wrap align-items-center" style="gap:8px">
-            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->count(),0,',','.') }} clientes</span>
-            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->sum('tickets'),0,',','.') }} tickets</span>
-            @if($topClientes->count() > 20)
+            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->count(),0,',','.') }} clientes históricos</span>
+            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->where('con_movimientos_periodo', true)->count(),0,',','.') }} con movimientos en el período</span>
+            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->sum('tickets'),0,',','.') }} tickets del período</span>
+            <span class="badge badge-light border px-2 py-2">{{ number_format($topClientes->sum('tickets_historicos'),0,',','.') }} tickets históricos</span>
+            @if($topClientesFiltrados->count() > 20)
               <a class="btn btn-sm btn-outline-primary" href="{{ route('ventas.mayoristas.index', array_merge(request()->except(['page','remisiones_page','top_clientes']), ['desde'=>$desde,'hasta'=>$hasta,'top_clientes'=>request('top_clientes')==='todos' ? '20' : 'todos'])) }}#top-clientes">
                 <i class="fas fa-list mr-1"></i>{{ request('top_clientes')==='todos' ? 'Mostrar top 20' : 'Ver todos los clientes' }}
               </a>
@@ -157,10 +169,17 @@
         </div>
         <div class="may2-clients-hint px-3 py-2">
           <i class="fas fa-calendar-alt text-primary mr-1"></i>
-          Del <strong>{{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }}</strong> al
-          <strong>{{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</strong>.
-          Incluye todos los clientes del período, aunque hayas elegido uno en el filtro superior.
-          La venta y las unidades son netas de devoluciones.
+          <strong>Venta y tickets:</strong> del {{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }} al
+          {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}, netos de devoluciones.
+          <strong>Última factura y frecuencia:</strong> historial disponible hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }},
+          independientemente del filtro de cliente. Un cliente histórico sin movimientos en este período muestra cero en sus indicadores del período.
+        </div>
+
+        <div class="may2-client-filters px-3 py-2 d-flex flex-wrap" style="gap:6px">
+          <a class="btn btn-sm btn-{{ $actividadClientes === 'todos' ? 'primary' : 'outline-primary' }}" href="{{ route('ventas.mayoristas.index', array_merge(request()->except(['actividad_clientes','top_clientes','page']), ['desde'=>$desde, 'hasta'=>$hasta, 'actividad_clientes'=>'todos'])) }}#top-clientes">Todos los históricos ({{ $topClientes->count() }})</a>
+          <a class="btn btn-sm btn-{{ $actividadClientes === 'periodo' ? 'primary' : 'outline-primary' }}" href="{{ route('ventas.mayoristas.index', array_merge(request()->except(['actividad_clientes','top_clientes','page']), ['desde'=>$desde, 'hasta'=>$hasta, 'actividad_clientes'=>'periodo'])) }}#top-clientes">Con movimientos en período ({{ $topClientes->where('con_movimientos_periodo', true)->count() }})</a>
+          <a class="btn btn-sm btn-{{ $actividadClientes === 'sin_periodo' ? 'primary' : 'outline-primary' }}" href="{{ route('ventas.mayoristas.index', array_merge(request()->except(['actividad_clientes','top_clientes','page']), ['desde'=>$desde, 'hasta'=>$hasta, 'actividad_clientes'=>'sin_periodo'])) }}#top-clientes">Sin movimientos en período ({{ $topClientes->where('con_movimientos_periodo', false)->count() }})</a>
+          <a class="btn btn-sm btn-{{ $actividadClientes === 'sin_recientes' ? 'primary' : 'outline-primary' }}" href="{{ route('ventas.mayoristas.index', array_merge(request()->except(['actividad_clientes','top_clientes','page']), ['desde'=>$desde, 'hasta'=>$hasta, 'actividad_clientes'=>'sin_recientes'])) }}#top-clientes">Sin compras recientes ({{ $topClientes->where('estado_frecuencia','SIN COMPRAS RECIENTES')->count() }})</a>
         </div>
         <div class="table-responsive may2-client-scroll">
           <table class="table table-sm table-hover may2-table may2-client-table mb-0">
@@ -168,15 +187,15 @@
               <th class="text-center">#</th>
               <th>Sucursal</th>
               <th>Cliente</th>
-              <th class="text-right">Unid. netas</th>
-              <th class="text-right">Tickets</th>
+              <th class="text-right">Unid. netas (período)</th>
+              <th class="text-right">Tickets (período)</th>
               <th>Última factura</th>
               <th>Frecuencia de compra</th>
-              <th class="text-right">Venta neta</th>
+              <th class="text-right">Venta neta (período)</th>
               <th class="text-center">Acción</th>
             </tr></thead>
             <tbody>
-              @forelse(request('top_clientes') === 'todos' ? $topClientes : $topClientes->take(20) as $clienteTop)
+              @forelse(request('top_clientes') === 'todos' ? $topClientesFiltrados : $topClientesFiltrados->take(20) as $clienteTop)
                 <tr>
                   <td class="text-center text-muted">{{ $loop->iteration }}</td>
                   <td><span class="badge badge-light border">COMERCIAL MATRIZ</span></td>
@@ -185,12 +204,15 @@
                     <small class="d-block text-muted">
                       {{ $clienteTop->codigo !== '' ? 'Código: '.$clienteTop->codigo : 'Sin código de cliente' }}
                       @if($clienteTop->notas_credito > 0)
-                        · {{ $clienteTop->notas_credito }} NC
+                        · {{ $clienteTop->notas_credito }} NC del período
                       @endif
                     </small>
+                    @if(!$clienteTop->con_movimientos_periodo)
+                      <small class="d-block may2-no-period"><i class="far fa-calendar-times mr-1"></i>Sin movimientos en el período</small>
+                    @endif
                   </td>
                   <td class="text-right {{ $clienteTop->unidades < 0 ? 'text-danger' : '' }}">{{ number_format($clienteTop->unidades,0,',','.') }}</td>
-                  <td class="text-right font-weight-bold">{{ number_format($clienteTop->tickets,0,',','.') }}</td>
+                  <td class="text-right font-weight-bold">{{ number_format($clienteTop->tickets,0,',','.') }}<small class="d-block text-muted" title="Facturas históricas hasta el corte">{{ number_format($clienteTop->tickets_historicos,0,',','.') }} históricas</small></td>
                   <td class="may2-last-invoice">
                     @if($clienteTop->ultima_fecha)
                       <strong>{{ \Carbon\Carbon::parse($clienteTop->ultima_fecha)->format('d/m/Y') }}</strong>
@@ -229,7 +251,7 @@
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="9" class="text-center text-muted py-4">No existen ventas de COMERCIAL MATRIZ en el período seleccionado.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">No hay clientes para este filtro. Probá «Todos los históricos» o ampliá las fechas.</td></tr>
               @endforelse
             </tbody>
           </table>
@@ -241,7 +263,7 @@
           recurrente = compras en 2 o más fechas distintas dentro de los últimos 90 días;
           ocasional = compró recientemente sin repetir en otra fecha;
           sin compras recientes = 90 días o más sin factura de venta.
-          Se considera únicamente el historial comprendido entre las fechas seleccionadas y no se cuentan notas de crédito como compras.
+          La recurrencia toma todas las facturas importadas hasta el cierre del filtro, incluso las anteriores a la fecha inicial. Las notas de crédito no son compras.
           «Sin compras recientes» no confirma que el cliente haya dejado de comprar definitivamente.
           El número de la última factura abre su detalle y <strong>Ver</strong> muestra los comprobantes del cliente.
         </div>
@@ -325,6 +347,9 @@
 .mayor-matriz .may2-client-table tbody tr:hover{background:#edf5ff}
 .mayor-matriz .may2-client-table .badge{font-size:.71rem;font-weight:700;color:#60738d}
 .mayor-matriz .may2-client-table .btn{white-space:nowrap}
+.mayor-matriz .may2-client-filters{background:#fff;border-bottom:1px solid #e0eaf6}
+.mayor-matriz .may2-client-filters .btn{font-weight:700}
+.mayor-matriz .may2-no-period{color:#a06423;font-weight:650;margin-top:4px}
 .mayor-matriz .may2-client-table th{position:sticky;top:0;z-index:2}
 .mayor-matriz .may2-last-invoice{white-space:nowrap}
 .mayor-matriz .may2-last-invoice strong{color:#234d7e}
