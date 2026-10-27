@@ -21,6 +21,7 @@ class AccesoriosAutorizacionTest extends TestCase
             'accesorios.importar.form',
             'accesorios.importar',
             'accesorios.show',
+            'accesorios.compras.actualizar',
         ];
 
         foreach ($nombres as $nombre) {

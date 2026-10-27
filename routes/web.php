@@ -346,6 +346,7 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
     Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
     Route::get('/accesorios/detalle/resumen', [\App\Http\Controllers\AccesoriosDashboardController::class, 'detalleAgrupado'])->name('accesorios.detalle.resumen');
+    Route::patch('/accesorios/{id}/compras/{compraId}', [\App\Http\Controllers\AccesoriosController::class, 'actualizarCompra'])->whereNumber('id')->whereNumber('compraId')->name('accesorios.compras.actualizar');
     Route::get('/accesorios/{id}', [\App\Http\Controllers\AccesoriosController::class, 'show'])->whereNumber('id')->name('accesorios.show');
 });
 

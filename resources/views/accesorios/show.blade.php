@@ -70,19 +70,63 @@
             El saldo supone que el historial documental importado está completo.
         </div>
     </div>
-    <div class="card card-outline card-primary">
-        <div class="card-header"><h3 class="card-title">Historial de compras · FCO</h3></div>
-        <div class="card-body table-responsive p-0"><table class="table table-striped table-sm mb-0">
-            <thead><tr><th>FCO</th><th>Fecha envío</th><th class="text-right">Cantidad</th><th class="text-right">Costo unitario</th><th class="text-right">Precio venta</th><th class="text-right">Costo total</th></tr></thead><tbody>
-            @forelse($compras as $compra)
-                <tr><td>{{ $compra->fco_nro }}</td>
-                    <td>{{ \Carbon\Carbon::parse($compra->fecha_envio)->format('d/m/Y') }}</td>
-                    <td class="text-right">{{ number_format($compra->cantidad_compra, 0, ',', '.') }}</td>
-                    <td class="text-right">Gs {{ number_format($compra->costo_unitario, 0, ',', '.') }}</td>
-                    <td class="text-right">Gs {{ number_format($compra->precio_venta, 0, ',', '.') }}</td>
-                    <td class="text-right">Gs {{ number_format($compra->cantidad_compra * $compra->costo_unitario, 0, ',', '.') }}</td></tr>
-            @empty <tr><td colspan="6" class="text-muted text-center">Sin compras registradas.</td></tr> @endforelse
-            </tbody></table></div>
+    <div class="card card-outline card-primary shadow-sm" id="historial-compras">
+        <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
+            <h3 class="card-title font-weight-bold mb-1 mb-sm-0"><i class="fas fa-file-invoice-dollar text-primary mr-2"></i>Historial de compras · FCO</h3>
+            <span class="badge badge-light border text-primary p-2">{{ number_format($compras->count(), 0, ',', '.') }} registros</span>
+        </div>
+        <div class="px-3 py-2 border-bottom bg-light small text-muted">
+            <i class="fas fa-info-circle text-primary mr-1"></i>
+            El costo total es <strong>cantidad × costo unitario</strong> y se actualiza automáticamente.
+            La edición modifica la compra FCO seleccionada, no las ventas ni las remisiones.
+            <strong>Atención:</strong> si volvés a importar el mismo FCO, los datos del archivo pueden reemplazar la edición manual.
+        </div>
+        @if(session('success'))
+            <div class="alert alert-success mx-3 mt-3 mb-0"><i class="fas fa-check-circle mr-1"></i>{{ session('success') }}</div>
+        @endif
+        @if($errors->has('cantidad_compra') || $errors->has('costo_unitario') || $errors->has('precio_venta'))
+            <div class="alert alert-danger mx-3 mt-3 mb-0">
+                <strong>No se pudo guardar la compra:</strong>
+                {{ $errors->first('cantidad_compra') ?: ($errors->first('costo_unitario') ?: $errors->first('precio_venta')) }}
+            </div>
+        @endif
+        <div class="card-body table-responsive p-0">
+            <table class="table table-striped table-hover table-sm mb-0 acc-fco-table">
+                <thead class="thead-light">
+                    <tr>
+                        <th>FCO</th><th>Fecha envío</th><th class="text-right">Cantidad</th>
+                        <th class="text-right">Costo unitario</th><th class="text-right">Precio venta</th>
+                        <th class="text-right">Costo total</th><th class="text-center">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($compras as $compra)
+                        <tr>
+                            <td class="font-weight-bold text-primary">{{ $compra->fco_nro }}</td>
+                            <td>{{ \Carbon\Carbon::parse($compra->fecha_envio)->format('d/m/Y') }}</td>
+                            <td class="text-right font-weight-bold">{{ number_format($compra->cantidad_compra, 0, ',', '.') }}</td>
+                            <td class="text-right">Gs {{ number_format($compra->costo_unitario, 2, ',', '.') }}</td>
+                            <td class="text-right">Gs {{ number_format($compra->precio_venta, 2, ',', '.') }}</td>
+                            <td class="text-right font-weight-bold text-success">Gs {{ number_format($compra->cantidad_compra * $compra->costo_unitario, 2, ',', '.') }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-outline-primary acc-fco-edit"
+                                    data-toggle="modal" data-target="#accEditarCompraModal"
+                                    data-url="{{ route('accesorios.compras.actualizar', [$articulo->id, $compra->id]) }}"
+                                    data-fco="{{ $compra->fco_nro }}"
+                                    data-fecha="{{ \Carbon\Carbon::parse($compra->fecha_envio)->format('d/m/Y') }}"
+                                    data-cantidad="{{ $compra->cantidad_compra }}"
+                                    data-costo="{{ $compra->costo_unitario }}"
+                                    data-precio="{{ $compra->precio_venta }}">
+                                    <i class="fas fa-edit mr-1"></i>Editar
+                                </button>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="text-muted text-center p-3">Sin compras registradas.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
     </div>
     <div class="card card-outline card-info">
         <div class="card-header">
@@ -125,4 +169,117 @@
     </div>
     <div class="alert alert-light border small"><strong>Alcance:</strong> las compras por FCO se conservan como referencia, pero no se suman directamente al stock. El saldo se calcula una sola vez en cada sucursal, a partir de las recepciones, los envíos y las ventas netas acumuladas. Es un <strong>stock documental estimado</strong>, no un conteo físico. Las unidades en tránsito quedan fuera de las existencias del destino hasta su recepción.</div>
 </div></section>
+
+<div class="modal fade" id="accEditarCompraModal" tabindex="-1" role="dialog" aria-labelledby="accEditarCompraTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content acc-fco-modal">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title font-weight-bold" id="accEditarCompraTitulo"><i class="fas fa-edit mr-2"></i>Editar compra FCO</h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <form id="accEditarCompraForm" method="POST" action="">
+                @csrf
+                @method('PATCH')
+                <div class="modal-body">
+                    <div class="alert alert-light border mb-3 small">
+                        <strong>Accesorio:</strong> {{ $articulo->codigo }} · {{ $articulo->descripcion }}
+                        <div class="mt-1">FCO <strong id="accEditarFco"></strong> · Envío <strong id="accEditarFecha"></strong></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="accEditarCantidad" class="font-weight-bold">Cantidad comprada <span class="text-danger">*</span></label>
+                        <input id="accEditarCantidad" name="cantidad_compra" type="number" min="1" max="2147483647" step="1" required class="form-control">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-sm-6">
+                            <label for="accEditarCosto" class="font-weight-bold">Costo unitario (Gs) <span class="text-danger">*</span></label>
+                            <input id="accEditarCosto" name="costo_unitario" type="number" min="0" max="9999999999.99" step="0.01" required class="form-control">
+                        </div>
+                        <div class="form-group col-sm-6">
+                            <label for="accEditarPrecio" class="font-weight-bold">Precio de venta (Gs) <span class="text-danger">*</span></label>
+                            <input id="accEditarPrecio" name="precio_venta" type="number" min="0" max="9999999999.99" step="0.01" required class="form-control">
+                        </div>
+                    </div>
+                    <div class="acc-fco-total">
+                        <span>Costo total calculado</span>
+                        <strong id="accEditarTotal" aria-live="polite">Gs 0</strong>
+                        <small>Cantidad × costo unitario. Este campo no se guarda por separado.</small>
+                    </div>
+                    <p class="small text-muted mt-3 mb-0"><i class="fas fa-info-circle mr-1"></i>Al guardar se actualizarán las métricas de compras, costo promedio, inversión y ganancia estimada al volver a consultar el monitoreo.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="accEditarGuardar"><i class="fas fa-save mr-1"></i>Guardar cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
+
+@push('page_css')
+<style>
+    .acc-fco-table th{font-size:12px;font-weight:800;white-space:nowrap;color:#284c7c}
+    .acc-fco-table td{vertical-align:middle!important;font-size:13px;padding:11px!important}
+    .acc-fco-modal{border:0;border-radius:12px;overflow:hidden;box-shadow:0 18px 48px rgba(19,51,95,.24)}
+    .acc-fco-modal .modal-header{border:0;padding:16px 20px}
+    .acc-fco-modal .modal-body{padding:20px}
+    .acc-fco-modal .form-control{border:1px solid #c4d4e7;border-radius:7px;height:40px}
+    .acc-fco-total{background:#eaf4ff;border:1px solid #b8d5f5;border-radius:10px;padding:15px 18px;color:#1e4b85}
+    .acc-fco-total span{display:block;font-size:12px;font-weight:800}
+    .acc-fco-total strong{display:block;font-size:24px;font-weight:900;color:#123f7f;margin:5px 0}
+    .acc-fco-total small{display:block;font-size:11px;color:#517098}
+</style>
+@endpush
+
+@push('page_scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('accEditarCompraModal');
+    if (!modal) return;
+    var form = document.getElementById('accEditarCompraForm');
+    var cantidad = document.getElementById('accEditarCantidad');
+    var costo = document.getElementById('accEditarCosto');
+    var precio = document.getElementById('accEditarPrecio');
+    var total = document.getElementById('accEditarTotal');
+    var guardar = document.getElementById('accEditarGuardar');
+    var moneda = new Intl.NumberFormat('es-PY', {minimumFractionDigits:0,maximumFractionDigits:2});
+
+    function calcular() {
+        var unidades = Number(cantidad.value);
+        var importe = Number(costo.value);
+        if (cantidad.value === '' || costo.value === '' || !Number.isFinite(unidades) || !Number.isFinite(importe) || unidades <= 0 || importe < 0) {
+            total.textContent = '—';
+            return;
+        }
+        total.textContent = 'Gs ' + moneda.format(Math.round(unidades * importe * 100) / 100);
+    }
+
+    $(modal).on('show.bs.modal', function (evento) {
+        var boton = $(evento.relatedTarget);
+        if (!boton.length) return;
+        form.action = boton.attr('data-url');
+        document.getElementById('accEditarFco').textContent = boton.attr('data-fco') || '';
+        document.getElementById('accEditarFecha').textContent = boton.attr('data-fecha') || '';
+        cantidad.value = boton.attr('data-cantidad');
+        costo.value = boton.attr('data-costo');
+        precio.value = boton.attr('data-precio');
+        guardar.disabled = false;
+        calcular();
+    });
+
+    [cantidad, costo, precio].forEach(function (campo) {
+        campo.addEventListener('input', calcular);
+    });
+
+    form.addEventListener('submit', function (evento) {
+        if (!form.checkValidity()) return;
+        if (!window.confirm('¿Guardar los cambios de esta compra FCO? Se actualizarán los indicadores calculados.')) {
+            evento.preventDefault();
+            return;
+        }
+        guardar.disabled = true;
+    });
+});
+</script>
+@endpush

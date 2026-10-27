@@ -159,6 +159,80 @@ class AccesoriosController extends Controller
         }
     }
 
+
+    /**
+     * Ajuste manual de una línea FCO, aislado por artículo e identificador de compra.
+     * Los indicadores monetarios leen accesorios_compras al abrir el dashboard;
+     * no se alteran remisiones ni ventas reales.
+     */
+    public function actualizarCompra(Request $request, int $id, int $compraId)
+    {
+        $datos = $request->validate([
+            'cantidad_compra' => ['required', 'integer', 'min:1', 'max:2147483647'],
+            'costo_unitario' => ['required', 'numeric', 'min:0', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'],
+            'precio_venta' => ['required', 'numeric', 'min:0', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'],
+        ], [
+            'cantidad_compra.required' => 'Ingresá la cantidad comprada.',
+            'cantidad_compra.integer' => 'La cantidad debe ser un número entero.',
+            'cantidad_compra.min' => 'La cantidad debe ser mayor que cero.',
+            'cantidad_compra.max' => 'La cantidad supera el máximo permitido.',
+            'costo_unitario.required' => 'Ingresá el costo unitario.',
+            'costo_unitario.numeric' => 'El costo unitario debe ser numérico.',
+            'costo_unitario.min' => 'El costo unitario no puede ser negativo.',
+            'costo_unitario.regex' => 'El costo unitario admite como máximo dos decimales.',
+            'precio_venta.required' => 'Ingresá el precio de venta.',
+            'precio_venta.numeric' => 'El precio de venta debe ser numérico.',
+            'precio_venta.min' => 'El precio de venta no puede ser negativo.',
+            'precio_venta.regex' => 'El precio de venta admite como máximo dos decimales.',
+        ]);
+
+        $modificado = DB::transaction(function () use ($id, $compraId, $datos) {
+            $compra = DB::table('accesorios_compras')
+                ->where('id', $compraId)
+                ->where('articulo_id', $id)
+                ->lockForUpdate()
+                ->first();
+            abort_unless($compra, 404, 'La compra no corresponde al accesorio indicado.');
+
+            $antes = [
+                'cantidad_compra' => (int) $compra->cantidad_compra,
+                'costo_unitario' => number_format((float) $compra->costo_unitario, 2, '.', ''),
+                'precio_venta' => number_format((float) $compra->precio_venta, 2, '.', ''),
+            ];
+            $despues = [
+                'cantidad_compra' => (int) $datos['cantidad_compra'],
+                'costo_unitario' => number_format((float) $datos['costo_unitario'], 2, '.', ''),
+                'precio_venta' => number_format((float) $datos['precio_venta'], 2, '.', ''),
+            ];
+
+            if ($antes === $despues) {
+                return false;
+            }
+
+            DB::table('accesorios_compras')
+                ->where('id', $compra->id)
+                ->where('articulo_id', $id)
+                ->update(array_merge($despues, ['updated_at' => now()]));
+
+            Log::info('ACCESORIOS_FCO_EDICION_MANUAL', [
+                'usuario_id' => auth()->id(),
+                'articulo_id' => $id,
+                'compra_id' => $compra->id,
+                'fco_nro' => $compra->fco_nro,
+                'fecha_envio' => $compra->fecha_envio,
+                'antes' => $antes,
+                'despues' => $despues,
+            ]);
+
+            return true;
+        });
+
+        return redirect()->to(route('accesorios.show', $id) . '#historial-compras')
+            ->with('success', $modificado
+                ? 'Compra FCO actualizada. Totales e indicadores recalculados con los nuevos valores.'
+                : 'La compra FCO no tenía cambios.');
+    }
+
     public function show(int $id)
     {
         $articulo = DB::table('accesorios_articulos')->find($id);
