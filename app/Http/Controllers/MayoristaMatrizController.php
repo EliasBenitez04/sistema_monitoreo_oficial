@@ -622,6 +622,7 @@ class MayoristaMatrizController extends Controller
         $factura = VentaMayoristaController::buscarFactura($clave, $mes);
         $lineas = VentaMayoristaController::lineas($factura);
         $requeridas = VentaMayoristaController::necesidades($lineas);
+        $descripciones = Conciliador::descripcionesPorCodigo($lineas);
         $enlaces = DB::table('mayorista_vinculos as m')
             ->join('ot_logistica_remisiones as r','r.id','=','m.remision_id')
             ->where('m.factura_clave',$clave)
@@ -641,10 +642,12 @@ class MayoristaMatrizController extends Controller
             $confirmadas[$codigo] = ($confirmadas[$codigo] ?? 0) + (int) $v->cantidad;
         }
 
-        $porCodigo = collect($requeridas)->map(function ($cantidad, $codigo) use ($confirmadas) {
+        $porCodigo = collect($requeridas)->map(function ($cantidad, $codigo) use ($confirmadas, $descripciones) {
             $asignadas = (int) ($confirmadas[$codigo] ?? 0);
             return (object) [
-                'codigo' => $codigo,'necesita' => $cantidad,'validado' => $asignadas,
+                'codigo' => $codigo,
+                'descripcion' => $descripciones[$codigo] ?? null,
+                'necesita' => $cantidad,'validado' => $asignadas,
                 'pendiente' => max(0, $cantidad-$asignadas),
             ];
         });

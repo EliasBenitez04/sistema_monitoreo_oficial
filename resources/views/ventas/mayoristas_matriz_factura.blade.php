@@ -25,13 +25,14 @@
   <div class="card mb-3 maym-card">
     <div class="card-header bg-white"><strong>1. Facturado, asignado y pendiente por código completo</strong><small class="d-block text-muted">Cada talle tiene su propia cantidad; no se compensa un código con prendas de otro talle.</small></div>
     <div class="table-responsive">
-      <table class="table table-sm maym-table mb-0"><thead><tr><th>Código completo</th><th class="text-right">Factura</th><th class="text-right">Asignadas</th><th class="text-right">Faltan asignar</th></tr></thead>
+      <table class="table table-sm maym-table mb-0"><thead><tr><th>Código completo</th><th>Descripción</th><th class="text-right">Factura</th><th class="text-right">Asignadas</th><th class="text-right">Faltan asignar</th></tr></thead>
         <tbody>@forelse($porCodigo as $item)<tr>
-          <td class="font-weight-bold">{{ $item->codigo }}</td>
+          <td class="font-weight-bold maym-fact-code">{{ $item->codigo }}</td>
+          <td class="maym-fact-description">{{ $item->descripcion ?: 'Sin descripción en venta importada' }}</td>
           <td class="text-right">{{ number_format($item->necesita,0,',','.') }}</td>
           <td class="text-right text-success">{{ number_format($item->validado,0,',','.') }}</td>
           <td class="text-right {{ $item->pendiente ? 'text-warning font-weight-bold':'' }}">{{ number_format($item->pendiente,0,',','.') }}</td>
-        </tr>@empty<tr><td colspan="4" class="text-muted text-center">Esta operación no tiene unidades positivas para asignación; revisar las notas de crédito separadamente.</td></tr>@endforelse</tbody>
+        </tr>@empty<tr><td colspan="5" class="text-muted text-center">Esta operación no tiene unidades positivas para asignación; revisar las notas de crédito separadamente.</td></tr>@endforelse</tbody>
       </table>
     </div>
   </div>
@@ -189,6 +190,8 @@
 .maym-fact .maym-table{font-size:.8rem}
 .maym-fact .maym-table td{vertical-align:middle;padding:9px}
 .maym-fact .maym-table th{white-space:nowrap;background:#f4f7fa;padding:9px}
+.maym-fact .maym-fact-code{color:#1c4d86;white-space:nowrap}
+.maym-fact .maym-fact-description{min-width:220px;color:#354f69;font-weight:500;white-space:normal;line-height:1.35}
 .maym-fact .maym-documento{border:1px solid #dee7f0;border-radius:8px;background:#fff;overflow:hidden}
 .maym-fact .maym-documento>summary{background:#f5f9fc;cursor:pointer}
 .maym-fact .maym-documento[open]>summary{border-bottom:1px solid #dee7f0}

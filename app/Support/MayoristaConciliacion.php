@@ -9,6 +9,30 @@ class MayoristaConciliacion
         return strtoupper(preg_replace('/\\s+/u', '', trim((string) $codigo)));
     }
 
+    /**
+     * Descripción importada de las ventas de la misma factura, agrupada por
+     * código completo (incluyendo variante y talle). No interpreta códigos
+     * base ni modifica asignaciones documentales.
+     *
+     * @param iterable $lineas
+     * @return array<string,string>
+     */
+    public static function descripcionesPorCodigo($lineas): array
+    {
+        $descripciones = [];
+        foreach ($lineas as $linea) {
+            if ((int) $linea->cantidad <= 0) {
+                continue;
+            }
+            $codigo = self::codigo($linea->codigo);
+            $descripcion = trim((string) ($linea->descripcion ?? ''));
+            if ($codigo !== '' && $descripcion !== '' && !isset($descripciones[$codigo])) {
+                $descripciones[$codigo] = $descripcion;
+            }
+        }
+        return $descripciones;
+    }
+
     public static function claveFactura($fecha, $comprobante, $clienteCodigo, $cliente): string
     {
         return sha1(implode('|', [
