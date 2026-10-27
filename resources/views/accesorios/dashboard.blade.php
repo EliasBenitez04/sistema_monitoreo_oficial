@@ -25,6 +25,7 @@
             </div>
             <div class="acc-actions">
                 <a href="{{ route('accesorios.listado') }}" class="acc-btn acc-btn-outline"><i class="fas fa-list"></i> Ver artículos</a>
+                <a href="{{ route('accesorios.facturas.index') }}" class="acc-btn acc-btn-outline"><i class="fas fa-file-invoice-dollar"></i> Compras · Facturas</a>
                 <a href="{{ route('accesorios.importar.form') }}" class="acc-btn acc-btn-outline"><i class="fas fa-file-import"></i> Importar datos</a>
                 <a href="{{ route('accesorios.exportar', request()->query()) }}" class="acc-btn acc-btn-solid"><i class="fas fa-file-csv"></i> Exportar informe</a>
             </div>

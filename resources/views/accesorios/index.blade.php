@@ -23,6 +23,7 @@
                 <a href="{{ route('accesorios.index') }}" class="accl-button accl-button-ghost">
                     <i class="fas fa-chart-pie"></i> Panel de monitoreo
                 </a>
+                <a href="{{ route('accesorios.facturas.index') }}" class="accl-button accl-button-light"><i class="fas fa-file-invoice-dollar"></i> Compras · Facturas</a>
                 <a href="{{ route('accesorios.importar.form') }}" class="accl-button accl-button-light">
                     <i class="fas fa-file-import"></i> Importar accesorios
                 </a>

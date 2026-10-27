@@ -73,7 +73,10 @@
     <div class="card card-outline card-primary shadow-sm" id="historial-compras">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
             <h3 class="card-title font-weight-bold mb-1 mb-sm-0"><i class="fas fa-file-invoice-dollar text-primary mr-2"></i>Historial de compras · FCO</h3>
-            <span class="badge badge-light border text-primary p-2">{{ number_format($compras->count(), 0, ',', '.') }} registros</span>
+            <div class="d-flex flex-wrap align-items-center" style="gap:8px">
+                <span class="badge badge-light border text-primary p-2">{{ number_format($compras->count(), 0, ',', '.') }} registros</span>
+                <a href="{{ route('accesorios.facturas.index', ['buscar' => $articulo->codigo]) }}" class="btn btn-sm btn-primary"><i class="fas fa-file-invoice-dollar mr-1"></i> Compras · Facturas</a>
+            </div>
         </div>
         <div class="px-3 py-2 border-bottom bg-light small text-muted">
             <i class="fas fa-info-circle text-primary mr-1"></i>

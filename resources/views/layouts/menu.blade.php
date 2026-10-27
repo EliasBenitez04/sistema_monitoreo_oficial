@@ -226,6 +226,11 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a href="{{ route('accesorios.facturas.index') }}" class="nav-link {{ request()->routeIs('accesorios.facturas.*') ? 'active' : '' }}">
+                    <i class="fas fa-file-invoice-dollar nav-icon"></i><p>Compras · Facturas FCO</p>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a href="{{ route('accesorios.importar.form') }}" class="nav-link {{ request()->routeIs('accesorios.importar*') ? 'active' : '' }}">
                     <i class="fas fa-file-import nav-icon"></i><p>Importar datos</p>
                 </a>

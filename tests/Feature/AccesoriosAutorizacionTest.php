@@ -22,6 +22,8 @@ class AccesoriosAutorizacionTest extends TestCase
             'accesorios.importar',
             'accesorios.show',
             'accesorios.compras.actualizar',
+            'accesorios.facturas.index',
+            'accesorios.facturas.actualizar',
         ];
 
         foreach ($nombres as $nombre) {
@@ -39,6 +41,7 @@ class AccesoriosAutorizacionTest extends TestCase
         foreach ([
             \App\Http\Controllers\AccesoriosController::class,
             \App\Http\Controllers\AccesoriosDashboardController::class,
+            \App\Http\Controllers\AccesoriosFacturasController::class,
         ] as $clase) {
             $middle = (new $clase())->getMiddleware();
             $names = array_column($middle, 'middleware');

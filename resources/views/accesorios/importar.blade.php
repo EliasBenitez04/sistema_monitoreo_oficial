@@ -3,7 +3,10 @@
 @section('content')
 <section class="content-header"><div class="container-fluid d-flex justify-content-between align-items-center flex-wrap">
     <div><h1><i class="fas fa-file-import mr-2"></i>Accesorios · Importar datos</h1><p class="text-muted">Compra de accesorios por FCO y fecha de envío.</p></div>
-    <a href="{{ route('accesorios.index') }}" class="btn btn-outline-secondary">Ver seguimiento</a>
+    <div class="d-flex flex-wrap" style="gap:8px">
+        <a href="{{ route('accesorios.facturas.index') }}" class="btn btn-primary"><i class="fas fa-file-invoice-dollar mr-1"></i> Compras · Facturas</a>
+        <a href="{{ route('accesorios.index') }}" class="btn btn-outline-secondary">Ver seguimiento</a>
+    </div>
 </div></section>
 <section class="content"><div class="container-fluid">
     @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
