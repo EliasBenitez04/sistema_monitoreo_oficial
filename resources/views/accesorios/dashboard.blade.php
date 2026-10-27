@@ -103,9 +103,9 @@
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Venta neta registrada</span><i class="fas fa-chart-column fas fa-chart-bar"></i></div><strong>{{ $money($kpi->importe) }}</strong><small>Importe real de ventas y notas de crédito</small></div>
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Ganancia bruta estimada</span><i class="fas fa-coins"></i></div><strong>{{ $money($gananciaEstimada) }}</strong><small>Costo promedio ponderado por código; no utilidad neta</small></div>
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Margen bruto estimado</span><i class="fas fa-percent"></i></div><strong>{{ $margenEstimado === null ? 'Sin dato' : number_format($margenEstimado, 1, ',', '.') . '%' }}</strong><small>Basado en compras históricas; no atribuido por FCO</small></div>
-        <div class="acc-kpi"><div class="acc-kpi-top"><span>Unidades vendidas netas</span><i class="fas fa-shopping-bag"></i></div><strong>{{ $whole($kpi->unidades) }}</strong><small>{{ $whole($kpi->brutas) }} brutas · {{ $whole($kpi->devoluciones) }} devueltas</small></div>
+        <div class="acc-kpi"><div class="acc-kpi-top"><span>Unidades vendidas netas</span><i class="fas fa-shopping-bag"></i></div><strong>{{ $whole($kpi->unidades) }}</strong><small>{{ $whole($kpi->brutas) }} brutas · {{ $whole($kpi->devoluciones) }} devueltas</small><button type="button" class="acc-detail-link" data-acc-tipo="ventas"><i class="fas fa-list-ul"></i> Ver más</button></div>
         <div class="acc-kpi"><div class="acc-kpi-top"><span>Ticket promedio</span><i class="fas fa-receipt"></i></div><strong>{{ $money($ticketPromedio) }}</strong><small>{{ $whole($kpi->tickets) }} comprobantes positivos distintos</small></div>
-        <div class="acc-kpi {{ !$conStock ? 'acc-kpi-unavailable' : '' }}"><div class="acc-kpi-top"><span>Stock calculado</span><i class="fas fa-boxes"></i></div><strong>{{ $conStock ? $whole($stockTotal) : 'Sin dato' }}</strong><small>{{ $stockFuente ?: 'Sin movimientos para calcular stock' }}</small></div>
+        <div class="acc-kpi {{ !$conStock ? 'acc-kpi-unavailable' : '' }}"><div class="acc-kpi-top"><span>Stock calculado</span><i class="fas fa-boxes"></i></div><strong>{{ $conStock ? $whole($stockTotal) : 'Sin dato' }}</strong><small>{{ $stockFuente ?: 'Sin movimientos para calcular stock' }}</small><button type="button" class="acc-detail-link" data-acc-tipo="stock"><i class="fas fa-list-ul"></i> Ver más</button></div>
     </section>
 
     <section class="acc-second-grid">
@@ -202,6 +202,7 @@
             </div>
             <div class="d-flex align-items-center flex-wrap" style="gap:8px">
                 <span class="acc-light-tag">Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</span>
+                <button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="stock"><i class="fas fa-list-ul"></i> Ver más</button>
                 <a href="{{ route('accesorios.stock.exportar', request()->query()) }}" class="acc-btn acc-btn-primary"><i class="fas fa-file-csv"></i> Exportar stock por local</a>
             </div>
         </div>
@@ -242,7 +243,7 @@
 
     <section class="acc-charts-grid">
         <div class="acc-panel">
-            <div class="acc-panel-head"><div><h2><i class="fas fa-store"></i> Ventas netas por sucursal</h2><p>Importes reales según sucursal del comprobante</p></div></div>
+            <div class="acc-panel-head"><div><h2><i class="fas fa-store"></i> Ventas netas por sucursal</h2><p>Importes reales según sucursal del comprobante</p></div><button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="ventas"><i class="fas fa-list-ul"></i> Ver más</button></div>
             <div class="acc-bars">
                 @forelse($sucursales as $s)
                     @php($anchura = max(0, min(100, (float)$s->importe / $maxSuc * 100)))
@@ -339,6 +340,34 @@
             El stock se recalcula desde cero al abrir el panel, con el historial de remisiones y ventas desde el primer registro hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}. No se utiliza un Excel externo de stock ni se suman compras/FCO al saldo. Envíos pendientes reducen el stock del origen, pero no aumentan el del destino hasta su fecha de recepción. Saldos negativos se muestran para revisión. El cálculo supone que las importaciones históricas son completas.
             El costo de las unidades vendidas y el margen se <strong>estiman</strong> con costo promedio ponderado de todas las compras del código, sin asignación por FCO. Reposición y cobertura requieren ventas en los últimos 30 días terminados en {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}.
             Las remisiones pueden volver a transportar la misma unidad, por eso sus totales no equivalen a stock. No se incluyen gastos operativos ni se calcula utilidad neta real.
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="accDetalleModal" tabindex="-1" role="dialog" aria-labelledby="accDetalleTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title font-weight-bold" id="accDetalleTitulo">Detalle por código y sucursal</h5>
+                    <small class="text-muted">Según los filtros aplicados en Monitoreo de Accesorios</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-end align-items-center mb-3">
+                    <label for="accDetalleOrden" class="mb-0 mr-2 small font-weight-bold">Ordenar por</label>
+                    <select id="accDetalleOrden" class="form-control form-control-sm" style="max-width:220px">
+                        <option value="codigo">Código (A–Z)</option>
+                        <option value="cantidad">Cantidad (mayor a menor)</option>
+                    </select>
+                </div>
+                <div id="accDetalleContenido" aria-live="polite"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cerrar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -491,5 +520,77 @@
     @media(max-width:1150px){#accdash .acc-main-grid{grid-template-columns:1fr}#accdash .acc-side{display:grid;grid-template-columns:1fr 1fr}#accdash .acc-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
     @media(max-width:800px){#accdash .acc-kpi-grid,#accdash .acc-second-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#accdash .acc-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#accdash .acc-side,#accdash .acc-charts-grid,#accdash .acc-bottom-grid{grid-template-columns:1fr}#accdash .acc-hero{padding:20px}#accdash .acc-meta{gap:10px}#accdash .acc-brand-icon{display:none}}
     @media(max-width:500px){#accdash{padding:12px 10px 22px}#accdash .acc-kpi-grid,#accdash .acc-second-grid{grid-template-columns:1fr}#accdash .acc-filter-grid{grid-template-columns:1fr}#accdash .acc-actions{width:100%}#accdash .acc-actions .acc-btn{flex:1 1 auto}#accdash .acc-meta{grid-template-columns:1fr}#accdash .acc-bar-row{grid-template-columns:82px 1fr 85px}#accdash .acc-hero h1{font-size:24px}}
+
+    #accdash .acc-detail-link{display:inline-flex;gap:5px;align-items:center;border:0;background:none;padding:4px 0;margin-top:6px;color:#165bad;font-size:11px;font-weight:800;cursor:pointer}
+    #accdash .acc-detail-link:hover{text-decoration:underline}
+    #accDetalleModal .modal-dialog{max-width:min(1080px,96vw)}
+    #accDetalleModal .modal-content{border:0;border-radius:12px;overflow:hidden}
+    #accDetalleModal .modal-header{background:#f1f6ff;color:#174478}
+    #accDetalleModal .modal-body{max-height:70vh;overflow-y:auto}
+    #accDetalleModal .acc-detail-table{width:100%;border-collapse:collapse;font-size:13px}
+    #accDetalleModal .acc-detail-table th{background:#e9f0fa;color:#2b4b77;padding:10px;border-bottom:1px solid #d7e2f1}
+    #accDetalleModal .acc-detail-table td{padding:9px 10px;border-bottom:1px solid #edf1f8}
+    #accDetalleModal .acc-detail-group{background:#f6f9fd;color:#194980}
+    #accDetalleModal .acc-detail-local td{color:#516781}
+    #accDetalleModal .acc-detail-local .acc-local-name{padding-left:30px}
+    #accDetalleModal .acc-detail-subtotal{background:#edf4fd;color:#1b4e8d;font-weight:800}
+    #accDetalleModal .acc-detail-total{background:#174b95;color:#fff;font-size:14px;font-weight:900}
+    #accDetalleModal .acc-detail-total td{border:0;padding:13px 10px}
+    #accDetalleModal .acc-detail-negative{color:#bb3038!important}
+    #accDetalleModal .acc-detail-overview{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:#5c7090}
+    #accDetalleModal .acc-detail-overview strong{color:#174b95}
 </style>
+@endpush
+
+@push('page_scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var modal = document.getElementById('accDetalleModal');
+    var contenido = document.getElementById('accDetalleContenido');
+    var titulo = document.getElementById('accDetalleTitulo');
+    var selector = document.getElementById('accDetalleOrden');
+    var urlBase = @json(route('accesorios.detalle.resumen', request()->except(['page', 'tipo', 'orden_detalle'])));
+    var tipoActual = 'ventas';
+    var peticion = null;
+
+    function cargarDetalle() {
+        if (peticion) peticion.abort();
+        peticion = new AbortController();
+        var url = new URL(urlBase, window.location.href);
+        url.searchParams.set('tipo', tipoActual);
+        url.searchParams.set('orden_detalle', selector.value);
+        contenido.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando detalle...</div>';
+
+        fetch(url.toString(), {
+            headers: { 'Accept': 'text/html', 'X-Requested-With': 'XMLHttpRequest' },
+            signal: peticion.signal
+        }).then(function (respuesta) {
+            if (!respuesta.ok) throw new Error('Respuesta ' + respuesta.status);
+            return respuesta.text();
+        }).then(function (html) {
+            contenido.innerHTML = html;
+        }).catch(function (error) {
+            if (error.name !== 'AbortError') {
+                contenido.innerHTML = '<div class="alert alert-danger">No se pudo cargar el detalle. Revisá los filtros e intentá de nuevo.</div>';
+            }
+        });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-acc-tipo]'), function (boton) {
+        boton.addEventListener('click', function () {
+            tipoActual = boton.getAttribute('data-acc-tipo');
+            titulo.textContent = tipoActual === 'stock'
+                ? 'Stock calculado por código y sucursal'
+                : 'Unidades vendidas netas por código y sucursal';
+            selector.value = 'codigo';
+            $(modal).modal('show');
+        });
+    });
+    $(modal).on('shown.bs.modal', cargarDetalle);
+    $(modal).on('hidden.bs.modal', function () {
+        if (peticion) peticion.abort();
+    });
+    selector.addEventListener('change', cargarDetalle);
+});
+</script>
 @endpush

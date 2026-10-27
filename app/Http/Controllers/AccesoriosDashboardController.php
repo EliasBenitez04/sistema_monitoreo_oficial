@@ -104,6 +104,147 @@ class AccesoriosDashboardController extends Controller
         ]);
     }
 
+
+    /**
+     * Detalle por código y sucursal bajo exactamente los mismos filtros del dashboard.
+     * Las ventas incluyen NCR negativas; el stock reutiliza el cálculo documental.
+     */
+    public function detalleAgrupado(Request $request)
+    {
+        $request->validate([
+            'desde' => 'nullable|date_format:Y-m-d',
+            'hasta' => 'nullable|date_format:Y-m-d',
+            'sucursal' => 'nullable|string|max:120',
+            'fco' => 'nullable|string|max:50',
+            'fecha_envio' => 'nullable|date_format:Y-m-d',
+            'linea' => 'nullable|string|max:100',
+            'buscar' => 'nullable|string|max:100',
+            'tipo' => 'nullable|in:ventas,stock',
+            'orden_detalle' => 'nullable|in:codigo,cantidad',
+        ]);
+
+        if (!Schema::hasTable('accesorios_articulos')
+            || !Schema::hasTable('accesorios_compras')
+            || !Schema::hasTable('ot_logistica_remisiones')
+            || !Schema::hasColumn('ot_logistica_remisiones', 'accesorio_articulo_id')) {
+            abort(503, 'El módulo de Accesorios todavía no está configurado.');
+        }
+
+        $desde = $request->input('desde') ?: now()->startOfYear()->toDateString();
+        $hasta = $request->input('hasta') ?: now()->toDateString();
+        if ($desde > $hasta) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'hasta' => 'La fecha de inicio no puede ser posterior a la fecha final.',
+            ]);
+        }
+
+        $tipo = $request->input('tipo', 'ventas');
+        $ordenDetalle = $request->input('orden_detalle', 'codigo');
+        $sucursal = trim((string) $request->input('sucursal', ''));
+        $catalogo = $this->catalogoFiltrado(
+            trim((string) $request->input('linea', '')),
+            trim((string) $request->input('buscar', '')),
+            trim((string) $request->input('fco', '')),
+            (string) $request->input('fecha_envio', '')
+        )->orderBy('a.codigo')->get(['a.id', 'a.codigo', 'a.descripcion']);
+        $ids = $catalogo->pluck('id')->all();
+        $gruposMap = [];
+
+        $agregar = function (int $id, string $codigo, string $descripcion, string $local, int $cantidad) use (&$gruposMap) {
+            if (!isset($gruposMap[$id])) {
+                $gruposMap[$id] = (object) [
+                    'codigo' => $codigo,
+                    'descripcion' => $descripcion,
+                    'locales' => [],
+                    'subtotal' => 0,
+                ];
+            }
+            $gruposMap[$id]->locales[] = (object) [
+                'sucursal' => trim($local) !== '' ? trim($local) : 'Sin sucursal',
+                'cantidad' => $cantidad,
+            ];
+            $gruposMap[$id]->subtotal += $cantidad;
+        };
+
+        if ($tipo === 'stock' && count($ids)) {
+            $stock = (new \App\Services\AccesoriosStockService())->calcular($ids, $hasta, $sucursal);
+            foreach ($catalogo as $articulo) {
+                foreach ($stock['detalle']->get($articulo->id, []) as $local) {
+                    $agregar((int) $articulo->id, $articulo->codigo, $articulo->descripcion,
+                        (string) $local->sucursal, (int) $local->saldo);
+                }
+            }
+        } elseif ($tipo === 'ventas' && count($ids) && Schema::hasTable('ventas')) {
+            $stockServicio = new \App\Services\AccesoriosStockService();
+            $aliases = $sucursal !== '' ? $stockServicio->aliasesPara($sucursal) : [];
+            $ventas = DB::table('ventas as v')
+                ->join('accesorios_articulos as a', function ($join) {
+                    $join->on(DB::raw('UPPER(BTRIM(v.codigo))'), '=', 'a.codigo');
+                })
+                ->whereIn('a.id', $ids)
+                ->whereBetween('v.fecha', [$desde, $hasta])
+                ->when($sucursal !== '', function ($q) use ($aliases) {
+                    $q->whereIn(DB::raw('UPPER(BTRIM(v.local))'), $aliases);
+                })
+                ->select('a.id', 'a.codigo', 'a.descripcion', 'v.local')
+                ->selectRaw('COALESCE(SUM(v.cantidad),0) AS cantidad')
+                ->groupBy('a.id', 'a.codigo', 'a.descripcion', 'v.local')
+                ->orderBy('a.codigo')->orderBy('v.local')
+                ->get();
+
+            foreach ($ventas as $venta) {
+                $agregar((int) $venta->id, $venta->codigo, $venta->descripcion,
+                    (string) $venta->local, (int) $venta->cantidad);
+            }
+        }
+
+        $grupos = collect(array_values($gruposMap))
+            ->map(function ($grupo) use ($ordenDetalle) {
+                usort($grupo->locales, function ($a, $b) use ($ordenDetalle) {
+                    return ($ordenDetalle === 'cantidad' ? ($b->cantidad <=> $a->cantidad) : 0)
+                        ?: strcmp($a->sucursal, $b->sucursal);
+                });
+                return $grupo;
+            })
+            ->sort(function ($a, $b) use ($ordenDetalle) {
+                return ($ordenDetalle === 'cantidad' ? ($b->subtotal <=> $a->subtotal) : 0)
+                    ?: strcmp($a->codigo, $b->codigo);
+            })->values();
+        $total = (int) $grupos->sum('subtotal');
+
+        return view('accesorios.detalle_agrupado', compact(
+            'grupos', 'total', 'tipo', 'desde', 'hasta', 'sucursal'
+        ));
+    }
+
+    /**
+     * Selecciona el mismo catálogo para el panel, las ventas y el detalle.
+     * Un filtro FCO elige códigos, sin atribuir ventas a esa compra concreta.
+     */
+    private function catalogoFiltrado(string $linea, string $buscar, string $fco, string $fechaEnvio)
+    {
+        return DB::table('accesorios_articulos as a')
+            ->when($linea !== '', function ($q) use ($linea) {
+                $q->where('a.linea', $linea);
+            })
+            ->when($buscar !== '', function ($q) use ($buscar) {
+                $q->where(function ($b) use ($buscar) {
+                    $b->where('a.codigo', 'ilike', '%' . $buscar . '%')
+                        ->orWhere('a.descripcion', 'ilike', '%' . $buscar . '%');
+                });
+            })
+            ->when($fco !== '' || $fechaEnvio !== '', function ($q) use ($fco, $fechaEnvio) {
+                $q->whereIn('a.id', DB::table('accesorios_compras')
+                    ->select('articulo_id')
+                    ->when($fco !== '', function ($b) use ($fco) {
+                        $b->where('fco_nro', $fco);
+                    })
+                    ->when($fechaEnvio !== '', function ($b) use ($fechaEnvio) {
+                        $b->where('fecha_envio', $fechaEnvio);
+                    }));
+            });
+    }
+
     private function datos(Request $request): array
     {
         $request->validate([
@@ -159,26 +300,7 @@ class AccesoriosDashboardController extends Controller
             'lineas' => DB::table('accesorios_articulos')->whereNotNull('linea')->distinct()->orderBy('linea')->pluck('linea')->all(),
         ];
 
-        $catalogo = DB::table('accesorios_articulos as a')
-            ->when($linea !== '', function ($q) use ($linea) {
-                $q->where('a.linea', $linea);
-            })
-            ->when($buscar !== '', function ($q) use ($buscar) {
-                $q->where(function ($b) use ($buscar) {
-                    $b->where('a.codigo', 'ilike', '%' . $buscar . '%')
-                        ->orWhere('a.descripcion', 'ilike', '%' . $buscar . '%');
-                });
-            })
-            ->when($fco !== '' || $fechaEnvio !== '', function ($q) use ($fco, $fechaEnvio) {
-                $q->whereIn('a.id', DB::table('accesorios_compras')
-                    ->select('articulo_id')
-                    ->when($fco !== '', function ($b) use ($fco) {
-                        $b->where('fco_nro', $fco);
-                    })
-                    ->when($fechaEnvio !== '', function ($b) use ($fechaEnvio) {
-                        $b->where('fecha_envio', $fechaEnvio);
-                    }));
-            })
+        $catalogo = $this->catalogoFiltrado($linea, $buscar, $fco, $fechaEnvio)
             ->orderBy('a.codigo')
             ->get(['a.id', 'a.codigo', 'a.descripcion', 'a.linea']);
 
