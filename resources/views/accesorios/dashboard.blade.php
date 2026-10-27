@@ -524,21 +524,50 @@
     #accdash .acc-detail-link{display:inline-flex;gap:5px;align-items:center;border:0;background:none;padding:4px 0;margin-top:6px;color:#165bad;font-size:11px;font-weight:800;cursor:pointer}
     #accdash .acc-detail-link:hover{text-decoration:underline}
     #accDetalleModal .modal-dialog{max-width:min(1080px,96vw)}
-    #accDetalleModal .modal-content{border:0;border-radius:12px;overflow:hidden}
-    #accDetalleModal .modal-header{background:#f1f6ff;color:#174478}
-    #accDetalleModal .modal-body{max-height:70vh;overflow-y:auto}
-    #accDetalleModal .acc-detail-table{width:100%;border-collapse:collapse;font-size:13px}
-    #accDetalleModal .acc-detail-table th{background:#e9f0fa;color:#2b4b77;padding:10px;border-bottom:1px solid #d7e2f1}
-    #accDetalleModal .acc-detail-table td{padding:9px 10px;border-bottom:1px solid #edf1f8}
-    #accDetalleModal .acc-detail-group{background:#f6f9fd;color:#194980}
-    #accDetalleModal .acc-detail-local td{color:#516781}
-    #accDetalleModal .acc-detail-local .acc-local-name{padding-left:30px}
-    #accDetalleModal .acc-detail-subtotal{background:#edf4fd;color:#1b4e8d;font-weight:800}
-    #accDetalleModal .acc-detail-total{background:#174b95;color:#fff;font-size:14px;font-weight:900}
-    #accDetalleModal .acc-detail-total td{border:0;padding:13px 10px}
-    #accDetalleModal .acc-detail-negative{color:#bb3038!important}
-    #accDetalleModal .acc-detail-overview{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:#5c7090}
-    #accDetalleModal .acc-detail-overview strong{color:#174b95}
+    #accDetalleModal .modal-content{border:0;border-radius:14px;overflow:hidden;box-shadow:0 20px 65px rgba(11,38,81,.27)}
+    #accDetalleModal .modal-header{background:linear-gradient(110deg,#113773,#1c5cb0);color:#fff;padding:20px 24px;border:0}
+    #accDetalleModal .modal-title{font-size:18px;font-weight:800}
+    #accDetalleModal .modal-header .text-muted{color:#e1edff!important;font-size:12px}
+    #accDetalleModal .modal-header .close{color:#fff;text-shadow:none;opacity:1;font-size:30px}
+    #accDetalleModal .modal-body{background:#fff;max-height:70vh;overflow-y:auto;padding:20px 24px}
+    #accDetalleModal .modal-body>div:first-child{background:#f0f5fc;padding:10px 12px;border-radius:9px;border:1px solid #dbe6f5;margin-bottom:14px!important;color:#294c7b}
+    #accDetalleModal .modal-body #accDetalleOrden{border:1px solid #96b5df;background:#fff;color:#153d73;font-weight:700}
+    #accDetalleModal .acc-detail-overview{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:15px;font-size:12px;color:#39577e}
+    #accDetalleModal .acc-detail-overview span{display:inline-flex;align-items:center;gap:6px;background:#eef5ff;border:1px solid #d0e2fa;border-radius:8px;padding:9px 12px}
+    #accDetalleModal .acc-detail-overview i{color:#1d61b9}
+    #accDetalleModal .acc-detail-overview strong{color:#103c79;font-weight:800}
+    #accDetalleModal .acc-detail-table-wrap{border:1px solid #cad9ef;border-radius:10px;overflow-x:auto}
+    #accDetalleModal .acc-detail-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;min-width:570px}
+    #accDetalleModal .acc-detail-table th{background:#dceafb;color:#12376e;padding:13px 14px;border-bottom:2px solid #9fc2ee;font-size:11px;text-transform:uppercase;letter-spacing:.45px;font-weight:900}
+    #accDetalleModal .acc-detail-table td{padding:10px 14px;border-bottom:1px solid #e1eaf5;vertical-align:middle}
+    #accDetalleModal .acc-detail-group td{background:#e9f3ff;border-top:11px solid #fff;border-bottom:1px solid #b9d2f2;padding:12px 14px}
+    #accDetalleModal .acc-detail-group:first-child td{border-top:0}
+    #accDetalleModal .acc-detail-group-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    #accDetalleModal .acc-detail-article{display:flex;align-items:center;gap:12px;min-width:0}
+    #accDetalleModal .acc-detail-box-icon{flex:0 0 35px;display:grid;place-items:center;height:35px;border-radius:8px;background:#1b5aaa;color:#fff}
+    #accDetalleModal .acc-detail-code{display:block;color:#0d4289;font-weight:900;font-size:14px;letter-spacing:.15px}
+    #accDetalleModal .acc-detail-desc{display:block;color:#253e62;font-size:12px;margin-top:3px;font-weight:600}
+    #accDetalleModal .acc-detail-count{background:#fff;border:1px solid #c4d8f1;color:#20549c;border-radius:20px;font-size:11px;font-weight:800;padding:5px 10px;white-space:nowrap}
+    #accDetalleModal .acc-detail-local td{background:#fff;color:#203953;font-size:13px}
+    #accDetalleModal .acc-detail-local:nth-of-type(2n) td{background:#f8fbff}
+    #accDetalleModal .acc-detail-local:hover td{background:#ebf5ff}
+    #accDetalleModal .acc-detail-branch-indent{color:#8aafd9!important;text-align:right}
+    #accDetalleModal .acc-detail-local .acc-local-name{font-weight:650}
+    #accDetalleModal .acc-detail-local .acc-local-name i{color:#2974cc;margin-right:7px}
+    #accDetalleModal .acc-detail-qty{display:inline-block;min-width:57px;text-align:center;border-radius:7px;font-weight:900;font-size:13px;padding:6px 11px;font-variant-numeric:tabular-nums}
+    #accDetalleModal .acc-detail-qty.is-positive{background:#ddf8e8;border:1px solid #9be1b6;color:#136338}
+    #accDetalleModal .acc-detail-qty.is-negative{background:#ffe3e5;border:1px solid #f2b0b4;color:#a62334}
+    #accDetalleModal .acc-detail-subtotal td{background:#dcecff;color:#134580;font-weight:850;border-top:1px solid #b8d2f1;border-bottom:1px solid #b8d2f1}
+    #accDetalleModal .acc-detail-subtotal i{color:#1c62ae;margin-right:6px}
+    #accDetalleModal .acc-detail-subtotal strong{font-size:14px;font-weight:900}
+    #accDetalleModal .acc-detail-total td{background:#133f81!important;color:#fff!important;font-size:15px;font-weight:900;letter-spacing:.3px;padding:16px 14px;border:0;font-variant-numeric:tabular-nums}
+    #accDetalleModal .acc-detail-negative{color:#b12336!important}
+    #accDetalleModal .acc-detail-empty{text-align:center;color:#5a7394;padding:36px 15px!important}
+    #accDetalleModal .acc-detail-empty i{display:block;font-size:25px;color:#3d7bc8;margin-bottom:9px}
+    #accDetalleModal .acc-detail-empty strong{display:block;color:#244c82;margin-bottom:5px}
+    #accDetalleModal .acc-detail-empty span{display:block}
+    #accDetalleModal .acc-detail-legend{margin-top:14px;padding:11px 14px;border:1px solid #cfdff4;border-radius:8px;background:#f2f7ff;color:#426083;font-size:12px;line-height:1.6}
+    #accDetalleModal .acc-detail-legend i{color:#2165b5;margin-right:6px}
 </style>
 @endpush
 

@@ -170,6 +170,11 @@ class AccesoriosDashboardController extends Controller
             $stock = (new \App\Services\AccesoriosStockService())->calcular($ids, $hasta, $sucursal);
             foreach ($catalogo as $articulo) {
                 foreach ($stock['detalle']->get($articulo->id, []) as $local) {
+                    // Los saldos cero no se presentan en "Ver más" de stock.
+                    // Mantenemos saldos negativos para detectar discrepancias documentales.
+                    if ((int) $local->saldo === 0) {
+                        continue;
+                    }
                     $agregar((int) $articulo->id, $articulo->codigo, $articulo->descripcion,
                         (string) $local->sucursal, (int) $local->saldo);
                 }
