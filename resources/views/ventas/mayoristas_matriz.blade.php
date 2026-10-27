@@ -170,6 +170,8 @@
               <th>Cliente</th>
               <th class="text-right">Unid. netas</th>
               <th class="text-right">Tickets</th>
+              <th>Última factura</th>
+              <th>Frecuencia de compra</th>
               <th class="text-right">Venta neta</th>
               <th class="text-center">Acción</th>
             </tr></thead>
@@ -189,6 +191,36 @@
                   </td>
                   <td class="text-right {{ $clienteTop->unidades < 0 ? 'text-danger' : '' }}">{{ number_format($clienteTop->unidades,0,',','.') }}</td>
                   <td class="text-right font-weight-bold">{{ number_format($clienteTop->tickets,0,',','.') }}</td>
+                  <td class="may2-last-invoice">
+                    @if($clienteTop->ultima_fecha)
+                      <strong>{{ \Carbon\Carbon::parse($clienteTop->ultima_fecha)->format('d/m/Y') }}</strong>
+                      <small class="d-block text-muted">
+                        @if($clienteTop->ultima_clave !== '')
+                          <a href="{{ route('ventas.mayoristas.factura', ['clave'=>$clienteTop->ultima_clave,'mes'=>substr($clienteTop->ultima_fecha,0,7),'desde'=>$desde,'hasta'=>$hasta]) }}" title="Abrir la última factura del cliente">{{ $clienteTop->ultimo_comprobante }}</a>
+                        @else
+                          {{ $clienteTop->ultimo_comprobante }}
+                        @endif
+                      </small>
+                    @else
+                      <span class="text-muted">Sin factura de venta</span>
+                    @endif
+                  </td>
+                  <td>
+                    <span class="may2-frequency may2-frequency-{{ $clienteTop->estado_frecuencia === 'RECURRENTE' ? 'regular' : ($clienteTop->estado_frecuencia === 'SIN COMPRAS RECIENTES' ? 'inactive' : 'occasional') }}">
+                      @if($clienteTop->estado_frecuencia === 'RECURRENTE')
+                        <i class="fas fa-sync-alt mr-1"></i> Recurrente
+                      @elseif($clienteTop->estado_frecuencia === 'SIN COMPRAS RECIENTES')
+                        <i class="fas fa-clock mr-1"></i> Sin compras recientes
+                      @elseif($clienteTop->estado_frecuencia === 'OCASIONAL')
+                        <i class="fas fa-user-clock mr-1"></i> Ocasional
+                      @else
+                        Sin compras
+                      @endif
+                    </span>
+                    @if($clienteTop->dias_sin_compra !== null)
+                      <small class="d-block may2-last-days">Hace {{ number_format($clienteTop->dias_sin_compra,0,',','.') }} días · {{ $clienteTop->fechas_compra_recientes }} días de compra en los últimos 90</small>
+                    @endif
+                  </td>
                   <td class="text-right font-weight-bold {{ $clienteTop->venta_neta < 0 ? 'text-danger' : 'text-primary' }}">Gs {{ number_format($clienteTop->venta_neta,0,',','.') }}</td>
                   <td class="text-center">
                     <a class="btn btn-sm btn-outline-primary" href="{{ route('ventas.mayoristas.cliente', ['cliente'=>$clienteTop->token,'desde'=>$desde,'hasta'=>$hasta]) }}" title="Ver todas las facturas y tickets del cliente">
@@ -197,7 +229,7 @@
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="7" class="text-center text-muted py-4">No existen ventas de COMERCIAL MATRIZ en el período seleccionado.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">No existen ventas de COMERCIAL MATRIZ en el período seleccionado.</td></tr>
               @endforelse
             </tbody>
           </table>
@@ -205,7 +237,13 @@
         <div class="card-footer bg-white small text-muted">
           <i class="fas fa-info-circle mr-1"></i>
           Los tickets se cuentan por fecha, número y tipo de comprobante de cada cliente. Cada factura cuenta una sola vez, aunque contenga varios códigos o talles.
-          El botón <strong>Ver</strong> muestra los comprobantes del cliente, con acceso al detalle de cada factura.
+          <strong>Frecuencia al {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}:</strong>
+          recurrente = compras en 2 o más fechas distintas dentro de los últimos 90 días;
+          ocasional = compró recientemente sin repetir en otra fecha;
+          sin compras recientes = 90 días o más sin factura de venta.
+          Se considera únicamente el historial comprendido entre las fechas seleccionadas y no se cuentan notas de crédito como compras.
+          «Sin compras recientes» no confirma que el cliente haya dejado de comprar definitivamente.
+          El número de la última factura abre su detalle y <strong>Ver</strong> muestra los comprobantes del cliente.
         </div>
       </div>
       @php
@@ -287,6 +325,15 @@
 .mayor-matriz .may2-client-table tbody tr:hover{background:#edf5ff}
 .mayor-matriz .may2-client-table .badge{font-size:.71rem;font-weight:700;color:#60738d}
 .mayor-matriz .may2-client-table .btn{white-space:nowrap}
+.mayor-matriz .may2-client-table th{position:sticky;top:0;z-index:2}
+.mayor-matriz .may2-last-invoice{white-space:nowrap}
+.mayor-matriz .may2-last-invoice strong{color:#234d7e}
+.mayor-matriz .may2-last-invoice a{color:#1f61af;font-weight:650}
+.mayor-matriz .may2-frequency{display:inline-flex;align-items:center;border-radius:6px;padding:5px 8px;white-space:nowrap;font-size:.7rem;font-weight:800}
+.mayor-matriz .may2-frequency-regular{background:#e1f7e8;color:#12663a;border:1px solid #9cddaf}
+.mayor-matriz .may2-frequency-occasional{background:#ebf3ff;color:#2457a0;border:1px solid #bed5f7}
+.mayor-matriz .may2-frequency-inactive{background:#fff0d8;color:#8c5410;border:1px solid #f2d397}
+.mayor-matriz .may2-last-days{color:#647d99;font-size:.7rem;white-space:normal;min-width:145px;margin-top:5px}
 
 .mayor-matriz .may2-kpi{background:#fff;border:1px solid #dae3ef;border-radius:9px;min-height:122px;padding:16px}
 .mayor-matriz .may2-kpi small{display:block;color:#65798b;font-weight:700;font-size:.75rem;text-transform:uppercase}

@@ -25,7 +25,7 @@ jobs:
             require "vendor/autoload.php";
             $filesystem = new \Illuminate\Filesystem\Filesystem();
             $compiler = new \Illuminate\View\Compilers\BladeCompiler($filesystem, sys_get_temp_dir());
-            foreach (array_merge(glob("resources/views/accesorios/*.blade.php"), glob("resources/views/ventas/mayoristas_matriz_factura.blade.php")) as $path) {
+            foreach (array_merge(glob("resources/views/accesorios/*.blade.php"), glob("resources/views/ventas/mayoristas_matriz_factura.blade.php"), glob("resources/views/ventas/mayoristas_matriz.blade.php")) as $path) {
               $compiled = $compiler->compileString(file_get_contents($path));
               $target = sys_get_temp_dir() . "/" . sha1($path) . ".php";
               file_put_contents($target, $compiled);
@@ -41,4 +41,4 @@ jobs:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           DB_CONNECTION: sqlite
           DB_DATABASE: ':memory:'
-        run: vendor/bin/phpunit tests/Feature/AccesoriosCompraEdicionTest.php tests/Feature/AccesoriosFacturasTest.php tests/Unit/MayoristaDescripcionFacturaTest.php tests/Unit/MayoristaFacturaSoloConsultaTest.php
+        run: vendor/bin/phpunit tests/Feature/AccesoriosCompraEdicionTest.php tests/Feature/AccesoriosFacturasTest.php tests/Unit/MayoristaDescripcionFacturaTest.php tests/Unit/MayoristaFacturaSoloConsultaTest.php tests/Unit/MayoristaTopClientesTest.php

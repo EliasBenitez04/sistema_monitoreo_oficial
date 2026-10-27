@@ -91,4 +91,64 @@ class MayoristaTopClientesTest extends TestCase
         $this->assertSame(0, $totales->tickets);
         $this->assertSame(1, $totales->notas_credito);
     }
+
+    public function test_ultima_factura_es_la_compra_mas_reciente_sin_contar_notas_de_credito(): void
+    {
+        $primera = $this->factura('FAMILY GROUP', '25', '2026-07-02', 'FCR 100', 10, 10, 500000);
+        $primera->clave = 'factura-vieja';
+        $ultima = $this->factura('FAMILY GROUP', '25', '2026-08-19', 'FCR 110', 12, 12, 600000);
+        $ultima->clave = 'factura-nueva';
+        $credito = $this->factura('FAMILY GROUP', '25', '2026-10-26', 'NCR 10', 0, -2, -100000, 'NCR');
+        $result = MayoristaTopClientes::ranking(collect([$credito, $primera, $ultima]), '2026-10-26')->first();
+
+        $this->assertSame('2026-08-19', $result->ultima_fecha);
+        $this->assertSame('FCR 110', $result->ultimo_comprobante);
+        $this->assertSame('factura-nueva', $result->ultima_clave);
+        $this->assertSame(68, $result->dias_sin_compra);
+        $this->assertSame('RECURRENTE', $result->estado_frecuencia);
+        $this->assertSame(2, $result->fechas_compra_recientes);
+        $this->assertSame(2, $result->tickets);
+        $this->assertSame(1, $result->notas_credito);
+    }
+
+    public function test_facturas_repetidas_en_el_mismo_dia_no_hacen_cliente_recurrente(): void
+    {
+        $facturas = collect([
+            $this->factura('CLIENTE DIA', '25', '2026-10-20', 'FCR 123', 3, 3, 90000),
+            $this->factura('CLIENTE DIA', '25', '2026-10-20', 'FCR 123', 1, 1, 30000),
+            $this->factura('CLIENTE DIA', '25', '2026-10-20', 'FCR 124', 2, 2, 60000),
+        ]);
+        $top = MayoristaTopClientes::ranking($facturas, '2026-10-26')->first();
+
+        $this->assertSame(2, $top->tickets);
+        $this->assertSame(1, $top->fechas_compra_recientes);
+        $this->assertSame('OCASIONAL', $top->estado_frecuencia);
+        $this->assertSame(6, $top->dias_sin_compra);
+    }
+
+    public function test_sin_compra_90_dias_o_mas_queda_como_sin_compras_recientes(): void
+    {
+        $facturas = collect([
+            $this->factura('SIN MOVIMIENTO', '25', '2026-04-01', 'FCR 1', 1, 1, 10000),
+            $this->factura('SIN MOVIMIENTO', '25', '2026-05-01', 'FCR 2', 1, 1, 10000),
+            $this->factura('SIN MOVIMIENTO', '25', '2026-10-24', 'NCR 1', 0, -1, -5000, 'NCR'),
+        ]);
+        $top = MayoristaTopClientes::ranking($facturas, '2026-10-26')->first();
+
+        $this->assertSame('2026-05-01', $top->ultima_fecha);
+        $this->assertSame('SIN COMPRAS RECIENTES', $top->estado_frecuencia);
+        $this->assertSame(0, $top->fechas_compra_recientes);
+    }
+
+    public function test_el_corte_del_filtro_define_la_antiguedad_y_no_la_fecha_del_servidor(): void
+    {
+        $ventas = collect([
+            $this->factura('CLIENTE', '25', '2026-08-01', 'FCR 1', 1, 1, 1000),
+            $this->factura('CLIENTE', '25', '2026-08-05', 'FCR 2', 1, 1, 1000),
+        ]);
+        $top = MayoristaTopClientes::ranking($ventas, '2026-08-31')->first();
+
+        $this->assertSame(26, $top->dias_sin_compra);
+        $this->assertSame('RECURRENTE', $top->estado_frecuencia);
+    }
 }

@@ -162,7 +162,7 @@ class MayoristaMatrizController extends Controller
         // Ranking por comprobante agrupado, NO por líneas de venta.
         // Se calcula antes del filtro visual de cliente, para mostrar
         // los principales clientes de todo el período consultado.
-        $topClientes = MayoristaTopClientes::ranking($facturas);
+        $topClientes = MayoristaTopClientes::ranking($facturas, $hasta);
         $vinculadas = $this->vinculos($facturas->pluck('clave'));
 
         $facturas->each(function ($f) use ($vinculadas) {
