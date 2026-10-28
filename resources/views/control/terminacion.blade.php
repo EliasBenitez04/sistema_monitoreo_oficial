@@ -753,7 +753,13 @@
                     <h5 class="modal-title font-weight-bold" id="tituloPendienteRemitirTerminacion"><i class="fas fa-truck-loading text-primary mr-2"></i>Detalle de prendas pendientes de remitir</h5>
                     <small class="text-muted">OT seleccionadas por los filtros del Control Terminación · {{ $fechaDesde }} al {{ $fechaHasta }} · ordenadas por antigüedad desde el primer PRODUCTO TERMINADO</small>
                 </div>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+                <div class="d-flex align-items-center ml-2">
+                    <a href="{{ route('control.terminacion.pendiente-remitir.excel', array_merge(['fecha_desde' => $fechaDesde, 'fecha_hasta' => $fechaHasta, 'buscar' => $buscar], !empty($estados) ? ['estado' => $estados] : [])) }}"
+                       class="btn btn-sm btn-success mr-3" title="Descargar todas las OT pendientes del indicador en formato Excel">
+                        <i class="fas fa-file-excel mr-1"></i> Exportar Excel
+                    </a>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+                </div>
             </div>
             <div class="modal-body">
                 @php $totalDetalleRemitirPlan = (int) $detallePendienteRemitirPlan->sum('pendiente_remitir_plan'); @endphp

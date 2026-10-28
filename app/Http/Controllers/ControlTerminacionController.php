@@ -31,6 +31,29 @@ class ControlTerminacionController extends Controller
         return $this->conciliacionService->conciliarPorIds($idsOt);
     }
 
+    /**
+     * Exporta exactamente el detalle del KPI "Pendiente remitir" visible
+     * en Control Terminación, sin consultar ni sumar otro universo de OT.
+     * El listado de index() ya contempla fechas de PT, búsqueda y estados,
+     * y calcula la conciliación completa sin paginar el detalle.
+     */
+    public function exportarPendienteRemitirExcel(Request $request)
+    {
+        $datos = $this->index($request)->getData();
+
+        $fechaDesde = (string) $datos['fechaDesde'];
+        $fechaHasta = (string) $datos['fechaHasta'];
+
+        return Excel::download(
+            new \App\Exports\PendienteRemitirTerminacionExport(
+                $datos['detallePendienteRemitirPlan'],
+                $fechaDesde,
+                $fechaHasta
+            ),
+            'pendiente_remitir_' . $fechaDesde . '_al_' . $fechaHasta . '.xlsx'
+        );
+    }
+
     public function index(Request $request)
     {
         $fechaDesde = $request->input('fecha_desde', now()->format('Y-m-d'));

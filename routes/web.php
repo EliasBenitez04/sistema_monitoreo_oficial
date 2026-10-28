@@ -977,6 +977,11 @@ Route::get(
 )->name('control.terminacion');
 
 Route::get(
+    '/control/terminacion/pendiente-remitir/excel',
+    [ControlTerminacionController::class, 'exportarPendienteRemitirExcel']
+)->name('control.terminacion.pendiente-remitir.excel');
+
+Route::get(
     '/control/flujo-diario',
     [ControlTerminacionController::class, 'flujoDiario']
 )->name('control.flujo-diario');
