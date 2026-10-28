@@ -16,7 +16,7 @@
     <div class="col-lg-3 col-sm-6 mb-3"><div class="maym-kpi"><small>Unidades facturadas brutas</small><strong>{{ number_format($factura->brutas,0,',','.') }}</strong><span>Unidades positivas de la factura</span></div></div>
     <div class="col-lg-3 col-sm-6 mb-3"><div class="maym-kpi"><small>Códigos / talles</small><strong>{{ number_format($totales->codigos,0,',','.') }}</strong><span>Códigos completos distintos</span></div></div>
     <div class="col-lg-3 col-sm-6 mb-3"><div class="maym-kpi"><small>Líneas de venta</small><strong>{{ number_format($lineas->count(),0,',','.') }}</strong><span>Renglones importados de la factura</span></div></div>
-    <div class="col-lg-3 col-sm-6 mb-3"><div class="maym-kpi"><small>Documentos con códigos coincidentes</small><strong>{{ number_format($totales->documentos,0,',','.') }}</strong><span>Coincidencia documental, no procedencia acreditada</span></div></div>
+    {{-- <div class="col-lg-3 col-sm-6 mb-3"><div class="maym-kpi"><small>Documentos con códigos coincidentes</small><strong>{{ number_format($totales->documentos,0,',','.') }}</strong><span>Coincidencia documental, no procedencia acreditada</span></div></div> --}}
   </div>
   <div class="card mb-3 maym-card">
     <div class="card-header bg-white"><strong>1. Códigos y cantidades facturadas</strong><small class="d-block text-muted">Cada talle tiene su propia cantidad; no se compensa un código con prendas de otro talle.</small></div>
