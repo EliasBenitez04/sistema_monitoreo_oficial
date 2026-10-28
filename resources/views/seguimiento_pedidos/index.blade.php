@@ -76,7 +76,13 @@
                     <div class="text-muted text-uppercase small">Producto terminado</div>
                     <div class="h4 mb-1">{{ number_format($resumenGerencial->pt,0,',','.') }} / {{ number_format($resumenGerencial->prendas,0,',','.') }}</div>
                     <div class="progress progress-sm"><div class="progress-bar bg-info" style="width:{{ min(100,$resumenGerencial->cobertura_pt) }}%"></div></div>
-                    <small>{{ $resumenGerencial->cobertura_pt }}% · faltan {{ number_format($resumenGerencial->pendiente_pt,0,',','.') }}</small>
+                    <small class="d-block">{{ $resumenGerencial->cobertura_pt }}% · faltan {{ number_format($resumenGerencial->pendiente_pt,0,',','.') }}</small>
+                    @if($resumenGerencial->pendiente_pt > 0)
+                        <button type="button" class="btn btn-sm btn-outline-danger mt-2"
+                                data-toggle="modal" data-target="#modalOtFaltantesProductoTerminado">
+                            <i class="fas fa-search-plus mr-1"></i> Ver OT faltantes
+                        </button>
+                    @endif
                 </div>
                 <div class="col-md-3 border-right mb-3 mb-md-0">
                     <div class="text-muted text-uppercase small">Pedidos completos</div>
@@ -320,6 +326,121 @@
     </div>
 </div>
 </section>
+
+@if($auditoriaPrivada)
+{{-- El detalle utiliza exactamente los pedidos y OT conciliados del KPI global. --}}
+<div class="modal fade" id="modalOtFaltantesProductoTerminado" tabindex="-1" role="dialog"
+     aria-labelledby="tituloOtFaltantesProductoTerminado" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document" style="max-width:1500px;width:96%">
+        <div class="modal-content">
+            <div class="modal-header bg-light align-items-center">
+                <div>
+                    <h5 class="modal-title font-weight-bold" id="tituloOtFaltantesProductoTerminado">
+                        <i class="fas fa-exclamation-triangle text-warning mr-2"></i>OT con Producto Terminado incompleto
+                    </h5>
+                    <small class="text-muted">Pedidos T del seguimiento actual{{ $buscar !== '' ? ' · búsqueda: '.$buscar : '' }}. Prioridad: pedidos más antiguos y mayor cantidad pendiente.</small>
+                </div>
+                <button type="button" class="close ml-3" data-dismiss="modal" aria-label="Cerrar">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                @php $prendasFaltantesDetalle = (int) $faltantesProductoTerminado->sum('pendiente'); @endphp
+                <div class="row text-center mb-3">
+                    <div class="col-md-4 mb-2">
+                        <div class="border rounded bg-light p-3 h-100">
+                            <small class="text-muted d-block text-uppercase">OT con faltantes</small>
+                            <strong class="h4 mb-0">{{ number_format($faltantesProductoTerminado->count(),0,',','.') }}</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="border rounded bg-light p-3 h-100">
+                            <small class="text-muted d-block text-uppercase">Prendas sin PT completo</small>
+                            <strong class="h4 text-danger mb-0">{{ number_format($prendasFaltantesDetalle,0,',','.') }}</strong>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <div class="border rounded bg-light p-3 h-100">
+                            <small class="text-muted d-block text-uppercase">Control contra resumen</small>
+                            @if($prendasFaltantesDetalle === (int) $resumenGerencial->pendiente_pt)
+                                <strong class="h5 text-success mb-0">COINCIDE</strong>
+                            @else
+                                <strong class="h5 text-danger mb-0">REVISAR DIFERENCIA</strong>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+                <p class="small text-muted mb-3">
+                    <i class="fas fa-info-circle text-info mr-1"></i>
+                    Faltante PT por OT = <strong>cantidad solicitada − Producto Terminado reconocido</strong> (mínimo cero).
+                    No son prendas pendientes de remisión ni de confirmación del local.
+                    Si una OT figura en más de un pedido T, aparece en cada pedido porque el resumen cuenta las solicitudes por pedido.
+                </p>
+                <div class="table-responsive" style="max-height:65vh;overflow:auto">
+                    <table class="table table-sm table-striped table-hover mb-0" id="tablaOtFaltantesProductoTerminado">
+                        <thead class="thead-light" style="position:sticky;top:0;z-index:2">
+                            <tr>
+                                <th>Pedido</th>
+                                <th>Fecha pedido</th>
+                                <th>OT</th>
+                                <th>Código</th>
+                                <th>Descripción</th>
+                                <th class="text-right">Solicitadas</th>
+                                <th class="text-right">Producto terminado</th>
+                                <th class="text-right">Faltan</th>
+                                <th>Último PT</th>
+                                <th>Situación</th>
+                                <th>Detalle</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($faltantesProductoTerminado as $faltante)
+                                <tr>
+                                    <td class="font-weight-bold text-nowrap">{{ $faltante->nro_pedido }}</td>
+                                    <td class="text-nowrap">{{ $faltante->fecha_pedido ? date('d/m/Y', strtotime($faltante->fecha_pedido)) : '-' }}</td>
+                                    <td class="font-weight-bold">OT {{ $faltante->nro_ot }}</td>
+                                    <td><code>{{ $faltante->codigo }}</code></td>
+                                    <td>{{ $faltante->descripcion }}</td>
+                                    <td class="text-right">{{ number_format($faltante->solicitadas,0,',','.') }}</td>
+                                    <td class="text-right">{{ number_format($faltante->producto_terminado,0,',','.') }}</td>
+                                    <td class="text-right font-weight-bold text-danger">{{ number_format($faltante->pendiente,0,',','.') }}</td>
+                                    <td class="text-nowrap">{{ $faltante->ultima_fecha_pt ? date('d/m/Y', strtotime($faltante->ultima_fecha_pt)) : '-' }}</td>
+                                    <td>
+                                        @if($faltante->producto_terminado > 0)
+                                            <span class="badge badge-warning">PT PARCIAL</span>
+                                        @else
+                                            <span class="badge badge-danger">SIN PT</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <a class="btn btn-sm btn-outline-primary text-nowrap"
+                                           href="{{ route('seguimiento-pedidos.show', $faltante->pedido_id) }}">
+                                            <i class="fas fa-eye mr-1"></i>Ver pedido
+                                        </a>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="11" class="text-muted text-center py-4">Todas las OT de estos pedidos tienen Producto Terminado completo.</td></tr>
+                            @endforelse
+                        </tbody>
+                        <tfoot class="bg-light font-weight-bold">
+                            <tr>
+                                <td colspan="7">TOTAL · {{ number_format($faltantesProductoTerminado->count(),0,',','.') }} OT por pedido</td>
+                                <td class="text-right text-danger">{{ number_format($prendasFaltantesDetalle,0,',','.') }}</td>
+                                <td colspan="3"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 @endsection
 
 @push('page_scripts')

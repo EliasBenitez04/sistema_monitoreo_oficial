@@ -316,6 +316,56 @@ class SeguimientoPedidoController extends Controller
             'promedio_dias' => $dias->count() ? round($dias->avg(), 1) : null,
         ];
 
+
+        /*
+         * Detalle explicativo del KPI Producto Terminado: exactamente las
+         * mismas OT/pedidos usados en el resumen gerencial y la misma
+         * conciliación por OT. No mezcla prendas sin remitir ni sin recibir.
+         *
+         * Una OT vinculada a dos pedidos se muestra en cada pedido, igual
+         * que su volumen se contabiliza en ambos indicadores de pedido.
+         */
+        $faltantesProductoTerminado = $resumenBase
+            ->flatMap(function ($pedido) use ($conciliadoGeneral) {
+                $efectivo = $conciliadoGeneral->get((int) $pedido->id);
+                if (!$efectivo) {
+                    return collect();
+                }
+
+                return $efectivo->faltantes_pt->map(function ($ot) use ($pedido) {
+                    return (object) [
+                        'pedido_id' => (int) $pedido->id,
+                        'nro_pedido' => $pedido->nro_pedido,
+                        'fecha_pedido' => $pedido->fecha_pedido
+                            ? Carbon::parse($pedido->fecha_pedido)->format('Y-m-d')
+                            : null,
+                        'id_ot' => $ot->id_ot,
+                        'nro_ot' => $ot->nro_ot,
+                        'codigo' => $ot->codigo,
+                        'descripcion' => $ot->descripcion,
+                        'solicitadas' => $ot->solicitadas,
+                        'producto_terminado' => $ot->producto_terminado,
+                        'pendiente' => $ot->pendiente,
+                        'ultima_fecha_pt' => $ot->ultima_fecha_pt,
+                    ];
+                });
+            })
+            ->sort(function ($a, $b) {
+                // Primero los pedidos más antiguos; misma fecha, mayor saldo.
+                $fechaA = $a->fecha_pedido ?: '9999-12-31';
+                $fechaB = $b->fecha_pedido ?: '9999-12-31';
+                if ($fechaA !== $fechaB) {
+                    return strcmp($fechaA, $fechaB);
+                }
+
+                if ($a->pendiente !== $b->pendiente) {
+                    return $b->pendiente <=> $a->pendiente;
+                }
+
+                return ((int) $a->nro_ot) <=> ((int) $b->nro_ot);
+            })
+            ->values();
+
         $auditoriaPrivada = $this->puedeVerAuditoriaPrivada();
 
         return view(
@@ -324,7 +374,8 @@ class SeguimientoPedidoController extends Controller
                 'pedidos',
                 'buscar',
                 'resumenGerencial',
-                'auditoriaPrivada'
+                'auditoriaPrivada',
+                'faltantesProductoTerminado'
             )
         );
     }
@@ -1423,6 +1474,9 @@ class SeguimientoPedidoController extends Controller
             ->select(
                 'spd.seguimiento_pedido_id',
                 'o.id_ot',
+                'o.nro_ot',
+                'o.codigo',
+                'o.descripcion',
                 'o.cantidad_orden'
             )
             ->get();
@@ -1508,6 +1562,7 @@ class SeguimientoPedidoController extends Controller
                 $recibido = 0;
                 $completas = 0;
                 $otsConRemision = 0;
+                $faltantesPt = collect();
 
                 foreach ($filas as $fila) {
                     $cantidad += (int) $fila->cantidad_orden;
@@ -1516,12 +1571,32 @@ class SeguimientoPedidoController extends Controller
                         (int) $fila->id_ot
                     );
 
+                    // El saldo de cada OT se calcula contra su propia
+                    // cantidad ordenada: sobrantes de otra OT no compensan.
+                    $solicitadasOt = max(0, (int) $fila->cantidad_orden);
+                    $ptOt = $c
+                        ? min($solicitadasOt, max(0, (int) $c->producto_terminado))
+                        : 0;
+                    $pendientePt = max(0, $solicitadasOt - $ptOt);
+
+                    if ($pendientePt > 0) {
+                        $faltantesPt->push((object) [
+                            'id_ot' => (int) $fila->id_ot,
+                            'nro_ot' => $fila->nro_ot,
+                            'codigo' => $fila->codigo,
+                            'descripcion' => $fila->descripcion,
+                            'solicitadas' => $solicitadasOt,
+                            'producto_terminado' => $ptOt,
+                            'pendiente' => $pendientePt,
+                            'ultima_fecha_pt' => $c->ultima_fecha_pt ?? null,
+                        ]);
+                    }
+
                     if (!$c) {
                         continue;
                     }
 
-                    $productoTerminado +=
-                        (int) $c->producto_terminado;
+                    $productoTerminado += $ptOt;
                     $remitido +=
                         (int) $c->remitido_original;
                     $recibido +=
@@ -1556,6 +1631,7 @@ class SeguimientoPedidoController extends Controller
                     'recibido' => $recibido,
                     'completas' => $completas,
                     'ots_con_remision' => $otsConRemision,
+                    'faltantes_pt' => $faltantesPt,
                     'ultima_primera_confirmacion' =>
                         $recepciones->isNotEmpty()
                             ? $recepciones->max()
