@@ -83,7 +83,7 @@ class AccesoriosDashboardController extends Controller
             fputcsv($out, [
                 'CODIGO', 'DESCRIPCION', 'SUCURSAL', 'ENTRADAS RECIBIDAS',
                 'SALIDAS REMITIDAS', 'VENTAS NETAS ACUMULADAS',
-                'EN TRANSITO AL DESTINO', 'STOCK CALCULADO', 'CORTE'
+                'EN TRANSITO AL DESTINO', 'AJUSTE MANUAL', 'STOCK AJUSTADO', 'CORTE'
             ], ';');
             foreach ($filas as $articuloId => $locales) {
                 $articulo = $catalogo->get((int) $articuloId);
@@ -94,7 +94,7 @@ class AccesoriosDashboardController extends Controller
                     fputcsv($out, [
                         $articulo->codigo, $articulo->descripcion, $local->sucursal,
                         $local->entradas, $local->salidas, $local->ventas,
-                        $local->en_transito, $local->saldo, $corte,
+                        $local->en_transito, $local->ajuste, $local->saldo, $corte,
                     ], ';');
                 }
             }
@@ -150,9 +150,10 @@ class AccesoriosDashboardController extends Controller
         $ids = $catalogo->pluck('id')->all();
         $gruposMap = [];
 
-        $agregar = function (int $id, string $codigo, string $descripcion, string $local, int $cantidad) use (&$gruposMap) {
+        $agregar = function (int $id, string $codigo, string $descripcion, string $local, int $cantidad, string $clave = '', int $ajuste = 0) use (&$gruposMap) {
             if (!isset($gruposMap[$id])) {
                 $gruposMap[$id] = (object) [
+                    'articulo_id' => $id,
                     'codigo' => $codigo,
                     'descripcion' => $descripcion,
                     'locales' => [],
@@ -162,6 +163,8 @@ class AccesoriosDashboardController extends Controller
             $gruposMap[$id]->locales[] = (object) [
                 'sucursal' => trim($local) !== '' ? trim($local) : 'Sin sucursal',
                 'cantidad' => $cantidad,
+                'sucursal_key' => $clave,
+                'ajuste' => $ajuste,
             ];
             $gruposMap[$id]->subtotal += $cantidad;
         };
@@ -170,13 +173,11 @@ class AccesoriosDashboardController extends Controller
             $stock = (new \App\Services\AccesoriosStockService())->calcular($ids, $hasta, $sucursal);
             foreach ($catalogo as $articulo) {
                 foreach ($stock['detalle']->get($articulo->id, []) as $local) {
-                    // Los saldos cero no se presentan en "Ver más" de stock.
-                    // Mantenemos saldos negativos para detectar discrepancias documentales.
-                    if ((int) $local->saldo === 0) {
-                        continue;
-                    }
+                    // También mostramos cero: ADMIN puede corregir existencias
+                    // aunque el saldo documental sea cero o negativo.
                     $agregar((int) $articulo->id, $articulo->codigo, $articulo->descripcion,
-                        (string) $local->sucursal, (int) $local->saldo);
+                        (string) $local->sucursal, (int) $local->saldo,
+                        (string) $local->sucursal_key, (int) $local->ajuste);
                 }
             }
         } elseif ($tipo === 'ventas' && count($ids) && Schema::hasTable('ventas')) {
@@ -217,8 +218,14 @@ class AccesoriosDashboardController extends Controller
             })->values();
         $total = (int) $grupos->sum('subtotal');
 
+        $puedeEditarStock = $tipo === 'stock'
+            && $hasta === now()->toDateString()
+            && Schema::hasTable('accesorios_stock_ajustes')
+            && auth()->user()->hasRole('ADMIN');
+
         return view('accesorios.detalle_agrupado', compact(
-            'grupos', 'total', 'tipo', 'desde', 'hasta', 'sucursal'
+            'grupos', 'total', 'tipo', 'desde', 'hasta', 'sucursal',
+            'puedeEditarStock'
         ));
     }
 
@@ -471,7 +478,7 @@ class AccesoriosDashboardController extends Controller
         $stockDatos = $stockServicio->calcular($ids, $hasta, $sucursal);
         $stockPorCodigo = $stockDatos['porCodigo'];
         $saldosSucursal = $stockDatos['porSucursal'];
-        $stockFuente = 'Cálculo documental: entradas recibidas - salidas - ventas netas';
+        $stockFuente = 'Stock: entradas recibidas - salidas - ventas netas + ajustes manuales auditados';
         $stockCorte = $hasta;
 
         $opciones['sucursales'] = collect($opciones['sucursales'])
