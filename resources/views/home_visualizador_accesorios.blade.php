@@ -73,20 +73,25 @@
         --acc-primary-dark: #074ab7;
         --acc-line: #e2eaf5;
         min-height: calc(100vh - 58px);
+        min-height: calc(100dvh - 58px);
+        display: flex;
         background:
             radial-gradient(ellipse 35% 38% at 8% 9%, rgba(83, 156, 255, .09), transparent 85%),
             radial-gradient(ellipse 42% 50% at 91% 88%, rgba(105, 154, 231, .10), transparent 86%),
             #f5f8fd;
-        padding: 32px 28px 48px;
+        padding: 20px 26px 20px;
         color: var(--acc-ink);
         font-family: 'Roboto', Arial, sans-serif;
     }
 
     #acc-access-page *, #acc-access-page *::before, #acc-access-page *::after { box-sizing: border-box; }
-    #acc-access-page .acc-access-container { max-width: 1100px; margin: 0 auto; }
+    #acc-access-page .acc-access-container {
+        max-width: 1500px; width: 100%; margin: 0 auto;
+        display: flex; flex: 1; flex-direction: column;
+    }
     #acc-access-page .acc-access-pagehead {
         display: flex; justify-content: space-between; align-items: center;
-        flex-wrap: wrap; gap: 14px; margin-bottom: 28px;
+        flex-wrap: wrap; gap: 14px; margin-bottom: 17px;
     }
     #acc-access-page .acc-access-breadcrumb {
         color: #7b90ae; font-size: 12px; font-weight: 700; margin-bottom: 9px;
@@ -106,8 +111,12 @@
     }
     #acc-access-page .acc-access-card {
         position: relative; isolation: isolate; overflow: hidden;
-        max-width: 940px; margin: 0 auto; text-align: center;
-        padding: 37px 55px 32px; border: 1px solid #e1e9f4;
+        width: 100%; flex: 1; min-height: 370px;
+        max-height: 750px; margin: 0 auto; text-align: left;
+        display: grid; grid-template-columns: minmax(250px, .88fr) minmax(0, 1.12fr);
+        align-items: center; column-gap: clamp(16px, 3vw, 62px);
+        padding: 28px clamp(26px, 4.3vw, 76px);
+        border: 1px solid #e1e9f4;
         border-radius: 22px; background: #fff;
         box-shadow: 0 22px 60px rgba(32, 72, 130, .09), 0 3px 9px rgba(32, 72, 130, .04);
     }
@@ -125,7 +134,8 @@
 
     #acc-access-page .acc-access-visual {
         position: relative; display: grid; place-items: center;
-        width: min(100%, 560px); height: 172px; margin: 0 auto 15px;
+        width: 100%; height: 100%; min-height: 250px; margin: 0;
+        align-self: center;
     }
     #acc-access-page .acc-access-visual-orbit {
         display: grid; place-items: center; height: 159px; width: 159px;
@@ -145,12 +155,12 @@
     }
     #acc-access-page .acc-access-floating {
         display: flex; gap: 12px; align-items: center; position: absolute;
-        top: 49px; background: #f4f8ff; color: #8fb7ed;
+        top: 50%; transform: translateY(-50%); background: #f4f8ff; color: #8fb7ed;
         border: 1px solid #e8f0fc; border-radius: 12px; padding: 15px 18px;
         box-shadow: 0 6px 16px rgba(36, 98, 182, .035);
     }
-    #acc-access-page .acc-access-floating-left { left: 8%; }
-    #acc-access-page .acc-access-floating-right { right: 8%; }
+    #acc-access-page .acc-access-floating-left { left: -1%; }
+    #acc-access-page .acc-access-floating-right { right: -1%; }
     #acc-access-page .acc-access-floating > i { font-size: 27px; }
     #acc-access-page .acc-access-floating span { display: flex; flex-direction: column; gap: 6px; }
     #acc-access-page .acc-access-floating b {
@@ -159,7 +169,10 @@
     #acc-access-page .acc-access-floating b:nth-child(2) { width: 35px; }
     #acc-access-page .acc-access-floating b:nth-child(3) { width: 42px; }
 
-    #acc-access-page .acc-access-body { position: relative; z-index: 1; }
+    #acc-access-page .acc-access-body {
+        position: relative; z-index: 1; width: 100%; max-width: 700px;
+        padding: 14px 0;
+    }
     #acc-access-page .acc-access-eyebrow {
         display: inline-flex; align-items: center; gap: 7px;
         color: #336cae; background: #edf5ff; border: 1px solid #dcecff;
@@ -167,12 +180,12 @@
         letter-spacing: .25px; font-weight: 800;
     }
     #acc-access-page h2 {
-        margin: 17px auto 12px; font-size: clamp(22px, 2.3vw, 30px);
+        margin: 18px 0 13px; font-size: clamp(25px, 2.5vw, 34px);
         line-height: 1.25; letter-spacing: -.65px; font-weight: 800;
-        color: #112b54; max-width: 690px;
+        color: #112b54; max-width: 700px;
     }
     #acc-access-page .acc-access-description {
-        max-width: 615px; margin: 0 auto 24px; font-size: 14px;
+        max-width: 620px; margin: 0 0 24px; font-size: 15px;
         color: #617797; line-height: 1.75;
     }
     #acc-access-page .acc-access-description strong { color: #2b5c98; }
@@ -201,22 +214,41 @@
     #acc-access-page .acc-access-note {
         display: flex; justify-content: center; align-items: flex-start; gap: 9px;
         background: #f3f8ff; border: 1px solid #e1edfb; border-radius: 10px;
-        color: #4f709c; max-width: 675px; margin: 27px auto 0;
+        color: #4f709c; max-width: 670px; margin: 25px 0 0;
         padding: 12px 16px; font-size: 12px; line-height: 1.6;
     }
     #acc-access-page .acc-access-note i { color: #2b7adf; margin-top: 2px; }
     #acc-access-page .acc-access-footnote {
-        margin: 21px auto 0; text-align: center;
+        margin: 13px auto 0; text-align: center;
         color: #8a9bb2; font-size: 12px;
     }
     #acc-access-page .acc-access-footnote i { margin-right: 6px; }
 
+    /* Cuando el ancho es reducido, volver a una composición centrada y apilada. */
+    @media (max-width: 991px) {
+        #acc-access-page .acc-access-card {
+            display: flex; flex-direction: column; justify-content: center;
+            max-width: 760px; min-height: 0; max-height: none;
+            padding: 31px 28px; text-align: center;
+        }
+        #acc-access-page .acc-access-visual {
+            width: min(100%, 520px); height: 158px; min-height: 158px;
+            margin: 0 auto 12px;
+        }
+        #acc-access-page .acc-access-body { max-width: 650px; padding: 0; }
+        #acc-access-page h2 { margin: 17px auto 12px; }
+        #acc-access-page .acc-access-description { margin: 0 auto 23px; }
+        #acc-access-page .acc-access-note { margin: 24px auto 0; text-align: center; }
+        #acc-access-page .acc-access-floating-left { left: 8%; }
+        #acc-access-page .acc-access-floating-right { right: 8%; }
+    }
     @media (max-width: 767px) {
-        #acc-access-page { padding: 24px 14px 34px; }
+        #acc-access-page { padding: 20px 14px 27px; }
+        #acc-access-page .acc-access-card { padding: 24px 17px; }
         #acc-access-page .acc-access-pagehead { margin-bottom: 21px; }
         #acc-access-page h1 { font-size: 25px; }
         #acc-access-page .acc-access-card { padding: 24px 17px 24px; border-radius: 17px; }
-        #acc-access-page .acc-access-visual { height: 148px; }
+        #acc-access-page .acc-access-visual { height: 148px; min-height: 148px; }
         #acc-access-page .acc-access-visual-orbit { height: 137px; width: 137px; }
         #acc-access-page .acc-access-shield { width: 92px; height: 92px; font-size: 56px; border-radius: 24px; }
         #acc-access-page .acc-access-shield-lock { top: 41px; font-size: 19px; }
