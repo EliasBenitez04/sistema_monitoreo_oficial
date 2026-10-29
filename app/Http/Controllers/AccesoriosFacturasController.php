@@ -12,7 +12,10 @@ class AccesoriosFacturasController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth', 'role:ADMIN']);
+        $this->middleware(['auth', 'role:ADMIN|visualizador_accesorios'])
+            ->only('index');
+        $this->middleware(['auth', 'role:ADMIN'])
+            ->only('actualizar');
     }
 
     public function index(Request $request)
