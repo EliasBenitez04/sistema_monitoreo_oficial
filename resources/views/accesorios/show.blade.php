@@ -13,7 +13,7 @@
             ['Distribuidas desde Central', $etapasRemision['distribuido_central'], 'info'],
             ['Recibidas en locales desde Central', $etapasRemision['recibido_locales'], 'success'],
             ['Ventas netas registradas', $totalVendido, 'secondary'],
-            ['Stock calculado', $stockCalculado, ($stockCalculado !== null && $stockCalculado < 0 ? 'danger' : 'success')]
+            ['Stock ajustado', $stockCalculado, ($stockCalculado !== null && $stockCalculado < 0 ? 'danger' : 'success')]
         ] as $kpi)
             <div class="col-md-3 col-6"><div class="card border-{{ $kpi[2] }} shadow-sm"><div class="card-body">
                 <div class="text-muted small">{{ $kpi[0] }}</div><h3 class="mb-0">{{ $kpi[1] === null ? 'Sin datos' : number_format($kpi[1], 0, ',', '.') }}</h3>
@@ -30,10 +30,10 @@
         No representan prendas nuevas.
     </div>
     <div class="card card-outline card-success shadow-sm">
-        <div class="card-header"><h3 class="card-title"><i class="fas fa-balance-scale mr-2"></i>Stock calculado por sucursal</h3></div>
+        <div class="card-header"><h3 class="card-title"><i class="fas fa-balance-scale mr-2"></i>Stock ajustado por sucursal</h3></div>
         <div class="px-3 py-2 bg-light small text-muted">
             Corte: {{ now()->format('d/m/Y') }}. Fórmula por sucursal:
-            <strong>remisiones recibidas − remisiones enviadas − ventas netas históricas</strong>.
+            <strong>remisiones recibidas − remisiones enviadas − ventas netas históricas + ajustes manuales auditados</strong>.
             Las devoluciones (notas de crédito negativas) incrementan el saldo. Las remisiones sin recepción no suman al destino.
         </div>
         <div class="card-body table-responsive p-0">
@@ -44,7 +44,8 @@
                     <th class="text-right">Salidas remitidas</th>
                     <th class="text-right">Ventas netas</th>
                     <th class="text-right">En tránsito hacia local</th>
-                    <th class="text-right">Stock calculado</th>
+                    <th class="text-right">Ajuste manual</th>
+                    <th class="text-right">Stock ajustado</th>
                 </tr></thead>
                 <tbody>
                 @forelse($saldosStock as $fila)
@@ -54,13 +55,14 @@
                         <td class="text-right text-danger">−{{ number_format($fila->salidas, 0, ',', '.') }}</td>
                         <td class="text-right">−{{ number_format($fila->ventas, 0, ',', '.') }}</td>
                         <td class="text-right">{{ number_format($fila->en_transito, 0, ',', '.') }}</td>
+                        <td class="text-right {{ $fila->ajuste ? 'font-weight-bold text-primary' : 'text-muted' }}">{{ $fila->ajuste > 0 ? '+' : '' }}{{ number_format($fila->ajuste, 0, ',', '.') }}</td>
                         <td class="text-right">
                             <span class="badge badge-{{ $fila->saldo < 0 ? 'danger' : ($fila->saldo === 0 ? 'secondary' : 'success') }}" style="font-size:13px">
                                 {{ number_format($fila->saldo, 0, ',', '.') }}
                             </span>
                         </td>
                     </tr>
-                @empty <tr><td colspan="6" class="text-center text-muted p-3">No hay movimientos ni ventas vinculadas para calcular el saldo.</td></tr>
+                @empty <tr><td colspan="7" class="text-center text-muted p-3">No hay movimientos ni ventas vinculadas para calcular el saldo.</td></tr>
                 @endforelse
                 </tbody>
             </table>
@@ -69,6 +71,37 @@
             <strong>Atención:</strong> un saldo negativo no se oculta: puede indicar una venta anterior a las remisiones importadas, una recepción faltante o una discrepancia de sucursal.
             El saldo supone que el historial documental importado está completo.
         </div>
+    </div>
+    <div class="card card-outline card-info shadow-sm" id="historial-ajustes-stock">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+            <h3 class="card-title font-weight-bold"><i class="fas fa-user-shield mr-2"></i>Historial de ajustes de stock</h3>
+            <span class="badge badge-info">{{ $ajustesStock->count() }} últimos registros</span>
+        </div>
+        <div class="card-body table-responsive p-0">
+            <table class="table table-sm table-striped mb-0">
+                <thead><tr>
+                    <th>Fecha</th><th>Sucursal</th>
+                    <th class="text-right">Antes</th><th class="text-right">Después</th>
+                    <th class="text-right">Diferencia</th><th>Motivo</th><th>Usuario ADMIN</th>
+                </tr></thead>
+                <tbody>
+                    @forelse($ajustesStock as $ajuste)
+                        <tr>
+                            <td>{{ \Carbon\Carbon::parse($ajuste->created_at)->format('d/m/Y H:i') }}</td>
+                            <td>{{ $ajuste->sucursal }}</td>
+                            <td class="text-right">{{ number_format($ajuste->saldo_anterior, 0, ',', '.') }}</td>
+                            <td class="text-right font-weight-bold">{{ number_format($ajuste->saldo_nuevo, 0, ',', '.') }}</td>
+                            <td class="text-right {{ $ajuste->diferencia < 0 ? 'text-danger' : 'text-success' }}">{{ $ajuste->diferencia > 0 ? '+' : '' }}{{ number_format($ajuste->diferencia, 0, ',', '.') }}</td>
+                            <td>{{ $ajuste->motivo }}</td>
+                            <td>{{ $ajuste->usuario ?: 'Usuario #' }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="text-center text-muted p-3">Todavía no hay ajustes manuales registrados para este artículo.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer small text-muted">Los ajustes son acumulativos; no modifican movimientos de remisiones ni ventas. Solo el rol ADMIN puede registrarlos.</div>
     </div>
     <div class="card card-outline card-primary shadow-sm" id="historial-compras">
         <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
