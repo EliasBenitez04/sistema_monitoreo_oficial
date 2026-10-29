@@ -173,7 +173,9 @@
                             <p>{{ Auth::user()->name }}</p>
                         </li>
                         <li class="user-footer">
+                            @if(!Auth::user()->hasRole('visualizador_accesorios') || Auth::user()->hasRole('ADMIN'))
                             <a href="{!! url('users/detail/perfil') !!}" class="btn btn-success btn-flat">Perfil</a>
+                            @endif
                             <a href="#" class="btn btn-danger btn-flat float-right"
                                 onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
                                 Salir
