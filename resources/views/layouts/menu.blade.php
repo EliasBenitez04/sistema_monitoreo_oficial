@@ -1,3 +1,31 @@
+@if(auth()->check() && auth()->user()->hasRole('visualizador_accesorios') && !auth()->user()->hasRole('ADMIN'))
+    {{-- Menú exclusivo para cuentas de consulta de Accesorios. --}}
+    <li class="nav-header">ACCESO DE SOLO LECTURA</li>
+    <li class="nav-item">
+        <a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-house-user"></i>
+            <p>Inicio</p>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ route('accesorios.index') }}" class="nav-link {{ request()->routeIs('accesorios.index', 'accesorios.detalle.resumen') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-chart-line"></i>
+            <p>Monitoreo de Accesorios</p>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ route('accesorios.listado') }}" class="nav-link {{ request()->routeIs('accesorios.listado', 'accesorios.show') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-list"></i>
+            <p>Artículos y seguimiento</p>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a href="{{ route('accesorios.facturas.index') }}" class="nav-link {{ request()->routeIs('accesorios.facturas.index') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-file-invoice-dollar"></i>
+            <p>Compras · Facturas FCO</p>
+        </a>
+    </li>
+@else
 <li class="nav-item">
     <a href="{{ route('home') }}" class="nav-link {{ Request::is('home') ? 'active' : '' }}">
         <i class="nav-icon fas fa-house-user"></i>
@@ -720,3 +748,5 @@
         <p>Redistribucion Configs</p>
     </a>
 </li> --}}
+
+@endif
