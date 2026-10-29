@@ -132,7 +132,7 @@
                     <tr>
                         <th>FCO</th><th>Fecha envío</th><th class="text-right">Cantidad</th>
                         <th class="text-right">Costo unitario</th><th class="text-right">Precio venta</th>
-                        <th class="text-right">Costo total</th><th class="text-center">Acción</th>
+                        <th class="text-right">Costo total</th>@role('ADMIN')<th class="text-center">Acción</th>@endrole
                     </tr>
                 </thead>
                 <tbody>
@@ -144,6 +144,7 @@
                             <td class="text-right">Gs {{ number_format($compra->costo_unitario, 2, ',', '.') }}</td>
                             <td class="text-right">Gs {{ number_format($compra->precio_venta, 2, ',', '.') }}</td>
                             <td class="text-right font-weight-bold text-success">Gs {{ number_format($compra->cantidad_compra * $compra->costo_unitario, 2, ',', '.') }}</td>
+                            @role('ADMIN')
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-outline-primary acc-fco-edit"
                                     data-toggle="modal" data-target="#accEditarCompraModal"
@@ -156,9 +157,10 @@
                                     <i class="fas fa-edit mr-1"></i>Editar
                                 </button>
                             </td>
+                            @endrole
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-muted text-center p-3">Sin compras registradas.</td></tr>
+                        <tr><td colspan="{{ auth()->user()->hasRole('ADMIN') ? 7 : 6 }}" class="text-muted text-center p-3">Sin compras registradas.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -206,6 +208,7 @@
     <div class="alert alert-light border small"><strong>Alcance:</strong> las compras por FCO se conservan como referencia, pero no se suman directamente al stock. El saldo se calcula una sola vez en cada sucursal, a partir de las recepciones, los envíos y las ventas netas acumuladas. Es un <strong>stock documental estimado</strong>, no un conteo físico. Las unidades en tránsito quedan fuera de las existencias del destino hasta su recepción.</div>
 </div></section>
 
+@role('ADMIN')
 <div class="modal fade" id="accEditarCompraModal" tabindex="-1" role="dialog" aria-labelledby="accEditarCompraTitulo" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content acc-fco-modal">
@@ -252,6 +255,8 @@
 </div>
 
 @endsection
+
+@endrole
 
 @push('page_css')
 <style>
