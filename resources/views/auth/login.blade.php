@@ -241,12 +241,22 @@
 
 <body>
 
-    <div class="login-box">
+    <main class="login-shell" aria-label="Inicio de sesión">
+        <aside class="login-feature" aria-label="Bienvenida al sistema">
+            <div>
+                <div class="login-brand-mark" aria-hidden="true"><i class="fas fa-chart-line"></i></div>
+                <div class="brand-tag">Sistema de gestión</div>
+                <h2>{{ config('app.name') }}</h2>
+                <p>Información, seguimiento y control en un solo lugar. Accedé con tus credenciales para continuar.</p>
+            </div>
+            <div class="brand-bottom"><i class="fas fa-lock" aria-hidden="true"></i> Acceso exclusivo para usuarios autorizados</div>
+        </aside>
+        <div class="login-box">
         <div class="login-card">
 
             <div class="login-header">
-                <h1>{{ config('app.name') }}</h1>
-                <p>Acceso seguro al sistema</p>
+                <h1>Bienvenido de nuevo</h1>
+                <p>Ingresá tus datos para acceder al sistema.</p>
             </div>
 
             <div class="login-body">
@@ -255,9 +265,9 @@
                     @csrf
 
                     <div class="form-group mb-4">
-                        <label class="mb-2 font-weight-bold">Usuario</label>
+                        <label class="mb-2 font-weight-bold" for="login-usuario">Usuario</label>
                         <div class="input-group">
-                            <input type="text" name="name" value="{{ old('name') }}"
+                            <input type="text" id="login-usuario" name="name" value="{{ old('name') }}" autocomplete="username" autocapitalize="characters" spellcheck="false"
                                 class="form-control text-uppercase @error('name') is-invalid @enderror"
                                 placeholder="USUARIO" required oninput="this.value = this.value.toUpperCase();">
                             <div class="input-group-append">
@@ -272,15 +282,16 @@
                     </div>
 
                     <div class="form-group mb-4">
-                        <label class="mb-2 font-weight-bold">Contraseña</label>
+                        <label class="mb-2 font-weight-bold" for="password">Contraseña</label>
                         <div class="input-group">
-                            <input type="password" id="password" name="password"
+                            <input type="password" id="password" name="password" autocomplete="current-password"
                                 class="form-control @error('password') is-invalid @enderror"
                                 placeholder="••••••••" required>
                             <div class="input-group-append">
-                                <span class="input-group-text" onclick="togglePassword()">
-                                    <i class="fas fa-eye" id="toggleIcon"></i>
-                                </span>
+                                <button type="button" class="input-group-text" id="togglePasswordButton" onclick="togglePassword()"
+                                        aria-label="Mostrar contraseña" aria-pressed="false" aria-controls="password" title="Mostrar contraseña">
+                                    <i class="fas fa-eye" id="toggleIcon" aria-hidden="true"></i>
+                                </button>
                             </div>
                         </div>
                         @error('password')
@@ -299,7 +310,8 @@
 
             </div>
         </div>
-    </div>
+        </div>
+    </main>
 
     <script src="{{ mix('js/app.js') }}"></script>
     @include('sweetalert::alert')
@@ -308,15 +320,22 @@
         function togglePassword() {
             const password = document.getElementById('password');
             const icon = document.getElementById('toggleIcon');
+            const button = document.getElementById('togglePasswordButton');
 
             if (password.type === 'password') {
                 password.type = 'text';
                 icon.classList.remove('fa-eye');
                 icon.classList.add('fa-eye-slash');
+                button.setAttribute('aria-label', 'Ocultar contraseña');
+                button.setAttribute('title', 'Ocultar contraseña');
+                button.setAttribute('aria-pressed', 'true');
             } else {
                 password.type = 'password';
                 icon.classList.remove('fa-eye-slash');
                 icon.classList.add('fa-eye');
+                button.setAttribute('aria-label', 'Mostrar contraseña');
+                button.setAttribute('title', 'Mostrar contraseña');
+                button.setAttribute('aria-pressed', 'false');
             }
         }
     </script>
