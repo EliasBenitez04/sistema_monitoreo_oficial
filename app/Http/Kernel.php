@@ -38,6 +38,9 @@ class Kernel extends HttpKernel
             // REGISTRAR IP Y ACCESOS
             // =====================================================
             \App\Http\Middleware\RegistrarAcceso::class,
+
+            // Restringir todo el sistema al rol visualizador_accesorios.
+            \App\Http\Middleware\RestringirVisualizadorAccesorios::class,
         ],
 
         'api' => [
