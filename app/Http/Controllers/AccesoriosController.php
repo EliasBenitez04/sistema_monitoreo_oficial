@@ -13,9 +13,11 @@ class AccesoriosController extends Controller
 {
     public function __construct()
     {
-        // Acceso exclusivo al rol ADMIN (Spatie Permission).
-        // Se aplica también a solicitudes directas fuera del menú.
-        $this->middleware(['auth', 'role:ADMIN']);
+        // Panel de lectura compartido; carga y edición exclusivas de ADMIN.
+        $this->middleware(['auth', 'role:ADMIN|visualizador_accesorios'])
+            ->only(['index', 'show']);
+        $this->middleware(['auth', 'role:ADMIN'])
+            ->except(['index', 'show']);
     }
 
     public function index(Request $request)
