@@ -13,7 +13,7 @@
     <link href="{{ mix('css/app.css') }}" rel="stylesheet">
 
     <!-- Fuente moderna -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
         body {
@@ -209,6 +209,10 @@
             background:transparent!important; border:0!important;
         }
         .login-body .input-group .fas { color:#7caeff; }
+        .login-body button.input-group-text { cursor:pointer; border-radius:0 10px 10px 0; }
+        .login-body button.input-group-text:hover .fas { color:#fff; }
+        .login-body button.input-group-text:focus-visible { outline:2px solid #8fbaff; outline-offset:-4px; }
+
         .login-body .btn-login {
             margin-top:5px; height:48px; color:white; border-radius:10px;
             background:linear-gradient(115deg,#327dff,#1954c6);
