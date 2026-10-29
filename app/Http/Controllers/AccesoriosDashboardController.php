@@ -12,9 +12,11 @@ class AccesoriosDashboardController extends Controller
 {
     public function __construct()
     {
-        // Acceso exclusivo al rol ADMIN (Spatie Permission).
-        // Se aplica también a solicitudes directas fuera del menú.
-        $this->middleware(['auth', 'role:ADMIN']);
+        // Consulta para ADMIN y visualizador; exportaciones solo para ADMIN.
+        $this->middleware(['auth', 'role:ADMIN|visualizador_accesorios'])
+            ->only(['index', 'detalleAgrupado']);
+        $this->middleware(['auth', 'role:ADMIN'])
+            ->only(['exportar', 'exportarStock']);
     }
 
     public function index(Request $request)
