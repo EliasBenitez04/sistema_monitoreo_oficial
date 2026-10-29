@@ -223,6 +223,7 @@ class AccesoriosStockService
                     'salidas' => 0,
                     'ventas' => 0,
                     'en_transito' => 0,
+                    'ajuste' => 0,
                     'saldo' => 0,
                 ];
             }
@@ -306,6 +307,26 @@ class AccesoriosStockService
             }
         }
 
+        // Ajustes realizados por ADMIN. Se conservan como eventos auditables,
+        // separados de las remisiones y ventas, y respetan el corte histórico.
+        if ($articuloIds && Schema::hasTable('accesorios_stock_ajustes')) {
+            $ajustes = DB::table('accesorios_stock_ajustes')
+                ->whereIn('accesorio_articulo_id', $articuloIds)
+                ->where('fecha_ajuste', '<=', $corte)
+                ->select('accesorio_articulo_id', 'sucursal_key')
+                ->selectRaw('MAX(sucursal) AS sucursal, SUM(diferencia) AS diferencia')
+                ->groupBy('accesorio_articulo_id', 'sucursal_key')
+                ->get();
+
+            foreach ($ajustes as $ajuste) {
+                $asegurar(
+                    (int) $ajuste->accesorio_articulo_id,
+                    (string) $ajuste->sucursal_key,
+                    (string) $ajuste->sucursal
+                )->ajuste += (int) $ajuste->diferencia;
+            }
+        }
+
         $filtro = trim((string) $sucursal);
         $filtroKey = $filtro === '' ? null : $this->identificar(null, $filtro);
         $porCodigo = collect();
@@ -315,14 +336,14 @@ class AccesoriosStockService
 
         foreach ($agrupado as $articuloId => $porLocal) {
             foreach ($porLocal as $clave => $row) {
-                $row->saldo = self::saldo($row->entradas, $row->salidas, $row->ventas);
+                $row->saldo = self::saldo($row->entradas, $row->salidas, $row->ventas) + $row->ajuste;
                 $todas[$clave] = $row->sucursal;
 
                 if (!isset($porSucursal[$clave])) {
                     $porSucursal[$clave] = (object) [
                         'sucursal_key' => $clave, 'sucursal' => $row->sucursal,
                         'entradas' => 0, 'salidas' => 0, 'ventas' => 0,
-                        'en_transito' => 0, 'saldo' => 0, 'codigos' => 0,
+                        'en_transito' => 0, 'ajuste' => 0, 'saldo' => 0, 'codigos' => 0,
                     ];
                 }
                 $s = $porSucursal[$clave];
@@ -330,6 +351,7 @@ class AccesoriosStockService
                 $s->salidas += $row->salidas;
                 $s->ventas += $row->ventas;
                 $s->en_transito += $row->en_transito;
+                $s->ajuste += $row->ajuste;
                 $s->saldo += $row->saldo;
                 $s->codigos++;
 
@@ -341,7 +363,7 @@ class AccesoriosStockService
                     if (!isset($porCodigo[$articuloId])) {
                         $porCodigo[$articuloId] = (object) [
                             'saldo' => 0, 'entradas' => 0, 'salidas' => 0,
-                            'ventas' => 0, 'en_transito' => 0,
+                            'ventas' => 0, 'en_transito' => 0, 'ajuste' => 0,
                         ];
                     }
                     $total = $porCodigo[$articuloId];
@@ -350,6 +372,7 @@ class AccesoriosStockService
                     $total->salidas += $row->salidas;
                     $total->ventas += $row->ventas;
                     $total->en_transito += $row->en_transito;
+                    $total->ajuste += $row->ajuste;
                 }
             }
         }
