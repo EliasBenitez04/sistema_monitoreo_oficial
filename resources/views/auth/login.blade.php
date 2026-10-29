@@ -128,8 +128,10 @@
         /* Rediseño oscuro: limitado a la pantalla de autenticación. */
         html { min-height:100%; background:#060e1d; }
         body {
-            min-height:100vh; min-height:100dvh; height:auto; margin:0;
-            padding:24px; overflow-x:hidden; overflow-y:auto;
+            /* Altura real de la ventana: mantiene el login centrado en ambos ejes. */
+            height:100vh; height:100dvh; min-height:100vh; min-height:100dvh;
+            margin:0; padding:24px; overflow-x:hidden; overflow-y:auto;
+            display:flex; align-items:center; justify-content:center;
             background: radial-gradient(ellipse at 10% 85%,#133766 0,transparent 50%),
                 radial-gradient(ellipse at 95% 15%,#153968 0,transparent 45%),
                 linear-gradient(130deg,rgba(3,12,27,.95),rgba(6,17,34,.92)),
@@ -139,6 +141,7 @@
         .login-shell {
             display:grid; grid-template-columns:minmax(0,1fr) minmax(360px,.95fr);
             width:min(920px,100%); min-height:455px; overflow:hidden;
+            margin:auto; flex-shrink:0;
             border:1px solid rgba(143,185,237,.18); border-radius:23px;
             background:#0d192c; box-shadow:0 35px 90px rgba(0,3,13,.56);
         }
