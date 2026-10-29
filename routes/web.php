@@ -332,25 +332,32 @@ Route::post(
 
 /*
 |--------------------------------------------------------------------------
-| ACCESORIOS - ACCESO EXCLUSIVO ADMIN
+| ACCESORIOS - LECTURA ADMIN / VISUALIZADOR
 |--------------------------------------------------------------------------
-| Todas las páginas, importaciones y descargas requieren el rol exacto
-| ADMIN de Spatie; otros permisos generales NO conceden este acceso.
-| Se protege en la ruta y también en los controladores.
+| Los visualizadores solo consultan páginas; toda escritura, importación
+| y exportación permanece exclusivamente para ADMIN.
+*/
+Route::middleware(['auth', 'role:ADMIN|visualizador_accesorios'])->group(function () {
+    Route::get('/accesorios', [\App\Http\Controllers\AccesoriosDashboardController::class, 'index'])->name('accesorios.index');
+    Route::get('/accesorios/listado', [\App\Http\Controllers\AccesoriosController::class, 'index'])->name('accesorios.listado');
+    Route::get('/accesorios/detalle/resumen', [\App\Http\Controllers\AccesoriosDashboardController::class, 'detalleAgrupado'])->name('accesorios.detalle.resumen');
+    Route::get('/accesorios/compras-facturas', [\App\Http\Controllers\AccesoriosFacturasController::class, 'index'])->name('accesorios.facturas.index');
+    Route::get('/accesorios/{id}', [\App\Http\Controllers\AccesoriosController::class, 'show'])->whereNumber('id')->name('accesorios.show');
+});
+
+/*
+|--------------------------------------------------------------------------
+| ACCESORIOS - OPERACIONES RESERVADAS A ADMIN
+|--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'role:ADMIN'])->group(function () {
-    Route::get('/accesorios', [\App\Http\Controllers\AccesoriosDashboardController::class, 'index'])->name('accesorios.index');
     Route::get('/accesorios/dashboard/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportar'])->name('accesorios.exportar');
     Route::get('/accesorios/stock/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportarStock'])->name('accesorios.stock.exportar');
     Route::post('/accesorios/stock/ajustar/{id}', [\App\Http\Controllers\AccesoriosAjusteStockController::class, 'guardar'])->whereNumber('id')->name('accesorios.stock.ajustar');
-    Route::get('/accesorios/listado', [\App\Http\Controllers\AccesoriosController::class, 'index'])->name('accesorios.listado');
     Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
     Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
-    Route::get('/accesorios/detalle/resumen', [\App\Http\Controllers\AccesoriosDashboardController::class, 'detalleAgrupado'])->name('accesorios.detalle.resumen');
-    Route::get('/accesorios/compras-facturas', [\App\Http\Controllers\AccesoriosFacturasController::class, 'index'])->name('accesorios.facturas.index');
     Route::patch('/accesorios/compras-facturas/{compraId}', [\App\Http\Controllers\AccesoriosFacturasController::class, 'actualizar'])->whereNumber('compraId')->name('accesorios.facturas.actualizar');
     Route::patch('/accesorios/{id}/compras/{compraId}', [\App\Http\Controllers\AccesoriosController::class, 'actualizarCompra'])->whereNumber('id')->whereNumber('compraId')->name('accesorios.compras.actualizar');
-    Route::get('/accesorios/{id}', [\App\Http\Controllers\AccesoriosController::class, 'show'])->whereNumber('id')->name('accesorios.show');
 });
 
 Route::get(
