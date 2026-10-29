@@ -292,10 +292,24 @@ class AccesoriosController extends Controller
         $stockCalculado = $calculoStock['porCodigo']->has($id)
             ? $calculoStock['porCodigo']->get($id)->saldo : null;
 
+        // Historial inalterable de correcciones hechas por ADMIN.
+        $ajustesStock = Schema::hasTable('accesorios_stock_ajustes')
+            ? DB::table('accesorios_stock_ajustes as aj')
+                ->leftJoin('users as u', 'u.id', '=', 'aj.usuario_id')
+                ->where('aj.accesorio_articulo_id', $id)
+                ->orderByDesc('aj.id')
+                ->limit(30)
+                ->get([
+                    'aj.sucursal', 'aj.saldo_anterior', 'aj.saldo_nuevo',
+                    'aj.diferencia', 'aj.motivo', 'aj.created_at',
+                    'u.name as usuario',
+                ])
+            : collect();
+
         return view('accesorios.show', compact(
             'articulo', 'compras', 'remisiones', 'etapasRemision',
             'ventasPorLocal', 'totalComprado', 'totalVendido',
-            'saldosStock', 'stockCalculado'
+            'saldosStock', 'stockCalculado', 'ajustesStock'
         ));
     }
 }
