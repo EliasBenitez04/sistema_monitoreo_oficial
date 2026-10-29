@@ -16,6 +16,12 @@ class HomeController extends Controller
 
     public function index()
     {
+        // El visualizador no ejecuta ni consulta los indicadores internos de Home.
+        if (auth()->user()->hasRole('visualizador_accesorios')
+            && !auth()->user()->hasRole('ADMIN')) {
+            return view('home_visualizador_accesorios');
+        }
+
         /*
         |--------------------------------------------------------------------------
         | LOTES
