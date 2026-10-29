@@ -219,9 +219,9 @@
         </div>
     </div>
 </div>
-@endsection
-
 @endrole
+
+@endsection
 
 @push('page_css')
 <style>
