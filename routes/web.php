@@ -342,6 +342,7 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::get('/accesorios', [\App\Http\Controllers\AccesoriosDashboardController::class, 'index'])->name('accesorios.index');
     Route::get('/accesorios/dashboard/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportar'])->name('accesorios.exportar');
     Route::get('/accesorios/stock/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportarStock'])->name('accesorios.stock.exportar');
+    Route::post('/accesorios/stock/ajustar/{id}', [\App\Http\Controllers\AccesoriosAjusteStockController::class, 'guardar'])->whereNumber('id')->name('accesorios.stock.ajustar');
     Route::get('/accesorios/listado', [\App\Http\Controllers\AccesoriosController::class, 'index'])->name('accesorios.listado');
     Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
     Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
