@@ -244,7 +244,7 @@
         <div>
             <strong>Cómo se interpreta este control</strong>
             <p>El <b>stock calculado</b> se obtiene por código y sucursal:
-            <b>entradas con recepción confirmada − salidas remitidas − ventas netas acumuladas</b>.
+            <b>entradas con recepción confirmada − salidas remitidas − ventas netas acumuladas + ajustes manuales de ADMIN</b>.
             Las devoluciones registradas en ventas se descuentan con su signo y pueden aumentar el saldo.
             <b>Depósito → Central</b> es la entrada inicial recibida;
             <b>Central → locales</b> es la distribución posterior; y
@@ -252,7 +252,7 @@
             <b>Son etapas, no cantidades para sumar</b>: si entran 7 y después salen esas mismas 7, se informan 7 por etapa, nunca 14 prendas.
             Los traslados entre locales se reflejan en el stock por sucursal y pueden consultarse en el detalle.
             Las compras por FCO son registros de adquisición y no se agregan directamente al stock.
-            El saldo refleja el historial importado hasta hoy; no sustituye un conteo físico.</p>
+            El saldo refleja el historial importado más las correcciones manuales auditadas; no sustituye un conteo físico.</p>
         </div>
     </div>
 </div>
