@@ -17,7 +17,9 @@
         <div class="acf-actions">
             <a href="{{ route('accesorios.index') }}" class="acf-btn acf-ghost"><i class="fas fa-chart-line"></i> Monitoreo</a>
             <a href="{{ route('accesorios.listado') }}" class="acf-btn acf-ghost"><i class="fas fa-list"></i> Artículos</a>
+            @role('ADMIN')
             <a href="{{ route('accesorios.importar.form') }}" class="acf-btn acf-light"><i class="fas fa-file-import"></i> Importar compras</a>
+            @endrole
         </div>
     </section>
 
@@ -116,7 +118,7 @@
                                 <th class="acf-number">Costo unitario</th>
                                 <th class="acf-number">Precio venta</th>
                                 <th class="acf-number">Costo total</th>
-                                <th class="acf-center">Acciones</th>
+                                @role('ADMIN')<th class="acf-center">Acciones</th>@endrole
                             </tr>
                         </thead>
                         <tbody>
@@ -129,6 +131,7 @@
                                     <td class="acf-number">{{ $dinero($fila->costo_unitario) }}</td>
                                     <td class="acf-number">{{ $dinero($fila->precio_venta) }}</td>
                                     <td class="acf-number acf-cost">{{ $dinero($fila->cantidad_compra * $fila->costo_unitario) }}</td>
+                                    @role('ADMIN')
                                     <td class="acf-center">
                                         <button type="button" class="acf-edit-button" data-toggle="modal" data-target="#acfEditor"
                                             data-action="{{ route('accesorios.facturas.actualizar', $fila->compra_id) }}"
@@ -143,6 +146,7 @@
                                             <i class="fas fa-pen"></i> Editar
                                         </button>
                                     </td>
+                                    @endrole
                                 </tr>
                             @endforeach
                         </tbody>
@@ -152,7 +156,7 @@
                                 <td class="acf-number">{{ $n($documento->unidades) }}</td>
                                 <td colspan="2"></td>
                                 <td class="acf-number acf-foot-total">{{ $dinero($documento->costo_total) }}</td>
-                                <td></td>
+                                @role('ADMIN')<td></td>@endrole
                             </tr>
                         </tfoot>
                     </table>
@@ -176,6 +180,7 @@
     </p>
 </div>
 
+@role('ADMIN')
 <div class="modal fade" id="acfEditor" tabindex="-1" role="dialog" aria-labelledby="acfEditorTitulo" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
         <div class="modal-content acf-editor-content">
@@ -215,6 +220,8 @@
     </div>
 </div>
 @endsection
+
+@endrole
 
 @push('page_css')
 <style>
