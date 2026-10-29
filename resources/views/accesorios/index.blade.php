@@ -24,9 +24,11 @@
                     <i class="fas fa-chart-pie"></i> Panel de monitoreo
                 </a>
                 <a href="{{ route('accesorios.facturas.index') }}" class="accl-button accl-button-light"><i class="fas fa-file-invoice-dollar"></i> Compras · Facturas</a>
+                @role('ADMIN')
                 <a href="{{ route('accesorios.importar.form') }}" class="accl-button accl-button-light">
                     <i class="fas fa-file-import"></i> Importar accesorios
                 </a>
+                @endrole
             </div>
         </div>
         <div class="accl-hero-bottom">
@@ -144,10 +146,12 @@
             </div>
             <div class="accl-list-actions">
                 <span class="accl-data-date"><i class="far fa-clock"></i> {{ now()->format('d/m/Y') }}</span>
+                @role('ADMIN')
                 <a href="{{ route('accesorios.stock.exportar', ['buscar' => $buscar, 'linea' => $linea]) }}"
                    class="accl-button accl-button-export" title="Exportar stock calculado por código y sucursal con los filtros actuales">
                     <i class="fas fa-file-csv"></i> Exportar stock
                 </a>
+                @endrole
             </div>
         </div>
 
@@ -221,11 +225,17 @@
                                     <div class="accl-empty-icon"><i class="fas fa-search"></i></div>
                                     <h3>{{ $totalArticulos ? 'No encontramos artículos con esos filtros' : 'Todavía no hay accesorios cargados' }}</h3>
                                     <p>{{ $totalArticulos ? 'Probá con otro código o quitá los filtros de búsqueda.' : 'Importá las compras de accesorios para comenzar su seguimiento.' }}</p>
-                                    <a href="{{ $totalArticulos ? route('accesorios.listado') : route('accesorios.importar.form') }}"
-                                       class="accl-button accl-button-primary">
-                                        <i class="fas fa-{{ $totalArticulos ? 'redo' : 'file-import' }}"></i>
-                                        {{ $totalArticulos ? 'Mostrar todos' : 'Importar accesorios' }}
-                                    </a>
+                                    @if($totalArticulos)
+                                        <a href="{{ route('accesorios.listado') }}" class="accl-button accl-button-primary">
+                                            <i class="fas fa-redo"></i> Mostrar todos
+                                        </a>
+                                    @else
+                                        @role('ADMIN')
+                                        <a href="{{ route('accesorios.importar.form') }}" class="accl-button accl-button-primary">
+                                            <i class="fas fa-file-import"></i> Importar accesorios
+                                        </a>
+                                        @endrole
+                                    @endif
                                 </div>
                             </td>
                         </tr>
