@@ -558,6 +558,7 @@
     #accDetalleModal .acc-detail-qty{display:inline-block;min-width:57px;text-align:center;border-radius:7px;font-weight:900;font-size:13px;padding:6px 11px;font-variant-numeric:tabular-nums}
     #accDetalleModal .acc-detail-qty.is-positive{background:#ddf8e8;border:1px solid #9be1b6;color:#136338}
     #accDetalleModal .acc-detail-qty.is-negative{background:#ffe3e5;border:1px solid #f2b0b4;color:#a62334}
+    #accDetalleModal .acc-detail-qty.is-zero{background:#edf1f7;border:1px solid #d0dce9;color:#63778d}
     #accDetalleModal .acc-detail-subtotal td{background:#dcecff;color:#134580;font-weight:850;border-top:1px solid #b8d2f1;border-bottom:1px solid #b8d2f1}
     #accDetalleModal .acc-detail-subtotal i{color:#1c62ae;margin-right:6px}
     #accDetalleModal .acc-detail-subtotal strong{font-size:14px;font-weight:900}
@@ -569,6 +570,15 @@
     #accDetalleModal .acc-detail-empty span{display:block}
     #accDetalleModal .acc-detail-legend{margin-top:14px;padding:11px 14px;border:1px solid #cfdff4;border-radius:8px;background:#f2f7ff;color:#426083;font-size:12px;line-height:1.6}
     #accDetalleModal .acc-detail-legend i{color:#2165b5;margin-right:6px}
+    #accDetalleModal .acc-adjusted-note{display:inline-block;margin-left:8px;font-weight:700;font-size:10px;color:#83580a;background:#fff4dc;padding:3px 6px;border-radius:5px}
+    #accDetalleModal .acc-ajuste-row td{background:#f1f7ff;padding:15px 18px;border-top:1px solid #c7dcf8}
+    #accDetalleModal .acc-ajuste-fields{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+    #accDetalleModal .acc-ajuste-fields>div{flex:0 1 160px}
+    #accDetalleModal .acc-ajuste-fields>.acc-ajuste-motivo{flex:1 1 220px}
+    #accDetalleModal .acc-ajuste-fields>.acc-ajuste-buttons{flex:0 0 auto;display:flex;gap:7px}
+    #accDetalleModal .acc-ajuste-form label{display:block;font-size:11px;font-weight:800;color:#244671;margin-bottom:5px}
+    #accDetalleModal .acc-ajuste-form input{border:1px solid #b7cce6}
+    #accDetalleModal .acc-ajuste-form input:focus{border-color:#3d79c4;box-shadow:0 0 0 3px rgba(50,105,189,.12)}
 </style>
 @endpush
 
@@ -582,6 +592,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var urlBase = modal.getAttribute('data-url');
     var tipoActual = 'ventas';
     var peticion = null;
+    var recargarAlCerrar = false;
+    var mostrarConfirmacion = false;
 
     function cargarDetalle() {
         if (peticion) peticion.abort();
@@ -604,7 +616,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!respuesta.ok) throw new Error('Respuesta ' + respuesta.status);
             return respuesta.text();
         }).then(function (html) {
-            contenido.innerHTML = html;
+            contenido.innerHTML = (mostrarConfirmacion ? '<div class="alert alert-success"><i class="fas fa-check-circle mr-1"></i> Stock actualizado correctamente y cambio auditado.</div>' : '') + html;
+            mostrarConfirmacion = false;
         }).catch(function (error) {
             if (error.name !== 'AbortError') {
                 contenido.innerHTML = '<div class="alert alert-danger">No se pudo cargar el detalle. Revisá los filtros e intentá de nuevo.</div>';
@@ -625,8 +638,72 @@ document.addEventListener('DOMContentLoaded', function () {
     $(modal).on('shown.bs.modal', cargarDetalle);
     $(modal).on('hidden.bs.modal', function () {
         if (peticion) peticion.abort();
+        if (recargarAlCerrar) window.location.reload();
     });
     selector.addEventListener('change', cargarDetalle);
+
+    // Los formularios se renderizan al abrir el detalle por AJAX.
+    contenido.addEventListener('click', function (evento) {
+        var boton = evento.target.closest('.acc-ajuste-toggle, .acc-ajuste-cancelar');
+        if (!boton) return;
+        var fila = document.getElementById(boton.getAttribute('data-target'));
+        if (!fila) return;
+        var abrir = boton.classList.contains('acc-ajuste-toggle')
+            && fila.classList.contains('d-none');
+        contenido.querySelectorAll('.acc-ajuste-row').forEach(function (elemento) {
+            elemento.classList.add('d-none');
+        });
+        contenido.querySelectorAll('.acc-ajuste-toggle').forEach(function (elemento) {
+            elemento.setAttribute('aria-expanded', 'false');
+        });
+        if (abrir) {
+            fila.classList.remove('d-none');
+            boton.setAttribute('aria-expanded', 'true');
+            fila.querySelector('[name="saldo_nuevo"]').focus();
+        }
+    });
+
+    contenido.addEventListener('submit', function (evento) {
+        var formulario = evento.target;
+        if (!formulario.classList.contains('acc-ajuste-form')) return;
+        evento.preventDefault();
+        if (formulario.dataset.guardando === '1') return;
+
+        var boton = formulario.querySelector('button[type="submit"]');
+        var error = formulario.querySelector('.acc-ajuste-error');
+        formulario.dataset.guardando = '1';
+        boton.disabled = true;
+        error.textContent = '';
+        error.classList.add('d-none');
+
+        fetch(formulario.action, {
+            method: 'POST',
+            body: new FormData(formulario),
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': formulario.querySelector('[name="_token"]').value
+            }
+        }).then(function (respuesta) {
+            return respuesta.json().catch(function () { return {}; }).then(function (datos) {
+                if (!respuesta.ok) {
+                    var errores = datos.errors ? Object.values(datos.errors) : [];
+                    throw new Error(errores.length ? errores[0][0] : (datos.message || 'No se pudo guardar el ajuste.'));
+                }
+                return datos;
+            });
+        }).then(function () {
+            recargarAlCerrar = true;
+            mostrarConfirmacion = true;
+            cargarDetalle();
+        }).catch(function (fallo) {
+            error.textContent = fallo.message || 'No se pudo guardar el ajuste.';
+            error.classList.remove('d-none');
+        }).finally(function () {
+            formulario.dataset.guardando = '0';
+            boton.disabled = false;
+        });
+    });
 });
 </script>
 @endpush
