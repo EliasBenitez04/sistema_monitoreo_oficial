@@ -26,8 +26,10 @@
             <div class="acc-actions">
                 <a href="{{ route('accesorios.listado') }}" class="acc-btn acc-btn-outline"><i class="fas fa-list"></i> Ver artículos</a>
                 <a href="{{ route('accesorios.facturas.index') }}" class="acc-btn acc-btn-outline"><i class="fas fa-file-invoice-dollar"></i> Compras · Facturas</a>
+                @role('ADMIN')
                 <a href="{{ route('accesorios.importar.form') }}" class="acc-btn acc-btn-outline"><i class="fas fa-file-import"></i> Importar datos</a>
                 <a href="{{ route('accesorios.exportar', request()->query()) }}" class="acc-btn acc-btn-solid"><i class="fas fa-file-csv"></i> Exportar informe</a>
+                @endrole
             </div>
         </div>
         <div class="acc-meta">
@@ -37,6 +39,7 @@
         </div>
     </section>
 
+    @role('ADMIN')
     <div class="acc-source-toolbar">
         <strong><i class="fas fa-database mr-1"></i> Actualizar información:</strong>
         <a href="{{ route('accesorios.importar.form') }}"><i class="fas fa-box-open"></i> Compras y FCO</a>
@@ -46,6 +49,7 @@
         @endcan
         <span class="acc-stock-source"><i class="fas fa-calculator"></i> Stock calculado con las importaciones anteriores</span>
     </div>
+    @endrole
 
     @if(session('error'))<div class="alert alert-danger mt-3">{{ session('error') }}</div>@endif
     @if($errors->any())<div class="alert alert-danger mt-3">{{ $errors->first() }}</div>@endif
@@ -155,7 +159,7 @@
                                 <td><a href="{{ route('accesorios.show', $p->id) }}" class="acc-view" title="Detalle del accesorio"><i class="fas fa-chevron-right"></i></a></td>
                             </tr>
                         @empty
-                            <tr><td colspan="8" class="acc-empty">No hay accesorios para los filtros seleccionados. <a href="{{ route('accesorios.importar.form') }}">Importar compras</a></td></tr>
+                            <tr><td colspan="8" class="acc-empty">No hay accesorios para los filtros seleccionados. @role('ADMIN')<a href="{{ route('accesorios.importar.form') }}">Importar compras</a>@endrole</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -204,7 +208,9 @@
             <div class="d-flex align-items-center flex-wrap" style="gap:8px">
                 <span class="acc-light-tag">Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</span>
                 <button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="stock"><i class="fas fa-list-ul"></i> Ver más</button>
+                @role('ADMIN')
                 <a href="{{ route('accesorios.stock.exportar', request()->query()) }}" class="acc-btn acc-btn-primary"><i class="fas fa-file-csv"></i> Exportar stock por local</a>
+                @endrole
             </div>
         </div>
         <div class="acc-table-scroll">
