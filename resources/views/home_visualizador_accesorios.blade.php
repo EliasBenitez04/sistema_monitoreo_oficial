@@ -1,30 +1,234 @@
 @extends('layouts.app')
 
 @section('content')
-<section class="content-header">
-    <div class="container-fluid">
-        <h1>Inicio</h1>
-    </div>
-</section>
-<section class="content">
-    <div class="container-fluid">
-        <div class="card shadow-sm border-0" style="max-width:760px;margin:34px auto;border-radius:15px;overflow:hidden">
-            <div class="card-body text-center" style="padding:45px 32px">
-                <div style="display:inline-flex;align-items:center;justify-content:center;width:70px;height:70px;border-radius:18px;background:#fff3e8;color:#ae601f;font-size:30px;margin-bottom:22px">
-                    <i class="fas fa-lock"></i>
-                </div>
-                <h2 style="color:#193c73;font-weight:800;font-size:26px;margin-bottom:12px">
-                    No tienes permiso para vizualizar está pantalla
-                </h2>
-                <p class="text-muted" style="font-size:14px;max-width:490px;margin:0 auto 25px;line-height:1.7">
-                    Tu cuenta tiene acceso de solo lectura al Monitoreo de Accesorios.
-                    Podés consultar sus indicadores, artículos y detalles, pero no modificar datos.
-                </p>
-                <a href="{{ route('accesorios.index') }}" class="btn btn-primary px-4 py-2" style="border-radius:9px;font-weight:700">
-                    <i class="fas fa-chart-line mr-2"></i> Ir a Monitoreo de Accesorios
-                </a>
+<main id="acc-access-page" class="acc-access-page">
+    <div class="acc-access-container">
+        <header class="acc-access-pagehead">
+            <div>
+                <div class="acc-access-breadcrumb"><i class="fas fa-home" aria-hidden="true"></i> Panel de inicio</div>
+                <h1>Inicio</h1>
+                <p>Acceso a tu espacio de consulta</p>
             </div>
+            <span class="acc-access-role"><i class="far fa-eye" aria-hidden="true"></i> Acceso de solo lectura</span>
+        </header>
+
+        <section class="acc-access-card" aria-labelledby="acc-access-title">
+            <div class="acc-access-card-top"></div>
+            <div class="acc-access-decoration acc-access-decoration-left" aria-hidden="true"></div>
+            <div class="acc-access-decoration acc-access-decoration-right" aria-hidden="true"></div>
+
+            <div class="acc-access-visual" aria-hidden="true">
+                <div class="acc-access-visual-orbit">
+                    <div class="acc-access-shield">
+                        <i class="fas fa-shield-alt"></i>
+                        <span class="acc-access-shield-lock"><i class="fas fa-lock"></i></span>
+                    </div>
+                </div>
+                <div class="acc-access-floating acc-access-floating-left">
+                    <i class="fas fa-chart-bar"></i>
+                    <span><b></b><b></b><b></b></span>
+                </div>
+                <div class="acc-access-floating acc-access-floating-right">
+                    <i class="fas fa-chart-pie"></i>
+                    <span><b></b><b></b><b></b></span>
+                </div>
+            </div>
+
+            <div class="acc-access-body">
+                <span class="acc-access-eyebrow"><i class="fas fa-info-circle" aria-hidden="true"></i> Acceso limitado</span>
+                <h2 id="acc-access-title">No tienes permiso para visualizar esta pantalla</h2>
+                <p class="acc-access-description">
+                    Tu cuenta tiene acceso de <strong>solo lectura</strong> al Monitoreo de Accesorios.
+                    Podés consultar sus indicadores, artículos y detalles, pero no modificar información.
+                </p>
+
+                <a href="{{ route('accesorios.index') }}" class="acc-access-action">
+                    <span class="acc-access-action-icon"><i class="fas fa-chart-line" aria-hidden="true"></i></span>
+                    <span>Ir a Monitoreo de Accesorios</span>
+                    <i class="fas fa-arrow-right acc-access-action-arrow" aria-hidden="true"></i>
+                </a>
+
+                <div class="acc-access-note">
+                    <i class="fas fa-check-circle" aria-hidden="true"></i>
+                    <span>Podés seguir consultando toda la información disponible desde el módulo de Accesorios.</span>
+                </div>
+            </div>
+        </section>
+
+        <div class="acc-access-footnote">
+            <i class="fas fa-lock" aria-hidden="true"></i>
+            Tus permisos están administrados por el sistema.
         </div>
     </div>
-</section>
+</main>
 @endsection
+
+@push('page_css')
+<style>
+    /* Pantalla exclusiva del rol visualizador_accesorios. Sin afectar otros módulos. */
+    #acc-access-page {
+        --acc-ink: #142c53;
+        --acc-text: #405878;
+        --acc-primary: #1465ee;
+        --acc-primary-dark: #074ab7;
+        --acc-line: #e2eaf5;
+        min-height: calc(100vh - 58px);
+        background:
+            radial-gradient(ellipse 35% 38% at 8% 9%, rgba(83, 156, 255, .09), transparent 85%),
+            radial-gradient(ellipse 42% 50% at 91% 88%, rgba(105, 154, 231, .10), transparent 86%),
+            #f5f8fd;
+        padding: 32px 28px 48px;
+        color: var(--acc-ink);
+        font-family: 'Roboto', Arial, sans-serif;
+    }
+
+    #acc-access-page *, #acc-access-page *::before, #acc-access-page *::after { box-sizing: border-box; }
+    #acc-access-page .acc-access-container { max-width: 1100px; margin: 0 auto; }
+    #acc-access-page .acc-access-pagehead {
+        display: flex; justify-content: space-between; align-items: center;
+        flex-wrap: wrap; gap: 14px; margin-bottom: 28px;
+    }
+    #acc-access-page .acc-access-breadcrumb {
+        color: #7b90ae; font-size: 12px; font-weight: 700; margin-bottom: 9px;
+    }
+    #acc-access-page .acc-access-breadcrumb i { margin-right: 6px; color: #2a74d7; }
+    #acc-access-page h1 {
+        color: #142c53; font-weight: 800; font-size: 28px;
+        margin: 0; line-height: 1.25; letter-spacing: -.5px;
+    }
+    #acc-access-page .acc-access-pagehead p {
+        color: #788ba4; margin: 5px 0 0; font-size: 13px;
+    }
+    #acc-access-page .acc-access-role {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: #e8f2ff; border: 1px solid #cde2fd; color: #275d9e;
+        font-size: 12px; font-weight: 700; padding: 10px 15px; border-radius: 100px;
+    }
+    #acc-access-page .acc-access-card {
+        position: relative; isolation: isolate; overflow: hidden;
+        max-width: 940px; margin: 0 auto; text-align: center;
+        padding: 37px 55px 32px; border: 1px solid #e1e9f4;
+        border-radius: 22px; background: #fff;
+        box-shadow: 0 22px 60px rgba(32, 72, 130, .09), 0 3px 9px rgba(32, 72, 130, .04);
+    }
+    #acc-access-page .acc-access-card-top {
+        position: absolute; top: 0; left: 20%; right: 20%; height: 3px;
+        background: linear-gradient(90deg, transparent, #3287fc, transparent);
+    }
+    #acc-access-page .acc-access-decoration {
+        position: absolute; width: 285px; height: 285px; border-radius: 50%;
+        background: linear-gradient(145deg, rgba(215, 232, 255, .67), rgba(243, 248, 255, .2));
+        z-index: -1; pointer-events: none;
+    }
+    #acc-access-page .acc-access-decoration-left { left: -190px; bottom: -192px; }
+    #acc-access-page .acc-access-decoration-right { right: -176px; top: -199px; }
+
+    #acc-access-page .acc-access-visual {
+        position: relative; display: grid; place-items: center;
+        width: min(100%, 560px); height: 172px; margin: 0 auto 15px;
+    }
+    #acc-access-page .acc-access-visual-orbit {
+        display: grid; place-items: center; height: 159px; width: 159px;
+        border: 2px dashed #d5e5fb; border-radius: 50%;
+        background: radial-gradient(circle, #edf5ff 0 63%, transparent 64%);
+    }
+    #acc-access-page .acc-access-shield {
+        display: grid; place-items: center; position: relative;
+        height: 105px; width: 105px; border-radius: 27px;
+        background: linear-gradient(145deg, #4099ff, #0b54c8);
+        box-shadow: 0 12px 23px rgba(19, 101, 234, .21), inset 0 1px 0 rgba(255,255,255,.45);
+        color: #fff; font-size: 63px;
+    }
+    #acc-access-page .acc-access-shield-lock {
+        position: absolute; top: 47px; left: 50%; transform: translateX(-50%);
+        font-size: 21px; color: #fff;
+    }
+    #acc-access-page .acc-access-floating {
+        display: flex; gap: 12px; align-items: center; position: absolute;
+        top: 49px; background: #f4f8ff; color: #8fb7ed;
+        border: 1px solid #e8f0fc; border-radius: 12px; padding: 15px 18px;
+        box-shadow: 0 6px 16px rgba(36, 98, 182, .035);
+    }
+    #acc-access-page .acc-access-floating-left { left: 8%; }
+    #acc-access-page .acc-access-floating-right { right: 8%; }
+    #acc-access-page .acc-access-floating > i { font-size: 27px; }
+    #acc-access-page .acc-access-floating span { display: flex; flex-direction: column; gap: 6px; }
+    #acc-access-page .acc-access-floating b {
+        display: block; background: #c9dbf4; width: 48px; height: 5px; border-radius: 5px;
+    }
+    #acc-access-page .acc-access-floating b:nth-child(2) { width: 35px; }
+    #acc-access-page .acc-access-floating b:nth-child(3) { width: 42px; }
+
+    #acc-access-page .acc-access-body { position: relative; z-index: 1; }
+    #acc-access-page .acc-access-eyebrow {
+        display: inline-flex; align-items: center; gap: 7px;
+        color: #336cae; background: #edf5ff; border: 1px solid #dcecff;
+        padding: 7px 12px; border-radius: 100px; font-size: 11px;
+        letter-spacing: .25px; font-weight: 800;
+    }
+    #acc-access-page h2 {
+        margin: 17px auto 12px; font-size: clamp(22px, 2.3vw, 30px);
+        line-height: 1.25; letter-spacing: -.65px; font-weight: 800;
+        color: #112b54; max-width: 690px;
+    }
+    #acc-access-page .acc-access-description {
+        max-width: 615px; margin: 0 auto 24px; font-size: 14px;
+        color: #617797; line-height: 1.75;
+    }
+    #acc-access-page .acc-access-description strong { color: #2b5c98; }
+    #acc-access-page .acc-access-action {
+        display: inline-flex; align-items: center; justify-content: center; gap: 13px;
+        min-height: 52px; background: linear-gradient(110deg, #1877fa, #085ad8);
+        color: #fff; font-size: 14px; font-weight: 800;
+        border: 1px solid #1b70e7; border-radius: 12px;
+        padding: 12px 20px; text-decoration: none;
+        box-shadow: 0 10px 20px rgba(19, 104, 240, .19);
+        transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    #acc-access-page .acc-access-action:hover,
+    #acc-access-page .acc-access-action:focus {
+        background: linear-gradient(110deg, #106be9, #064bb5);
+        color: #fff; text-decoration: none; transform: translateY(-2px);
+        box-shadow: 0 14px 24px rgba(19, 104, 240, .26);
+    }
+    #acc-access-page .acc-access-action:focus-visible { outline: 3px solid #8fc1ff; outline-offset: 3px; }
+    #acc-access-page .acc-access-action-icon {
+        display: grid; place-items: center; background: rgba(255, 255, 255, .16);
+        height: 29px; width: 29px; border-radius: 7px; font-size: 14px;
+    }
+    #acc-access-page .acc-access-action-arrow { font-size: 12px; opacity: .88; }
+
+    #acc-access-page .acc-access-note {
+        display: flex; justify-content: center; align-items: flex-start; gap: 9px;
+        background: #f3f8ff; border: 1px solid #e1edfb; border-radius: 10px;
+        color: #4f709c; max-width: 675px; margin: 27px auto 0;
+        padding: 12px 16px; font-size: 12px; line-height: 1.6;
+    }
+    #acc-access-page .acc-access-note i { color: #2b7adf; margin-top: 2px; }
+    #acc-access-page .acc-access-footnote {
+        margin: 21px auto 0; text-align: center;
+        color: #8a9bb2; font-size: 12px;
+    }
+    #acc-access-page .acc-access-footnote i { margin-right: 6px; }
+
+    @media (max-width: 767px) {
+        #acc-access-page { padding: 24px 14px 34px; }
+        #acc-access-page .acc-access-pagehead { margin-bottom: 21px; }
+        #acc-access-page h1 { font-size: 25px; }
+        #acc-access-page .acc-access-card { padding: 24px 17px 24px; border-radius: 17px; }
+        #acc-access-page .acc-access-visual { height: 148px; }
+        #acc-access-page .acc-access-visual-orbit { height: 137px; width: 137px; }
+        #acc-access-page .acc-access-shield { width: 92px; height: 92px; font-size: 56px; border-radius: 24px; }
+        #acc-access-page .acc-access-shield-lock { top: 41px; font-size: 19px; }
+        #acc-access-page .acc-access-floating { display: none; }
+        #acc-access-page h2 { margin-top: 14px; font-size: 23px; letter-spacing: -.3px; }
+        #acc-access-page .acc-access-description { font-size: 13px; }
+        #acc-access-page .acc-access-action { width: 100%; max-width: 365px; gap: 9px; padding: 11px 12px; font-size: 13px; }
+        #acc-access-page .acc-access-note { text-align: left; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        #acc-access-page .acc-access-action { transition: none; }
+        #acc-access-page .acc-access-action:hover { transform: none; }
+    }
+</style>
+@endpush
