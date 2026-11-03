@@ -11,7 +11,7 @@
     $bajaRentabilidad = $rankingCompleto->filter(function ($p) {
         return $p->unidades > 0 && $p->margen !== null && $p->margen < 20;
     })->sortBy('margen')->take(4);
-    // Preparar el detalle antes de pintar la tabla; no usar callbacks en @forelse.
+    // Preparar el detalle por artículo fuera del bucle Blade para asegurar el alcance de variables.
     $detalleCostos = $rankingCompleto->filter(function ($producto) {
         return (int) $producto->unidades !== 0 || (float) $producto->importe != 0.0;
     })->sortBy('codigo');
