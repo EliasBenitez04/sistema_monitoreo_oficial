@@ -396,13 +396,13 @@
                 <div class="acc-costos-table-wrap">
                     <table class="table table-sm table-hover acc-costos-table">
                         <thead><tr>
-                            <th>Código / artículo</th>
-                            <th class="text-right">Unid. netas</th>
-                            <th class="text-right">Costo prom. unit.</th>
-                            <th class="text-right">Costo vendido est.</th>
-                            <th class="text-right">Venta neta</th>
-                            <th class="text-right">Ganancia bruta est.</th>
-                            <th class="text-right">Margen</th>
+                            <th scope="col" aria-sort="ascending"><button type="button" class="acc-sort-header" data-acc-sort-col="0" aria-label="Ordenar por Código / artículo">Código / artículo <i class="fas fa-sort-up acc-sort-indicator" aria-hidden="true"></i></button></th>
+                            <th scope="col" class="text-right" aria-sort="none"><button type="button" class="acc-sort-header" data-acc-sort-col="1" aria-label="Ordenar por Unid. netas">Unid. netas <i class="fas fa-sort acc-sort-indicator" aria-hidden="true"></i></button></th>
+                            <th scope="col" class="text-right" aria-sort="none"><button type="button" class="acc-sort-header" data-acc-sort-col="2" aria-label="Ordenar por Costo prom. unit.">Costo prom. unit. <i class="fas fa-sort acc-sort-indicator" aria-hidden="true"></i></button></th>
+                            <th scope="col" class="text-right" aria-sort="none"><button type="button" class="acc-sort-header" data-acc-sort-col="3" aria-label="Ordenar por Costo vendido est.">Costo vendido est. <i class="fas fa-sort acc-sort-indicator" aria-hidden="true"></i></button></th>
+                            <th scope="col" class="text-right" aria-sort="none"><button type="button" class="acc-sort-header" data-acc-sort-col="4" aria-label="Ordenar por Venta neta">Venta neta <i class="fas fa-sort acc-sort-indicator" aria-hidden="true"></i></button></th>
+                            <th scope="col" class="text-right" aria-sort="none"><button type="button" class="acc-sort-header" data-acc-sort-col="5" aria-label="Ordenar por Ganancia bruta est.">Ganancia bruta est. <i class="fas fa-sort acc-sort-indicator" aria-hidden="true"></i></button></th>
+                            <th scope="col" class="text-right" aria-sort="none"><button type="button" class="acc-sort-header" data-acc-sort-col="6" aria-label="Ordenar por Margen">Margen <i class="fas fa-sort acc-sort-indicator" aria-hidden="true"></i></button></th>
                         </tr></thead>
                         <tbody>
                             @forelse($detalleCostos as $productoCosto)
@@ -666,6 +666,14 @@
     #accCostosModal .acc-costos-table td{padding:10px 11px;vertical-align:middle}
     #accCostosModal .acc-costos-table tfoot th{background:#133f81;color:#fff}
     @media(max-width:750px){#accCostosModal .acc-costos-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#accCostosModal .modal-body{padding:14px}}
+
+    #accCostosModal .acc-sort-header{display:flex;align-items:center;justify-content:flex-end;gap:7px;width:100%;padding:2px 0;border:0;background:transparent;color:#143d77;font:inherit;font-weight:800;text-align:right;cursor:pointer;white-space:nowrap}
+    #accCostosModal .acc-sort-header[data-acc-sort-col="0"]{justify-content:flex-start;text-align:left}
+    #accCostosModal .acc-sort-header:hover{color:#0064c9;text-decoration:underline}
+    #accCostosModal .acc-sort-header:focus-visible{outline:2px solid #1e70d8;outline-offset:3px;border-radius:3px}
+    #accCostosModal .acc-sort-indicator{font-size:12px;min-width:12px;color:#7991ad}
+    #accCostosModal th[aria-sort="ascending"] .acc-sort-indicator,
+    #accCostosModal th[aria-sort="descending"] .acc-sort-indicator{color:#1558a9}
 </style>
 @endpush
 
@@ -791,6 +799,75 @@ document.addEventListener('DOMContentLoaded', function () {
             boton.disabled = false;
         });
     });
+
+    // Ordena el detalle financiero sin tocar la fila de totales.
+    (function () {
+        var tabla = document.querySelector('#accCostosModal .acc-costos-table');
+        if (!tabla || !tabla.tBodies.length) return;
+        var cuerpo = tabla.tBodies[0];
+        var botones = Array.prototype.slice.call(tabla.querySelectorAll('thead .acc-sort-header'));
+        var columnaActiva = 0;
+        var direccion = 'asc';
+        var colacion = new Intl.Collator('es', {numeric:true, sensitivity:'base'});
+
+        function codigo(fila) {
+            var link = fila.cells[0] ? fila.cells[0].querySelector('a') : null;
+            return link ? link.textContent.trim() : '';
+        }
+        function numero(fila, columna) {
+            var celda = fila.cells[columna];
+            if (!celda) return null;
+            var texto = celda.textContent.trim();
+            if (!texto || /sin dato/i.test(texto)) return null;
+            var valor = texto.replace(/[^0-9,.-]/g, '').replace(/\\./g, '').replace(',', '.');
+            if (!valor || valor === '-') return null;
+            var n = Number(valor);
+            return Number.isFinite(n) ? n : null;
+        }
+        function actualizar() {
+            botones.forEach(function (boton) {
+                var col = Number(boton.getAttribute('data-acc-sort-col'));
+                var activo = col === columnaActiva;
+                var orden = activo ? (direccion === 'asc' ? 'ascending' : 'descending') : 'none';
+                boton.closest('th').setAttribute('aria-sort', orden);
+                var icono = boton.querySelector('.acc-sort-indicator');
+                icono.classList.remove('fa-sort','fa-sort-up','fa-sort-down');
+                icono.classList.add(activo ? (direccion === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+                var sentidoSiguiente = activo && direccion === 'asc' ? 'mayor a menor' : (activo || col === 0 ? 'menor a mayor' : 'mayor a menor');
+                boton.setAttribute('title','Ordenar ' + sentidoSiguiente);
+                boton.setAttribute('aria-label',boton.textContent.trim() + ': ordenar ' + sentidoSiguiente);
+            });
+        }
+        function ordenar(col) {
+            direccion = col === columnaActiva ? (direccion === 'asc' ? 'desc' : 'asc') : (col === 0 ? 'asc' : 'desc');
+            columnaActiva = col;
+            var filas = Array.prototype.slice.call(cuerpo.rows).filter(function (fila) {
+                return fila.cells.length === 7;
+            });
+            filas.sort(function (a,b) {
+                var cmp = 0;
+                if (col === 0) {
+                    cmp = colacion.compare(codigo(a),codigo(b));
+                } else {
+                    var x = numero(a,col), y = numero(b,col);
+                    if (x === null && y !== null) return 1;
+                    if (y === null && x !== null) return -1;
+                    if (x !== null && y !== null) cmp = x < y ? -1 : (x > y ? 1 : 0);
+                }
+                if (cmp !== 0) return direccion === 'asc' ? cmp : -cmp;
+                return colacion.compare(codigo(a),codigo(b));
+            });
+            filas.forEach(function (fila) { cuerpo.appendChild(fila); });
+            actualizar();
+        }
+        botones.forEach(function (boton) {
+            boton.addEventListener('click',function () {
+                ordenar(Number(boton.getAttribute('data-acc-sort-col')));
+            });
+        });
+        actualizar();
+    }());
+
 });
 </script>
 @endpush
