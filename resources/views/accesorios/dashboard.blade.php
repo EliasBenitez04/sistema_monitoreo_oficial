@@ -819,7 +819,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!celda) return null;
             var texto = celda.textContent.trim();
             if (!texto || /sin dato/i.test(texto)) return null;
-            var valor = texto.replace(/[^0-9,.-]/g, '').replace(/\\./g, '').replace(',', '.');
+            var valor = texto.replace(/[^0-9,.-]/g, '').split('.').join('').replace(',', '.');
             if (!valor || valor === '-') return null;
             var n = Number(valor);
             return Number.isFinite(n) ? n : null;
