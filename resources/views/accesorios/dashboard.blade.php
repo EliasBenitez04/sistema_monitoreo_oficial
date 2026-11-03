@@ -405,26 +405,24 @@
                             <th class="text-right">Margen</th>
                         </tr></thead>
                         <tbody>
-                            @if($detalleCostos->isEmpty())
+                            @forelse($detalleCostos as $productoCosto)
+                                <?php
+                                    $gananciaProducto = $productoCosto->costo_estimado !== null
+                                        ? (float) $productoCosto->importe - (float) $productoCosto->costo_estimado
+                                        : null;
+                                ?>
+                                <tr>
+                                    <td><a href="{{ route('accesorios.show', $productoCosto->id) }}" class="font-weight-bold">{{ $productoCosto->codigo }}</a><small class="d-block text-muted">{{ $productoCosto->descripcion }}</small></td>
+                                    <td class="text-right">{{ $whole($productoCosto->unidades) }}</td>
+                                    <td class="text-right">{{ $money($productoCosto->costo_promedio) }}</td>
+                                    <td class="text-right">{{ $money($productoCosto->costo_estimado) }}</td>
+                                    <td class="text-right">{{ $money($productoCosto->importe) }}</td>
+                                    <td class="text-right {{ $gananciaProducto !== null && $gananciaProducto < 0 ? 'text-danger' : '' }}">{{ $money($gananciaProducto) }}</td>
+                                    <td class="text-right {{ $productoCosto->margen !== null && $productoCosto->margen < 20 ? 'text-danger' : '' }}">{{ $productoCosto->margen === null ? 'Sin dato' : number_format($productoCosto->margen, 1, ',', '.') . '%' }}</td>
+                                </tr>
+                            @empty
                                 <tr><td colspan="7" class="text-center p-4 text-muted">No se registran ventas para los filtros seleccionados.</td></tr>
-                            @else
-                                @foreach($detalleCostos as $productoCosto)
-                                    @php
-                                        $gananciaProducto = $productoCosto->costo_estimado !== null
-                                            ? (float) $productoCosto->importe - (float) $productoCosto->costo_estimado
-                                            : null;
-                                    @endphp
-                                    <tr>
-                                        <td><a href="{{ route('accesorios.show', $productoCosto->id) }}" class="font-weight-bold">{{ $productoCosto->codigo }}</a><small class="d-block text-muted">{{ $productoCosto->descripcion }}</small></td>
-                                        <td class="text-right">{{ $whole($productoCosto->unidades) }}</td>
-                                        <td class="text-right">{{ $money($productoCosto->costo_promedio) }}</td>
-                                        <td class="text-right">{{ $money($productoCosto->costo_estimado) }}</td>
-                                        <td class="text-right">{{ $money($productoCosto->importe) }}</td>
-                                        <td class="text-right {{ $gananciaProducto !== null && $gananciaProducto < 0 ? 'text-danger' : '' }}">{{ $money($gananciaProducto) }}</td>
-                                        <td class="text-right {{ $productoCosto->margen !== null && $productoCosto->margen < 20 ? 'text-danger' : '' }}">{{ $productoCosto->margen === null ? 'Sin dato' : number_format($productoCosto->margen, 1, ',', '.') . '%' }}</td>
-                                    </tr>
-                                @endforeach
-                            @endif
+                            @endforelse
                         </tbody>
                         <tfoot><tr>
                             <th>Total del período</th>
