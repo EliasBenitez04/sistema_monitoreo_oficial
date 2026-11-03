@@ -116,7 +116,7 @@
     <section class="acc-second-grid">
         <div class="acc-mini"><i class="fas fa-box-open"></i><div><span>Unidades compradas</span><strong>{{ $whole($comprasFiltradas->unidades) }}</strong><small>{{ $whole($comprasFiltradas->documentos) }} compras/FCO en alcance</small></div></div>
         <div class="acc-mini"><i class="fas fa-wallet"></i><div><span>Inversión de compras</span><strong>{{ $money($comprasFiltradas->inversion) }}</strong><small>No es costo de venta realizado</small></div></div>
-        <div class="acc-mini"><i class="fas fa-calculator"></i><div><span>Costo de ventas estimado</span><strong>{{ $money($costoEstimado) }}</strong><small>Por costo promedio de compra</small></div></div>
+        <div class="acc-mini"><i class="fas fa-calculator"></i><div><span>Costo de ventas estimado</span><strong>{{ $money($costoEstimado) }}</strong><small>Por costo promedio de compra</small><button type="button" class="acc-detail-link" data-toggle="modal" data-target="#accCostosModal"><i class="fas fa-list-ul"></i> Ver detalle de costos</button></div></div>
         <div class="acc-mini"><i class="fas fa-tags"></i><div><span>Descuentos registrados</span><strong>{{ $money($kpi->descuento) }}</strong><small>Según archivo de ventas</small></div></div>
         <div class="acc-mini acc-mini-warn"><i class="fas fa-truck"></i><div><span>En tránsito documental</span><strong>{{ $whole($remisiones->transito) }}</strong><small>Sin recepción, remisiones del período</small></div></div>
         <div class="acc-mini {{ $conStock && $productosCriticos > 0 ? 'acc-mini-warn' : '' }}">
@@ -369,6 +369,73 @@
     </div>
 </div>
 
+
+{{-- Detalle financiero: reutiliza las mismas cifras y filtros del ranking completo. --}}
+<div class="modal fade" id="accCostosModal" tabindex="-1" role="dialog" aria-labelledby="accCostosTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content acc-costos-content">
+            <div class="modal-header acc-costos-header">
+                <div>
+                    <h5 class="modal-title font-weight-bold" id="accCostosTitulo"><i class="fas fa-calculator mr-2"></i> Rentabilidad de accesorios por artículo</h5>
+                    <small>Ventas del {{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }} al {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }} · Según los filtros aplicados</small>
+                </div>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="acc-costos-summary">
+                    <div><span>Venta neta</span><strong>{{ $money($kpi->importe) }}</strong></div>
+                    <div><span>Costo de ventas estimado</span><strong>{{ $money($costoEstimado) }}</strong></div>
+                    <div><span>Ganancia bruta estimada</span><strong>{{ $money($gananciaEstimada) }}</strong></div>
+                    <div><span>Margen bruto estimado</span><strong>{{ $margenEstimado === null ? 'Sin dato' : number_format($margenEstimado, 1, ',', '.') . '%' }}</strong></div>
+                </div>
+                <div class="acc-costos-note"><i class="fas fa-info-circle"></i> Los costos se calculan con el promedio ponderado de todas las compras históricas de cada código. Las devoluciones se descuentan de las unidades y ventas netas. El FCO selecciona códigos, pero las ventas no se atribuyen a una factura de compra concreta. No es ganancia neta.</div>
+                <div class="acc-costos-table-wrap">
+                    <table class="table table-sm table-hover acc-costos-table">
+                        <thead><tr>
+                            <th>Código / artículo</th>
+                            <th class="text-right">Unid. netas</th>
+                            <th class="text-right">Costo prom. unit.</th>
+                            <th class="text-right">Costo vendido est.</th>
+                            <th class="text-right">Venta neta</th>
+                            <th class="text-right">Ganancia bruta est.</th>
+                            <th class="text-right">Margen</th>
+                        </tr></thead>
+                        <tbody>
+                            @forelse($rankingCompleto->filter(function ($fila) { return $fila->unidades != 0 || $fila->importe != 0; })->sortBy('codigo') as $fila)
+                                @php
+                                    $gananciaFila = $fila->costo_estimado !== null ? $fila->importe - $fila->costo_estimado : null;
+                                @endphp
+                                <tr>
+                                    <td><a href="{{ route('accesorios.show', $fila->id) }}" class="font-weight-bold">{{ $fila->codigo }}</a><small class="d-block text-muted">{{ $fila->descripcion }}</small></td>
+                                    <td class="text-right">{{ $whole($fila->unidades) }}</td>
+                                    <td class="text-right">{{ $money($fila->costo_promedio) }}</td>
+                                    <td class="text-right">{{ $money($fila->costo_estimado) }}</td>
+                                    <td class="text-right">{{ $money($fila->importe) }}</td>
+                                    <td class="text-right {{ $gananciaFila !== null && $gananciaFila < 0 ? 'text-danger' : '' }}">{{ $money($gananciaFila) }}</td>
+                                    <td class="text-right {{ $fila->margen !== null && $fila->margen < 20 ? 'text-danger' : '' }}">{{ $fila->margen === null ? 'Sin dato' : number_format($fila->margen, 1, ',', '.') . '%' }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="7" class="text-center p-4 text-muted">No se registran ventas para los filtros seleccionados.</td></tr>
+                            @endforelse
+                        </tbody>
+                        <tfoot><tr>
+                            <th>Total del período</th>
+                            <th class="text-right">{{ $whole($kpi->unidades) }}</th>
+                            <th class="text-right">—</th>
+                            <th class="text-right">{{ $money($costoEstimado) }}</th>
+                            <th class="text-right">{{ $money($kpi->importe) }}</th>
+                            <th class="text-right">{{ $money($gananciaEstimada) }}</th>
+                            <th class="text-right">{{ $margenEstimado === null ? 'Sin dato' : number_format($margenEstimado, 1, ',', '.') . '%' }}</th>
+                        </tr></tfoot>
+                    </table>
+                </div>
+                <small class="d-block mt-2 text-muted">Los artículos sin costo de compra conocido se muestran como «Sin dato»; no se les asigna costo cero. El margen por artículo se muestra solo cuando hay facturación neta positiva.</small>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @push('page_css')
@@ -575,6 +642,24 @@
     #accDetalleModal .acc-ajuste-form label{display:block;font-size:11px;font-weight:800;color:#244671;margin-bottom:5px}
     #accDetalleModal .acc-ajuste-form input{border:1px solid #b7cce6}
     #accDetalleModal .acc-ajuste-form input:focus{border-color:#3d79c4;box-shadow:0 0 0 3px rgba(50,105,189,.12)}
+
+    #accCostosModal .modal-dialog{max-width:min(1220px,97vw)}
+    #accCostosModal .acc-costos-content{border:0;border-radius:15px;overflow:hidden;box-shadow:0 20px 65px rgba(11,38,81,.27)}
+    #accCostosModal .acc-costos-header{background:linear-gradient(110deg,#113773,#1c5cb0);color:#fff;padding:20px 24px}
+    #accCostosModal .acc-costos-header small{color:#e1edff}
+    #accCostosModal .acc-costos-header .close{color:#fff;opacity:1;text-shadow:none}
+    #accCostosModal .modal-body{padding:20px 24px;max-height:75vh;overflow-y:auto}
+    #accCostosModal .acc-costos-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    #accCostosModal .acc-costos-summary>div{border:1px solid #dbe6f5;border-radius:10px;padding:12px;background:#f3f7ff}
+    #accCostosModal .acc-costos-summary span{display:block;color:#536a89;font-size:11px;font-weight:700}
+    #accCostosModal .acc-costos-summary strong{display:block;color:#123472;font-size:18px;margin-top:5px}
+    #accCostosModal .acc-costos-note{background:#eff5ff;border:1px solid #d8e5fb;border-radius:9px;color:#365477;padding:11px 13px;margin-bottom:14px;font-size:12px}
+    #accCostosModal .acc-costos-table-wrap{max-width:100%;overflow-x:auto;border:1px solid #d7e3f4;border-radius:10px}
+    #accCostosModal .acc-costos-table{min-width:960px;margin:0;font-size:12px}
+    #accCostosModal .acc-costos-table th{background:#e7f0fd;color:#143d77;padding:11px;white-space:nowrap}
+    #accCostosModal .acc-costos-table td{padding:10px 11px;vertical-align:middle}
+    #accCostosModal .acc-costos-table tfoot th{background:#133f81;color:#fff}
+    @media(max-width:750px){#accCostosModal .acc-costos-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#accCostosModal .modal-body{padding:14px}}
 </style>
 @endpush
 
