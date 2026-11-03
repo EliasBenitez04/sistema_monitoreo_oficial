@@ -11,6 +11,10 @@
     $bajaRentabilidad = $rankingCompleto->filter(function ($p) {
         return $p->unidades > 0 && $p->margen !== null && $p->margen < 20;
     })->sortBy('margen')->take(4);
+    // Preparar el detalle antes de pintar la tabla; no usar callbacks en @forelse.
+    $detalleCostos = $rankingCompleto->filter(function ($producto) {
+        return (int) $producto->unidades !== 0 || (float) $producto->importe != 0.0;
+    })->sortBy('codigo');
 @endphp
 <div id="accdash">
     <section class="acc-hero">
@@ -401,22 +405,26 @@
                             <th class="text-right">Margen</th>
                         </tr></thead>
                         <tbody>
-                            @forelse($rankingCompleto->filter(function ($fila) { return $fila->unidades != 0 || $fila->importe != 0; })->sortBy('codigo') as $fila)
-                                @php
-                                    $gananciaFila = $fila->costo_estimado !== null ? $fila->importe - $fila->costo_estimado : null;
-                                @endphp
-                                <tr>
-                                    <td><a href="{{ route('accesorios.show', $fila->id) }}" class="font-weight-bold">{{ $fila->codigo }}</a><small class="d-block text-muted">{{ $fila->descripcion }}</small></td>
-                                    <td class="text-right">{{ $whole($fila->unidades) }}</td>
-                                    <td class="text-right">{{ $money($fila->costo_promedio) }}</td>
-                                    <td class="text-right">{{ $money($fila->costo_estimado) }}</td>
-                                    <td class="text-right">{{ $money($fila->importe) }}</td>
-                                    <td class="text-right {{ $gananciaFila !== null && $gananciaFila < 0 ? 'text-danger' : '' }}">{{ $money($gananciaFila) }}</td>
-                                    <td class="text-right {{ $fila->margen !== null && $fila->margen < 20 ? 'text-danger' : '' }}">{{ $fila->margen === null ? 'Sin dato' : number_format($fila->margen, 1, ',', '.') . '%' }}</td>
-                                </tr>
-                            @empty
+                            @if($detalleCostos->isEmpty())
                                 <tr><td colspan="7" class="text-center p-4 text-muted">No se registran ventas para los filtros seleccionados.</td></tr>
-                            @endforelse
+                            @else
+                                @foreach($detalleCostos as $productoCosto)
+                                    @php
+                                        $gananciaProducto = $productoCosto->costo_estimado !== null
+                                            ? (float) $productoCosto->importe - (float) $productoCosto->costo_estimado
+                                            : null;
+                                    @endphp
+                                    <tr>
+                                        <td><a href="{{ route('accesorios.show', $productoCosto->id) }}" class="font-weight-bold">{{ $productoCosto->codigo }}</a><small class="d-block text-muted">{{ $productoCosto->descripcion }}</small></td>
+                                        <td class="text-right">{{ $whole($productoCosto->unidades) }}</td>
+                                        <td class="text-right">{{ $money($productoCosto->costo_promedio) }}</td>
+                                        <td class="text-right">{{ $money($productoCosto->costo_estimado) }}</td>
+                                        <td class="text-right">{{ $money($productoCosto->importe) }}</td>
+                                        <td class="text-right {{ $gananciaProducto !== null && $gananciaProducto < 0 ? 'text-danger' : '' }}">{{ $money($gananciaProducto) }}</td>
+                                        <td class="text-right {{ $productoCosto->margen !== null && $productoCosto->margen < 20 ? 'text-danger' : '' }}">{{ $productoCosto->margen === null ? 'Sin dato' : number_format($productoCosto->margen, 1, ',', '.') . '%' }}</td>
+                                    </tr>
+                                @endforeach
+                            @endif
                         </tbody>
                         <tfoot><tr>
                             <th>Total del período</th>
