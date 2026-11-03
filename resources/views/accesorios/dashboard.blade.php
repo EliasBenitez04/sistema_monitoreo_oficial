@@ -339,17 +339,7 @@
             </div>
         </div>
     </section>
-
-    <div class="acc-footer-note">
-        <i class="fas fa-info-circle"></i>
-        <div><strong>Criterios de interpretación.</strong>
-            Ventas e importes provienen de <code>ventas</code>; compras y costos de <code>accesorios_compras</code>; logística de <code>ot_logistica_remisiones</code>.
-            El stock se recalcula desde cero al abrir el panel, con el historial de remisiones y ventas desde el primer registro hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}. No se utiliza un Excel externo de stock ni se suman compras/FCO al saldo. Envíos pendientes reducen el stock del origen, pero no aumentan el del destino hasta su fecha de recepción. Saldos negativos se muestran para revisión. El cálculo supone que las importaciones históricas son completas.
-            El costo de las unidades vendidas y el margen se <strong>estiman</strong> con costo promedio ponderado de todas las compras del código, sin asignación por FCO. Reposición y cobertura requieren ventas en los últimos 30 días terminados en {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}.
-            Las remisiones pueden volver a transportar la misma unidad, por eso sus totales no equivalen a stock. No se incluyen gastos operativos ni se calcula utilidad neta real.
-        </div>
-    </div>
-</div>
+ </div>
 
 
 <div class="modal fade" id="accDetalleModal" data-url="{{ route('accesorios.detalle.resumen') }}" tabindex="-1" role="dialog" aria-labelledby="accDetalleTitulo" aria-hidden="true">
