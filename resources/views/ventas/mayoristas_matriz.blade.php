@@ -14,7 +14,7 @@
     @if(!empty($sinFuentes))
       <div class="alert alert-warning">No se encontró la tabla ventas. Revisá la importación antes de consultar este informe.</div>
     @else
-      @if(session('success'))      @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+      @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
       @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
       <form method="GET" action="{{ route('ventas.mayoristas.index') }}" class="card may2-card p-3 mb-3">
         <div class="d-flex flex-wrap align-items-end" style="gap:12px">
