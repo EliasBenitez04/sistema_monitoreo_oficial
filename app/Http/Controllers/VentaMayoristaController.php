@@ -49,7 +49,9 @@ class VentaMayoristaController extends Controller
     public static function ventas()
     {
         return DB::table('ventas as v')
-            ->whereRaw("UPPER(BTRIM(REGEXP_REPLACE(COALESCE(v.local,''), '[[:space:]]+', ' ', 'g'))) IN ('COMERCIAL MATRIZ', 'MATRIZ')");
+            // Sucursal/depósito 25. El campo CLI COD es dato importado del cliente
+            // y NO debe utilizarse para decidir a qué local pertenece la venta.
+            ->whereRaw("UPPER(BTRIM(REGEXP_REPLACE(COALESCE(v.local,''), '[[:space:]]+', ' ', 'g'))) IN ('COMERCIAL MATRIZ', 'MATRIZ', '25', '25 - COMERCIAL MATRIZ', '25-COMERCIAL MATRIZ', '25 COMERCIAL MATRIZ', '25 - MATRIZ', '25-MATRIZ', '25 MATRIZ')");
     }
 
     public static function rango(string $mes): array
