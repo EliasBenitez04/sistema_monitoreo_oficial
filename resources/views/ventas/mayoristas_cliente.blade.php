@@ -7,7 +7,7 @@
       <small class="text-uppercase text-primary font-weight-bold" style="letter-spacing:1px">COMERCIAL MATRIZ · CLIENTES MAYORISTAS</small>
       <h2 class="mt-1 mb-1"><i class="fas fa-user-tag mr-2 text-primary"></i>{{ $nombreCliente !== '' ? $nombreCliente : 'Cliente sin nombre' }}</h2>
       <div class="text-muted">
-        {{ $codigoCliente !== '' ? 'Código: '.$codigoCliente.' · ' : 'Sin código de cliente · ' }}
+        {{ $codigoCliente !== '' && $codigoCliente !== '25' ? 'Referencia importada: '.$codigoCliente.' · ' : 'Depósito 25 · ' }}
         Facturas del {{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }}
         al {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}
       </div>
