@@ -5,95 +5,16 @@
     <div class="d-flex align-items-center justify-content-between flex-wrap mb-3">
       <div>
         <h2 class="mb-1"><i class="fas fa-file-invoice-dollar text-primary mr-2"></i>Ventas mayoristas · COMERCIAL MATRIZ</h2>
-        <p class="text-muted mb-0">Facturas reales y transferencias recibidas desde locales y Casa Central. Distribución referencial sin conciliación.</p>
+        <p class="text-muted mb-0">Seguimiento de ventas reales registradas en el depósito 25. Las remisiones de otros locales no se cuentan como ventas.</p>
       </div>
       <div class="d-flex align-items-center mt-2">
-        <div class="badge badge-primary p-2 mt-2">Sucursal: 25 · COMERCIAL MATRIZ</div>
+        <div class="badge badge-primary p-2 mt-2">Depósito 25 · COMERCIAL MATRIZ</div>
       </div>
     </div>
     @if(!empty($sinFuentes))
-      <div class="alert alert-warning">No se encontraron las tablas ventas y remisiones. Verificá los importadores y las migraciones antes de continuar.</div>
+      <div class="alert alert-warning">No se encontró la tabla ventas. Revisá la importación antes de consultar este informe.</div>
     @else
-      @php
-        $clienteFiltro = trim((string) request('cliente', ''));
-        // Mantener clientes diferentes aun cuando el código se repita o falte.
-        // Las fechas nunca limitan las opciones disponibles.
-        $clientesMatriz = \App\Http\Controllers\VentaMayoristaController::ventas()
-            ->selectRaw("BTRIM(COALESCE(v.cli_cod,'')) as codigo")
-            ->selectRaw("BTRIM(COALESCE(v.cliente,'')) as nombre")
-            ->distinct()->get()
-            ->filter(function ($c) { return $c->codigo !== '' || $c->nombre !== ''; })
-            ->map(function ($c) {
-                $c->valor = 'CLIENTE:'.base64_encode(json_encode([$c->codigo, $c->nombre]));
-                return $c;
-            })->sortBy(function ($c) { return mb_strtoupper($c->nombre.' '.$c->codigo); })->values();
-
-        // Compatibilidad con enlaces previos que pasaban el código sin prefijo.
-        $clienteCodigo = null;
-        $clienteNombre = null;
-        if (strpos($clienteFiltro, 'CLIENTE:') === 0) {
-            $partes = json_decode(base64_decode(substr($clienteFiltro, 8), true) ?: '', true);
-            if (is_array($partes) && count($partes) === 2 && is_string($partes[0]) && is_string($partes[1])) {
-                $clienteCodigo = trim($partes[0]);
-                $clienteNombre = trim($partes[1]);
-            } else {
-                $clienteFiltro = '';
-            }
-        } elseif ($clienteFiltro !== '') {
-            $clienteCodigo = $clienteFiltro;
-        }
-
-        if ($clienteFiltro !== '') {
-            $facturas = $facturas->filter(function ($f) use ($clienteCodigo, $clienteNombre) {
-                $codigo = trim((string) $f->cli_cod);
-                $nombre = trim((string) $f->cliente);
-                return $clienteNombre === null
-                    ? ($codigo === $clienteCodigo || ($codigo === '' && $nombre === $clienteCodigo))
-                    : ($codigo === $clienteCodigo && $nombre === $clienteNombre);
-            })->values();
-
-            $ventasCliente = \App\Http\Controllers\VentaMayoristaController::ventas()
-                ->whereBetween('v.fecha', [$desde, $hasta])
-                ->where(function ($q) use ($clienteCodigo, $clienteNombre) {
-                    if ($clienteNombre !== null) {
-                        $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
-                          ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteNombre]);
-                    } else {
-                        $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
-                          ->orWhere(function ($sinCodigo) use ($clienteCodigo) {
-                              $sinCodigo->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ''")
-                                  ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteCodigo]);
-                          });
-                    }
-                });
-
-            $resumen = (clone $ventasCliente)
-                ->selectRaw('COUNT(*) as lineas, COUNT(DISTINCT v.comprobante) as comprobantes')
-                ->selectRaw('COALESCE(SUM(CASE WHEN v.cantidad>0 THEN v.cantidad ELSE 0 END),0) as brutas')
-                ->selectRaw('COALESCE(SUM(CASE WHEN v.cantidad<0 THEN -v.cantidad ELSE 0 END),0) as notas_credito')
-                ->selectRaw('COALESCE(SUM(v.cantidad),0) as unidades_netas')
-                ->selectRaw('COALESCE(SUM(v.p_lista),0) as importe_lista')
-                ->selectRaw('COALESCE(SUM(v.descuento),0) as descuentos')
-                ->selectRaw('COALESCE(SUM(v.p_venta),0) as importe_neto')->first();
-            $resumen->asignadas = (int) $facturas->sum('asignadas');
-            $resumen->pendientes = (int) $facturas->sum('por_asignar');
-
-            $ventasDetalle = (clone $ventasCliente)
-                ->select('v.id','v.fecha','v.comprobante','v.tipo_comprobante','v.cli_cod','v.cliente','v.vendedor','v.codigo','v.descripcion','v.cantidad','v.p_lista','v.descuento','v.p_venta')
-                ->orderBy('v.fecha','desc')->orderBy('v.comprobante','desc')->orderBy('v.codigo')->orderBy('v.id')
-                ->paginate(100)->appends(request()->only(['desde','hasta','cliente']));
-
-            $porCodigo = (clone $ventasCliente)
-                ->selectRaw('UPPER(BTRIM(v.codigo)) as codigo')
-                ->selectRaw('MAX(v.descripcion) as descripcion')
-                ->selectRaw('SUM(CASE WHEN v.cantidad>0 THEN v.cantidad ELSE 0 END) as ventas_brutas')
-                ->selectRaw('SUM(CASE WHEN v.cantidad<0 THEN -v.cantidad ELSE 0 END) as devoluciones')
-                ->selectRaw('SUM(v.cantidad) as ventas_netas')
-                ->selectRaw('SUM(v.p_venta) as total_neto')
-                ->groupByRaw('UPPER(BTRIM(v.codigo))')->orderByRaw('SUM(v.cantidad) DESC')->get();
-        }
-      @endphp
-      @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+      @if(session('success'))      @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
       @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
       <form method="GET" action="{{ route('ventas.mayoristas.index') }}" class="card may2-card p-3 mb-3">
         <div class="d-flex flex-wrap align-items-end" style="gap:12px">
@@ -105,12 +26,13 @@
               <option value="">Todos los clientes</option>
               @foreach($clientesMatriz as $clienteMatriz)
                 <option value="{{ $clienteMatriz->valor }}" {{ $clienteFiltro === $clienteMatriz->valor ? 'selected' : '' }}>
-                  {{ $clienteMatriz->nombre !== '' ? $clienteMatriz->nombre : 'Sin nombre' }}{{ $clienteMatriz->codigo !== '' ? ' · '.$clienteMatriz->codigo : '' }}
+                  {{ $clienteMatriz->nombre !== '' ? $clienteMatriz->nombre : 'Sin nombre' }}{{ $clienteMatriz->codigo !== '' && $clienteMatriz->codigo !== '25' ? ' · Ref. '.$clienteMatriz->codigo : '' }}
                 </option>
               @endforeach
             </select>
           </div>
           <div><button class="btn btn-primary"><i class="fas fa-search mr-1"></i>Consultar ventas</button></div>
+          <div><a class="btn btn-outline-success" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'cliente'=>$clienteFiltro,'exportar'=>'ventas']) }}"><i class="fas fa-file-csv mr-1"></i>Exportar ventas filtradas</a></div>
           {{-- <div class="d-flex align-items-center flex-wrap" style="gap:7px">
             <a class="btn btn-success" href="{{ route('ventas.mayoristas.index',['desde'=>$desde,'hasta'=>$hasta,'exportar'=>'ventas']) }}"
                title="Descargar las 12 columnas originales compatibles con Importar ventas">
@@ -137,11 +59,15 @@
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Unidades netas vendidas</small><strong>{{ number_format($resumen->unidades_netas,0,',','.') }}</strong><span>{{ number_format($resumen->brutas,0,',','.') }} brutas · {{ number_format($resumen->notas_credito,0,',','.') }} notas de crédito</span></div></div>
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Importe de lista</small><strong>Gs {{ number_format($resumen->importe_lista,0,',','.') }}</strong><span>Descuentos: Gs {{ number_format($resumen->descuentos,0,',','.') }}</span></div></div>
         <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Venta neta registrada</small><strong>Gs {{ number_format($resumen->importe_neto,0,',','.') }}</strong><span>{{ number_format($resumen->lineas,0,',','.') }} líneas de venta importadas</span></div></div>
+        <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Facturas de venta</small><strong>{{ number_format($metricas->tickets,0,',','.') }}</strong><span>{{ number_format($metricas->clientes,0,',','.') }} clientes con movimientos</span></div></div>
+        <div class="col-lg-4 col-sm-6 mb-3"><div class="may2-kpi"><small>Ticket promedio</small><strong>Gs {{ number_format($metricas->ticket_promedio,0,',','.') }}</strong><span>Venta neta / facturas de venta (sin NC)</span></div></div>
+        <div class="col-lg-4 col-sm-6 mb-3"><div class="may2-kpi"><small>Unidades por factura</small><strong>{{ number_format($metricas->unidades_ticket,1,',','.') }}</strong><span>Unidades netas / facturas de venta</span></div></div>
+        <div class="col-lg-4 col-sm-6 mb-3"><div class="may2-kpi"><small>Descuento sobre lista</small><strong>{{ number_format($metricas->descuento_pct,1,',','.') }}%</strong><span>Descuentos / importe de lista</span></div></div>
         {{-- <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div> --}}
       </div>
         @php
           $actividadClientes = in_array(request('actividad_clientes'), ['todos','periodo','sin_periodo','sin_recientes'], true)
-              ? request('actividad_clientes') : 'todos';
+              ? request('actividad_clientes') : ($clienteFiltro !== '' ? 'todos' : 'periodo');
           $topClientesFiltrados = $topClientes->filter(function ($c) use ($actividadClientes) {
               if ($actividadClientes === 'periodo') return $c->con_movimientos_periodo;
               if ($actividadClientes === 'sin_periodo') return !$c->con_movimientos_periodo;
@@ -171,8 +97,8 @@
           <i class="fas fa-calendar-alt text-primary mr-1"></i>
           <strong>Venta y tickets:</strong> del {{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }} al
           {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}, netos de devoluciones.
-          <strong>Última factura y frecuencia:</strong> historial disponible hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }},
-          independientemente del filtro de cliente. Un cliente histórico sin movimientos en este período muestra cero en sus indicadores del período.
+          <strong>Última factura y frecuencia:</strong> historial hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}.
+          Por defecto se muestran clientes con movimientos en el período; «Todos los históricos» permite revisar los inactivos.
         </div>
 
         <div class="may2-client-filters px-3 py-2 d-flex flex-wrap" style="gap:6px">
@@ -202,7 +128,7 @@
                   <td>
                     <strong>{{ $clienteTop->nombre !== '' ? $clienteTop->nombre : 'SIN NOMBRE REGISTRADO' }}</strong>
                     <small class="d-block text-muted">
-                      {{ $clienteTop->codigo !== '' ? 'Código: '.$clienteTop->codigo : 'Sin código de cliente' }}
+                      {{ $clienteTop->codigo !== '' && $clienteTop->codigo !== '25' ? 'Referencia importada: '.$clienteTop->codigo : 'Depósito 25 · cliente identificado por nombre' }}
                       @if($clienteTop->notas_credito > 0)
                         · {{ $clienteTop->notas_credito }} NC del período
                       @endif
@@ -268,35 +194,7 @@
           El número de la última factura abre su detalle y <strong>Ver</strong> muestra los comprobantes del cliente.
         </div>
       </div>
-      @php
-        // Regla comercial: FAMILY GROUP se atribuye a Casa Central.
-        // Ninguna otra venta obtiene origen por simple prorrateo.
-        $consultaOrigen = \App\Http\Controllers\VentaMayoristaController::ventas()
-            ->whereBetween('v.fecha', [$desde, $hasta]);
-        if ($clienteFiltro !== '') {
-            $consultaOrigen->where(function ($q) use ($clienteCodigo, $clienteNombre) {
-                if ($clienteNombre !== null) {
-                    $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
-                      ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteNombre]);
-                } else {
-                    $q->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$clienteCodigo])
-                      ->orWhere(function ($sinCodigo) use ($clienteCodigo) {
-                          $sinCodigo->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ''")
-                              ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$clienteCodigo]);
-                      });
-                }
-            });
-        }
-        $familiaResumen = (clone $consultaOrigen)
-            ->whereRaw("UPPER(BTRIM(COALESCE(v.cliente,''))) LIKE 'FAMILY GROUP%'")
-            ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad > 0 THEN v.cantidad ELSE 0 END),0) as brutas")
-            ->selectRaw("COALESCE(SUM(CASE WHEN v.cantidad < 0 THEN -v.cantidad ELSE 0 END),0) as devoluciones")
-            ->first();
-        $familiaBrutas = (int) ($familiaResumen->brutas ?? 0);
-        $familiaDevoluciones = (int) ($familiaResumen->devoluciones ?? 0);
-        $otrasBrutas = max(0, (int) $resumen->brutas - $familiaBrutas);
-      @endphp
-      {{-- <div class="card may2-card mb-3">
+      {{-- <div class="card may2-card mb-3">      {{-- <div class="card may2-card mb-3">
         <div class="card-header bg-white"><strong><i class="fas fa-chart-pie mr-1 text-primary"></i>Origen comercial de ventas (reglas declaradas)</strong></div>
         <div class="card-body">
           <p class="small text-muted mb-3">Las ventas de FAMILY GROUP se clasifican como provenientes de Casa Central → Matriz, según la regla comercial indicada. Las ventas de otros clientes quedan sin origen determinado hasta contar con otra regla o evidencia. Este informe no asocia facturas a remisiones ni modifica registros.</p>
@@ -324,13 +222,13 @@
         </tbody></table></div><div class="card-footer bg-white">{{ $remisionesDocumentos->appends(['cliente'=>$clienteFiltro])->links() }}</div></details>
         <div class="card-footer bg-white text-muted small"><strong>Importante:</strong> las cantidades por sucursal y remisión son transferencias reales hacia MATRIZ. No prueban a qué factura pertenece cada prenda ni representan stock físico disponible.</div>
       </div> --}}
-      <div class="card may2-card mb-3"><div class="card-header bg-white"><strong><i class="fas fa-receipt mr-1 text-primary"></i>2. Facturas / comprobantes de COMERCIAL MATRIZ</strong><small class="d-block text-muted">Comprobantes reales del período. Consultá las cantidades y los importes; no se efectúa conciliación documental.</small></div><div class="table-responsive"><table class="table table-sm table-hover may2-table mb-0"><thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Tipo</th><th class="text-right">Unidades brutas</th><th class="text-right">Neto unidades</th><th class="text-right">Gs netos</th></tr></thead><tbody>
-        @forelse($facturas as $f)<tr><td>{{ date('d/m/Y',strtotime($f->fecha)) }}</td><td class="font-weight-bold">{{ $f->comprobante }}</td><td>{{ $f->cliente ?: $f->cli_cod }}</td><td>{{ $f->tipo_comprobante }}</td><td class="text-right">{{ number_format($f->brutas,0,',','.') }}</td><td class="text-right">{{ number_format($f->netas,0,',','.') }}</td><td class="text-right">Gs {{ number_format($f->pvta,0,',','.') }}</td></tr>@empty<tr><td colspan="7" class="text-center text-muted py-3">No hay comprobantes de COMERCIAL MATRIZ para el cliente y período seleccionados.</td></tr>@endforelse
+      <div class="card may2-card mb-3"><div class="card-header bg-white"><strong><i class="fas fa-receipt mr-1 text-primary"></i>2. Facturas / comprobantes de COMERCIAL MATRIZ</strong><small class="d-block text-muted">Solo facturas registradas en COMERCIAL MATRIZ (depósito 25), según el período y cliente seleccionados.</small></div><div class="table-responsive"><table class="table table-sm table-hover may2-table mb-0"><thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Tipo</th><th class="text-right">Unidades brutas</th><th class="text-right">Neto unidades</th><th class="text-right">Gs netos</th></tr></thead><tbody>
+        @forelse($facturas as $f)<tr><td>{{ date('d/m/Y',strtotime($f->fecha)) }}</td><td class="font-weight-bold"><a href="{{ route('ventas.mayoristas.factura', ['clave'=>$f->clave,'mes'=>substr($f->fecha,0,7),'desde'=>$desde,'hasta'=>$hasta]) }}">{{ $f->comprobante }}</a></td><td>{{ $f->cliente ?: $f->cli_cod }}</td><td>{{ $f->tipo_comprobante }}</td><td class="text-right">{{ number_format($f->brutas,0,',','.') }}</td><td class="text-right">{{ number_format($f->netas,0,',','.') }}</td><td class="text-right">Gs {{ number_format($f->pvta,0,',','.') }}</td></tr>@empty<tr><td colspan="7" class="text-center text-muted py-3">No hay comprobantes de COMERCIAL MATRIZ para el cliente y período seleccionados.</td></tr>@endforelse
         </tbody></table></div></div>
-      <details class="card may2-card mb-3"><summary class="card-header bg-white may2-summary"><strong><i class="fas fa-list mr-1 text-primary"></i>3. Todas las líneas vendidas (detalle de cada talle)</strong><small class="d-block text-muted">Fecha, factura, cliente, vendedor, código completo, descripción, unidades y montos. Se muestran 100 líneas por página; exportación incluye todos los registros.</small></summary><div class="table-responsive" style="max-height:570px;overflow:auto"><table class="table table-sm table-striped may2-table mb-0"><thead><tr><th>Fecha</th><th>Factura</th><th>Tipo</th><th>Cliente / código</th><th>Vendedor</th><th>Código completo</th><th>Descripción</th><th class="text-right">Cant.</th><th class="text-right">Lista Gs</th><th class="text-right">Descuento Gs</th><th class="text-right">Venta Gs</th></tr></thead><tbody>
-        @foreach($ventasDetalle as $v)<tr><td>{{ date('d/m/Y',strtotime($v->fecha)) }}</td><td>{{ $v->comprobante }}</td><td>{{ $v->tipo_comprobante }}</td><td>{{ $v->cliente }}<small class="d-block text-muted">{{ $v->cli_cod }}</small></td><td>{{ $v->vendedor }}</td><td class="font-weight-bold">{{ $v->codigo }}</td><td>{{ $v->descripcion }}</td><td class="text-right">{{ number_format($v->cantidad,0,',','.') }}</td><td class="text-right">{{ number_format($v->p_lista,2,',','.') }}</td><td class="text-right">{{ number_format($v->descuento,2,',','.') }}</td><td class="text-right">{{ number_format($v->p_venta,2,',','.') }}</td></tr>@endforeach
+      <details class="card may2-card mb-3"><summary class="card-header bg-white may2-summary"><strong><i class="fas fa-list mr-1 text-primary"></i>3. Todas las líneas vendidas (detalle de cada talle)</strong><small class="d-block text-muted">Fecha, factura, cliente, vendedor, código completo, descripción, unidades y montos. Se muestran 100 líneas por página; exportación incluye todos los registros.</small></summary><div class="table-responsive" style="max-height:570px;overflow:auto"><table class="table table-sm table-striped may2-table mb-0"><thead><tr><th>Fecha</th><th>Factura</th><th>Tipo</th><th>Cliente</th><th>Vendedor</th><th>Código completo</th><th>Descripción</th><th class="text-right">Cant.</th><th class="text-right">Lista Gs</th><th class="text-right">Descuento Gs</th><th class="text-right">Venta Gs</th></tr></thead><tbody>
+        @foreach($ventasDetalle as $v)<tr><td>{{ date('d/m/Y',strtotime($v->fecha)) }}</td><td>{{ $v->comprobante }}</td><td>{{ $v->tipo_comprobante }}</td><td>{{ $v->cliente }}@if(trim((string) $v->cli_cod) !== '' && trim((string) $v->cli_cod) !== '25')<small class="d-block text-muted">Ref.: {{ $v->cli_cod }}</small>@endif</td><td>{{ $v->vendedor }}</td><td class="font-weight-bold">{{ $v->codigo }}</td><td>{{ $v->descripcion }}</td><td class="text-right">{{ number_format($v->cantidad,0,',','.') }}</td><td class="text-right">{{ number_format($v->p_lista,2,',','.') }}</td><td class="text-right">{{ number_format($v->descuento,2,',','.') }}</td><td class="text-right">{{ number_format($v->p_venta,2,',','.') }}</td></tr>@endforeach
         </tbody></table></div><div class="card-footer bg-white">{{ $ventasDetalle->appends(['cliente'=>$clienteFiltro])->links() }}</div></details>
-      <details class="card may2-card mb-4"><summary class="card-header bg-white may2-summary"><strong><i class="fas fa-barcode mr-1 text-primary"></i>4. Totales vendidos por código y talle</strong><small class="d-block text-muted">Consolidado de unidades y montos de COMERCIAL MATRIZ. Los totales son ventas reales; la distribución por origen mostrada arriba es solo una estimación.</small></summary><div class="table-responsive" style="max-height:480px;overflow:auto"><table class="table table-sm may2-table mb-0"><thead><tr><th>Código completo</th><th>Artículo</th><th class="text-right">Brutas</th><th class="text-right">NC / devoluciones</th><th class="text-right">Netas</th><th class="text-right">Importe neto Gs</th></tr></thead><tbody>@foreach($porCodigo as $c)<tr><td class="font-weight-bold">{{ $c->codigo }}</td><td>{{ $c->descripcion }}</td><td class="text-right">{{ number_format($c->ventas_brutas,0,',','.') }}</td><td class="text-right">{{ number_format($c->devoluciones,0,',','.') }}</td><td class="text-right">{{ number_format($c->ventas_netas,0,',','.') }}</td><td class="text-right">{{ number_format($c->total_neto,2,',','.') }}</td></tr>@endforeach</tbody></table></div></details>
+      <details class="card may2-card mb-4"><summary class="card-header bg-white may2-summary"><strong><i class="fas fa-barcode mr-1 text-primary"></i>4. Totales vendidos por código y talle</strong><small class="d-block text-muted">Consolidado exclusivamente de ventas reales del depósito 25, respetando fechas y cliente seleccionado.</small></summary><div class="table-responsive" style="max-height:480px;overflow:auto"><table class="table table-sm may2-table mb-0"><thead><tr><th>Código completo</th><th>Artículo</th><th class="text-right">Brutas</th><th class="text-right">NC / devoluciones</th><th class="text-right">Netas</th><th class="text-right">Importe neto Gs</th></tr></thead><tbody>@foreach($porCodigo as $c)<tr><td class="font-weight-bold">{{ $c->codigo }}</td><td>{{ $c->descripcion }}</td><td class="text-right">{{ number_format($c->ventas_brutas,0,',','.') }}</td><td class="text-right">{{ number_format($c->devoluciones,0,',','.') }}</td><td class="text-right">{{ number_format($c->ventas_netas,0,',','.') }}</td><td class="text-right">{{ number_format($c->total_neto,2,',','.') }}</td></tr>@endforeach</tbody></table></div></details>
     @endif
   </div>
 </section>
