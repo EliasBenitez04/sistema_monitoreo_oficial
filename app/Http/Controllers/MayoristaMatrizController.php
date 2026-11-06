@@ -144,44 +144,73 @@ class MayoristaMatrizController extends Controller
 
     public function index(Request $request)
     {
-        if (!Schema::hasTable('ventas') || !Schema::hasTable('ot_logistica_remisiones')) {
+        if (!Schema::hasTable('ventas')) {
             return view('ventas.mayoristas_matriz', ['sinFuentes' => true]);
         }
 
         list($desde, $hasta) = $this->fechas($request);
+        // Todos los datos visibles provienen de ventas del depósito 25.
+        // Las transferencias y vínculos no forman parte del informe comercial.
+        $facturasTodas = $this->facturasEntre($desde, $hasta);
+        $historicas = VentaMayoristaController::facturasRango(null, $hasta);
+        $todosClientes = MayoristaTopClientes::ranking($facturasTodas, $hasta, $historicas);
+
+        // El selector conserva el histórico completo de COMERCIAL MATRIZ,
+        // aunque un cliente no haya comprado en el período consultado.
+        $clientesMatriz = VentaMayoristaController::ventas()
+            ->selectRaw("BTRIM(COALESCE(v.cli_cod,'')) as codigo")
+            ->selectRaw("BTRIM(COALESCE(v.cliente,'')) as nombre")
+            ->distinct()->get()
+            ->filter(function ($fila) {
+                return $fila->codigo !== '' || $fila->nombre !== '';
+            })->map(function ($fila) {
+                $fila->valor = MayoristaTopClientes::token((string) $fila->codigo, (string) $fila->nombre);
+                return $fila;
+            })->sortBy(function ($fila) {
+                return mb_strtoupper($fila->nombre.' '.$fila->codigo);
+            })->values();
+
+        $clienteFiltro = trim((string) $request->query('cliente', ''));
+        $identidadCliente = null;
+        if ($clienteFiltro !== '') {
+            $identidadCliente = MayoristaTopClientes::identidad($clienteFiltro);
+            if ($identidadCliente === null) {
+                // Enlaces antiguos enviados por nombre, no por token.
+                // No interpretar "25" como cliente: es el depósito.
+                $anterior = $clientesMatriz->first(function ($fila) use ($clienteFiltro) {
+                    return mb_strtoupper($fila->nombre) === mb_strtoupper($clienteFiltro);
+                });
+                abort_unless($anterior, 422, 'Seleccioná un cliente de COMERCIAL MATRIZ.');
+                $identidadCliente = [(string) $anterior->codigo, (string) $anterior->nombre];
+                $clienteFiltro = $anterior->valor;
+            }
+        }
+
+        $facturas = $facturasTodas;
+        $topClientes = $todosClientes;
+        $ventasBase = VentaMayoristaController::ventas()->whereBetween('v.fecha', [$desde, $hasta]);
+        if ($identidadCliente !== null) {
+            list($codigoCliente, $nombreCliente) = $identidadCliente;
+            $facturas = MayoristaTopClientes::seleccionar($facturasTodas, $codigoCliente, $nombreCliente);
+            $topClientes = $todosClientes->filter(function ($fila) use ($clienteFiltro) {
+                return $fila->token === $clienteFiltro;
+            })->values();
+            $ventasBase->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$codigoCliente])
+                ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$nombreCliente]);
+        }
+
         if ($request->query('exportar') === 'ventas') {
-            return $this->exportarVentas($desde, $hasta);
+            return $this->exportarVentas($desde, $hasta, $identidadCliente);
         }
         if ($request->query('exportar') === 'historico') {
             return $this->exportarVentas(null, null);
         }
         if ($request->query('exportar') === 'auditoria') {
-            return $this->exportarVentasAuditoria($desde, $hasta);
+            return $this->exportarVentasAuditoria($desde, $hasta, $identidadCliente);
         }
-        $facturas = $this->facturasEntre($desde, $hasta);
-        // Ranking por comprobante agrupado, NO por líneas de venta.
-        // Se calcula antes del filtro visual de cliente, para mostrar
-        // los principales clientes de todo el período consultado.
-        // El ranking financiero respeta el período; la frecuencia se calcula
-        // con todo el historial importado hasta la fecha final seleccionada.
-        // Así un cliente que compró en agosto/septiembre no queda
-        // artificialmente como "ocasional" en el filtro de octubre.
-        $historialClientes = VentaMayoristaController::facturasRango(null, $hasta);
-        $topClientes = MayoristaTopClientes::ranking($facturas, $hasta, $historialClientes);
-        $vinculadas = $this->vinculos($facturas->pluck('clave'));
 
-        $facturas->each(function ($f) use ($vinculadas) {
-            $f->asignadas = (int) ($vinculadas[$f->clave] ?? 0);
-            $f->por_asignar = max(0, (int) $f->brutas - $f->asignadas);
-            $f->estado_cruce = (int) $f->brutas === 0 ? 'NOTA DE CRÉDITO'
-                : ($f->por_asignar === 0 ? 'ASIGNADA' : ($f->asignadas > 0 ? 'PARCIAL' : 'SIN ASIGNAR'));
-        });
-
-        $this->sugerirConciliacion($facturas, $hasta);
-
-        $resumen = VentaMayoristaController::ventas()
-            ->whereBetween('v.fecha', [$desde, $hasta])
-            ->selectRaw('COUNT(*) as lineas, COUNT(DISTINCT v.comprobante) as comprobantes')
+        $resumen = (clone $ventasBase)
+            ->selectRaw('COUNT(*) as lineas')
             ->selectRaw('COALESCE(SUM(CASE WHEN v.cantidad>0 THEN v.cantidad ELSE 0 END),0) as brutas')
             ->selectRaw('COALESCE(SUM(CASE WHEN v.cantidad<0 THEN -v.cantidad ELSE 0 END),0) as notas_credito')
             ->selectRaw('COALESCE(SUM(v.cantidad),0) as unidades_netas')
@@ -189,21 +218,15 @@ class MayoristaMatrizController extends Controller
             ->selectRaw('COALESCE(SUM(v.descuento),0) as descuentos')
             ->selectRaw('COALESCE(SUM(v.p_venta),0) as importe_neto')->first();
 
-        $resumen->asignadas = (int) $facturas->sum('asignadas');
-        $resumen->pendientes = (int) $facturas->sum('por_asignar');
-
-        // No truncar datos: paginación real con totales calculados SIN paginar.
-        $ventasDetalle = VentaMayoristaController::ventas()
-            ->whereBetween('v.fecha', [$desde, $hasta])
+        $ventasDetalle = (clone $ventasBase)
             ->select('v.id','v.fecha','v.comprobante','v.tipo_comprobante',
                 'v.cli_cod','v.cliente','v.vendedor','v.codigo','v.descripcion',
                 'v.cantidad','v.p_lista','v.descuento','v.p_venta')
             ->orderBy('v.fecha', 'desc')->orderBy('v.comprobante','desc')
             ->orderBy('v.codigo')->orderBy('v.id')
-            ->paginate(100)->appends($request->only(['desde','hasta']));
+            ->paginate(100)->appends($request->only(['desde','hasta','cliente']));
 
-        $porCodigo = VentaMayoristaController::ventas()
-            ->whereBetween('v.fecha', [$desde, $hasta])
+        $porCodigo = (clone $ventasBase)
             ->selectRaw('UPPER(BTRIM(v.codigo)) as codigo')
             ->selectRaw('MAX(v.descripcion) as descripcion')
             ->selectRaw('SUM(CASE WHEN v.cantidad>0 THEN v.cantidad ELSE 0 END) as ventas_brutas')
@@ -213,95 +236,21 @@ class MayoristaMatrizController extends Controller
             ->groupByRaw('UPPER(BTRIM(v.codigo))')
             ->orderByRaw('SUM(v.cantidad) DESC')->get();
 
-        // Las transferencias de LOCALES a MATRIZ forman parte de los
-        // documentos de entrada; no confundir asignación logística con
-        // asignación a factura, que exige vínculo y evidencia.
-        // Solo destino MATRIZ (cod. 25 o alias): MODELO MUESTRA con otro
-        // destino se investiga en la ficha de factura por separado.
-        $usosRemision = DB::table('mayorista_vinculos')
-            ->select('remision_id')->selectRaw('SUM(cantidad) as usadas')
-            ->groupBy('remision_id');
-        $baseTransferencias = VentaMayoristaController::entradas()
-            ->whereRaw(OrigenRemision::expresionDestinoMatriz('r'))
-            ->whereBetween('r.fecha_remision', [$desde, $hasta])
-            ->leftJoinSub($usosRemision, 'uso', 'uso.remision_id', '=', 'r.id');
-
-        $claveDocumento = "COALESCE(r.serie,'') || '|' || COALESCE(r.numero_remision,'')"
-            . " || '|' || COALESCE(CAST(r.cod_sucursal_salida AS TEXT),'')"
-            . " || '|' || COALESCE(CAST(r.cod_sucursal_destino AS TEXT),'')"
-            . " || '|' || COALESCE(CAST(r.fecha_remision AS TEXT),'')";
-
-        // Agrupar por código, no por variante textual del nombre.
-        // Con código NULL, el nombre de origen permite diferenciar locales.
-        $claveOrigen = "COALESCE(CAST(NULLIF(r.cod_sucursal_salida,0) AS TEXT),"
-            . " UPPER(BTRIM(COALESCE(r.sucursal_salida,''))))";
-        $agrupadasOrigen = (clone $baseTransferencias)
-            ->selectRaw('MAX(r.cod_sucursal_salida) as cod_sucursal_salida')
-            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
-            ->selectRaw("COUNT(DISTINCT $claveDocumento) as documentos")
-            ->selectRaw('COUNT(*) as lineas, COALESCE(SUM(r.cantidad),0) as unidades')
-            ->selectRaw("COALESCE(SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END),0) as recibidas")
-            ->selectRaw('COALESCE(SUM(COALESCE(uso.usadas,0)),0) as vinculadas')
-            ->selectRaw('COALESCE(SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))),0) as saldo')
-            ->groupByRaw($claveOrigen)->get();
-
-        // Un mismo local puede tener nombres alternativos en distintas
-        // importaciones; consolidar siempre por código de salida.
-        $transferenciasOrigen = $agrupadasOrigen
-            ->groupBy(function ($fila) {
-                return OrigenRemision::nombreOrigen($fila);
-            })->map(function ($filas, $nombre) {
-                $primera = $filas->first();
-                return (object) [
-                    'nombre' => $nombre,
-                    'codigo_origen' => $primera->cod_sucursal_salida,
-                    'nombre_importado' => $primera->sucursal_salida,
-                    'tipo' => OrigenRemision::tipoOrigen($primera),
-                    'documentos' => (int) $filas->sum('documentos'),
-                    'lineas' => (int) $filas->sum('lineas'),
-                    'unidades' => (int) $filas->sum('unidades'),
-                    'recibidas' => (int) $filas->sum('recibidas'),
-                    'vinculadas' => (int) $filas->sum('vinculadas'),
-                    'saldo' => (int) $filas->sum('saldo'),
-                ];
-            })->sortByDesc('unidades')->values();
-
-        $transferenciasResumen = (object) [
-            'locales' => $transferenciasOrigen->where('tipo','LOCAL')->sum('unidades'),
-            'central' => $transferenciasOrigen->where('tipo','CENTRAL')->sum('unidades'),
-            'sin_origen' => $transferenciasOrigen->where('tipo','NO IDENTIFICADO')->sum('unidades'),
-            'remitidas' => $transferenciasOrigen->sum('unidades'),
-            'recibidas' => $transferenciasOrigen->sum('recibidas'),
+        $ticketsPeriodo = (int) $topClientes->sum('tickets');
+        $metricas = (object) [
+            'clientes' => (int) $topClientes->where('con_movimientos_periodo', true)->count(),
+            'tickets' => $ticketsPeriodo,
+            'ticket_promedio' => $ticketsPeriodo > 0 ? (float) $resumen->importe_neto / $ticketsPeriodo : 0,
+            'unidades_ticket' => $ticketsPeriodo > 0 ? (float) $resumen->unidades_netas / $ticketsPeriodo : 0,
+            'descuento_pct' => (float) $resumen->importe_lista > 0
+                ? (float) $resumen->descuentos * 100 / (float) $resumen->importe_lista : 0,
         ];
 
-        $remisionesDocumentos = (clone $baseTransferencias)
-            ->selectRaw('MIN(r.id) as remision_id')
-            ->addSelect('r.serie','r.numero_remision','r.cod_sucursal_salida',
-                'r.cod_sucursal_destino','r.fecha_remision')
-            ->selectRaw('MAX(r.sucursal_salida) as sucursal_salida')
-            ->selectRaw('MAX(r.sucursal_destino) as sucursal_destino')
-            ->selectRaw('COUNT(*) as lineas, SUM(r.cantidad) as unidades')
-            ->selectRaw('SUM(COALESCE(uso.usadas,0)) as vinculadas')
-            ->selectRaw('SUM(GREATEST(0,r.cantidad-COALESCE(uso.usadas,0))) as saldo')
-            ->selectRaw('COUNT(*) FILTER (WHERE r.fecha_recepcion IS NOT NULL) as lineas_recibidas')
-            ->groupBy('r.serie','r.numero_remision','r.cod_sucursal_salida',
-                'r.cod_sucursal_destino','r.fecha_remision')
-            ->orderBy('r.fecha_remision','desc')
-            ->orderBy('r.numero_remision','desc')
-            ->paginate(30,['*'],'remisiones_page')
-            ->appends($request->only(['desde','hasta','page']));
-
-        $remisionesDocumentos->getCollection()->transform(function ($doc) {
-            $doc->origen_real = OrigenRemision::nombreOrigen($doc);
-            $doc->tipo_origen = OrigenRemision::tipoOrigen($doc);
-            $doc->origen_discordante = OrigenRemision::origenDiscordante($doc);
-            return $doc;
-        });
+        // Las transferencias documentales se consultan en sus pantallas específicas.
 
         return view('ventas.mayoristas_matriz', compact(
             'desde','hasta','facturas','resumen','ventasDetalle','porCodigo',
-            'transferenciasOrigen','transferenciasResumen','remisionesDocumentos',
-            'topClientes'
+            'topClientes','clientesMatriz','clienteFiltro','metricas'
         ));
     }
 
@@ -537,13 +486,13 @@ class MayoristaMatrizController extends Controller
      * Los negativos de las notas de crédito se conservan exactamente.
      * Si no hay rango, se exporta todo el historial de COMERCIAL MATRIZ.
      */
-    private function exportarVentas(?string $desde, ?string $hasta)
+    private function exportarVentas(?string $desde, ?string $hasta, ?array $identidadCliente = null)
     {
         $nombre = $desde !== null && $hasta !== null
             ? 'ventas_matriz_importacion_' . $desde . '_al_' . $hasta . '.csv'
             : 'ventas_matriz_historico_completo.csv';
 
-        return response()->streamDownload(function () use ($desde, $hasta) {
+        return response()->streamDownload(function () use ($desde, $hasta, $identidadCliente) {
             $archivo = fopen('php://output', 'w');
             fwrite($archivo, "\xEF\xBB\xBF"); // UTF-8 Excel y acentos en clientes.
             fputcsv($archivo, MayoristaExportacionVentas::ENCABEZADOS, ';');
@@ -551,6 +500,10 @@ class MayoristaMatrizController extends Controller
             $consulta = VentaMayoristaController::ventas();
             if ($desde !== null && $hasta !== null) {
                 $consulta->whereBetween('v.fecha', [$desde, $hasta]);
+            }
+            if ($identidadCliente !== null) {
+                $consulta->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$identidadCliente[0]])
+                    ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$identidadCliente[1]]);
             }
 
             $campos = [
@@ -578,7 +531,7 @@ class MayoristaMatrizController extends Controller
      * Descarga técnica anterior con metadatos de importación; se mantiene
      * disponible de forma separada para auditoría sin mezclar formatos.
      */
-    private function exportarVentasAuditoria(string $desde, string $hasta)
+    private function exportarVentasAuditoria(string $desde, string $hasta, ?array $identidadCliente = null)
     {
         // CSV completo, independiente de la paginación visual. Las cifras
         // proceden exclusivamente de la tabla ventas en COMERCIAL MATRIZ.
@@ -588,12 +541,16 @@ class MayoristaMatrizController extends Controller
             'p_lista','descuento','p_venta','importacion_id','hash_linea',
             'created_at','updated_at',
         ];
-        return response()->streamDownload(function () use ($desde, $hasta, $campos) {
+        return response()->streamDownload(function () use ($desde, $hasta, $campos, $identidadCliente) {
             $salida = fopen('php://output', 'w');
             fwrite($salida, "\xEF\xBB\xBF");
             fputcsv($salida, $campos, ';');
-            VentaMayoristaController::ventas()->whereBetween('v.fecha',[$desde,$hasta])
-                ->orderBy('v.id')
+            $consulta = VentaMayoristaController::ventas()->whereBetween('v.fecha', [$desde, $hasta]);
+            if ($identidadCliente !== null) {
+                $consulta->whereRaw("BTRIM(COALESCE(v.cli_cod,'')) = ?", [$identidadCliente[0]])
+                    ->whereRaw("BTRIM(COALESCE(v.cliente,'')) = ?", [$identidadCliente[1]]);
+            }
+            $consulta->orderBy('v.id')
                 ->select(array_map(function ($campo) {
                     return 'v.'.$campo;
                 }, $campos))
