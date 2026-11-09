@@ -30,7 +30,7 @@
       </table>
     </div>
   </div>
-  <div class="card mb-3 maym-card">
+  {{-- <div class="card mb-3 maym-card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap">
       <div><strong>2. Remisiones para consulta por código completo</strong>
         <small class="d-block text-muted">Se muestran documentos de Casa Central, locales y Modelo Muestra con códigos coincidentes. Cada remisión mantiene su origen y destino importados.</small></div>
@@ -46,12 +46,11 @@
           <a class="btn btn-{{ $diasHistorial==='todo'?'secondary':'outline-secondary' }}" href="{{ route('ventas.mayoristas.factura',['clave'=>$factura->clave,'mes'=>$mes,'historial'=>'todo','origen'=>$filtroOrigen]) }}">Todo</a>
         </div>
       </div>
-    </div>
+    </div> --}}
     @if($totales->candidatas_limitadas)
       <div class="alert alert-warning m-2">Existen más de 3.000 líneas candidatas para estos códigos. La vista está limitada y NO permite concluir que se hayan encontrado todas las remisiones; acotá por período o revisá en PostgreSQL.</div>
     @endif
     <div class="card-body">
-      <p class="small text-muted mb-3">Documentos históricos con códigos completos presentes en la factura. Una coincidencia no confirma recepción física ni permite atribuir las unidades vendidas a una remisión determinada.</p>
       @forelse($documentos as $doc)
         <details class="maym-documento mb-3" {{ $loop->first ? 'open' : '' }}>
           <summary class="p-3">
@@ -110,7 +109,6 @@
           <div class="px-3 py-2 small text-muted">Estas cantidades corresponden a documentos de remisión y no deben sumarse directamente como stock físico en Matriz.</div>
         </details>
       @empty
-        <p class="text-muted mb-0">No se encontraron remisiones de Modelo Muestra / Matriz que coincidan en código completo dentro del historial seleccionado. Esto no demuestra que no existan documentos anteriores o todavía sin importar.</p>
       @endforelse
     </div>
   </div>

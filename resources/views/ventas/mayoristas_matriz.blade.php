@@ -182,7 +182,7 @@
             </tbody>
           </table>
         </div>
-        <div class="card-footer bg-white small text-muted">
+        {{-- <div class="card-footer bg-white small text-muted">
           <i class="fas fa-info-circle mr-1"></i>
           Los tickets se cuentan por fecha, número y tipo de comprobante de cada cliente. Cada factura cuenta una sola vez, aunque contenga varios códigos o talles.
           <strong>Frecuencia al {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}:</strong>
@@ -192,7 +192,7 @@
           La recurrencia toma todas las facturas importadas hasta el cierre del filtro, incluso las anteriores a la fecha inicial. Las notas de crédito no son compras.
           «Sin compras recientes» no confirma que el cliente haya dejado de comprar definitivamente.
           El número de la última factura abre su detalle y <strong>Ver</strong> muestra los comprobantes del cliente.
-        </div>
+        </div> --}}
       </div>
       {{-- <div class="card may2-card mb-3">      {{-- <div class="card may2-card mb-3">
         <div class="card-header bg-white"><strong><i class="fas fa-chart-pie mr-1 text-primary"></i>Origen comercial de ventas (reglas declaradas)</strong></div>
