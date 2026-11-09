@@ -66,6 +66,7 @@
         {{-- <div class="col-lg-3 col-sm-6 mb-3"><div class="may2-kpi"><small>Transferencias a Matriz (reales)</small><strong>{{ number_format($transferenciasResumen->remitidas,0,',','.') }}</strong><span>Locales {{ number_format($transferenciasResumen->locales,0,',','.') }} · Central {{ number_format($transferenciasResumen->central,0,',','.') }}</span></div></div> --}}
       </div>
         @php
+          $fechaCorteClientes = \Carbon\Carbon::parse($hasta)->format('d/m/Y');
           $actividadClientes = in_array(request('actividad_clientes'), ['todos','periodo','sin_periodo','sin_recientes'], true)
               ? request('actividad_clientes') : ($clienteFiltro !== '' ? 'todos' : 'periodo');
           $topClientesFiltrados = $topClientes->filter(function ($c) use ($actividadClientes) {
@@ -97,7 +98,8 @@
           <i class="fas fa-calendar-alt text-primary mr-1"></i>
           <strong>Venta y tickets:</strong> del {{ \Carbon\Carbon::parse($desde)->format('d/m/Y') }} al
           {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}, netos de devoluciones.
-          <strong>Última factura y frecuencia:</strong> historial hasta {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}.
+          <strong>Última factura y frecuencia:</strong> historial hasta {{ $fechaCorteClientes }}.
+          Los días sin compra se cuentan hasta ese cierre del filtro.
           Por defecto se muestran clientes con movimientos en el período; «Todos los históricos» permite revisar los inactivos.
         </div>
 
@@ -138,7 +140,7 @@
                     @endif
                   </td>
                   <td class="text-right {{ $clienteTop->unidades < 0 ? 'text-danger' : '' }}">{{ number_format($clienteTop->unidades,0,',','.') }}</td>
-                  <td class="text-right font-weight-bold">{{ number_format($clienteTop->tickets,0,',','.') }}<small class="d-block text-muted" title="Facturas históricas hasta el corte">{{ number_format($clienteTop->tickets_historicos,0,',','.') }} históricas</small></td>
+                  <td class="text-right font-weight-bold">{{ number_format($clienteTop->tickets,0,',','.') }}<small class="d-block text-muted" title="Facturas históricas hasta el corte">{{ number_format($clienteTop->tickets_historicos,0,',','.') }} {{ $clienteTop->tickets_historicos === 1 ? 'histórica' : 'históricas' }}</small></td>
                   <td class="may2-last-invoice">
                     @if($clienteTop->ultima_fecha)
                       <strong>{{ \Carbon\Carbon::parse($clienteTop->ultima_fecha)->format('d/m/Y') }}</strong>
@@ -166,7 +168,8 @@
                       @endif
                     </span>
                     @if($clienteTop->dias_sin_compra !== null)
-                      <small class="d-block may2-last-days">Hace {{ number_format($clienteTop->dias_sin_compra,0,',','.') }} días · {{ $clienteTop->fechas_compra_recientes }} días de compra en los últimos 90</small>
+                      <small class="d-block may2-last-days">{{ number_format($clienteTop->dias_sin_compra,0,',','.') }} {{ $clienteTop->dias_sin_compra === 1 ? 'día' : 'días' }} sin compra al {{ $fechaCorteClientes }}</small>
+                      <small class="d-block text-muted">{{ $clienteTop->fechas_compra_recientes }} {{ $clienteTop->fechas_compra_recientes === 1 ? 'día con compras' : 'días con compras' }} en los 90 días hasta ese corte</small>
                     @endif
                   </td>
                   <td class="text-right font-weight-bold {{ $clienteTop->venta_neta < 0 ? 'text-danger' : 'text-primary' }}">Gs {{ number_format($clienteTop->venta_neta,0,',','.') }}</td>
@@ -185,7 +188,7 @@
         <div class="card-footer bg-white small text-muted">
           <i class="fas fa-info-circle mr-1"></i>
           Los tickets se cuentan por fecha, número y tipo de comprobante de cada cliente. Cada factura cuenta una sola vez, aunque contenga varios códigos o talles.
-          <strong>Frecuencia al {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}:</strong>
+          <strong>Frecuencia al {{ $fechaCorteClientes }}:</strong>
           recurrente = compras en 2 o más fechas distintas dentro de los últimos 90 días;
           ocasional = compró recientemente sin repetir en otra fecha;
           sin compras recientes = 90 días o más sin factura de venta.
