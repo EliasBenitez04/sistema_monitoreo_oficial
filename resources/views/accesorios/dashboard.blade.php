@@ -212,9 +212,7 @@
             <div class="d-flex align-items-center flex-wrap" style="gap:8px">
                 <span class="acc-light-tag">Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</span>
                 <button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="stock"><i class="fas fa-list-ul"></i> Ver más</button>
-                @role('ADMIN')
                 <a href="{{ route('accesorios.stock.exportar', request()->query()) }}" class="acc-btn acc-btn-primary"><i class="fas fa-file-csv"></i> Exportar stock por local</a>
-                @endrole
             </div>
         </div>
         <div class="acc-table-scroll">
