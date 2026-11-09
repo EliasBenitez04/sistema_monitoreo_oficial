@@ -7,6 +7,13 @@ use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Testing\TestResponse;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Tests\TestCase;
 
 class AccesoriosRetencionTest extends TestCase
@@ -210,5 +217,93 @@ class AccesoriosRetencionTest extends TestCase
             ->assertOk()->assertSee('No hay artículos con stock positivo');
         $this->getJson(route('accesorios.detalle.resumen', ['tipo' => 'retencion', 'orden_detalle' => 'invalido']))
             ->assertStatus(422);
+    }
+
+    private function leerExcel(TestResponse $respuesta): Spreadsheet
+    {
+        $respuesta->assertOk()->assertDownload('accesorios_menor_movimiento_2026-11-09.xlsx');
+        $ruta = $respuesta->baseResponse->getFile()->getPathname();
+        try {
+            // El lector debe usar sus tipos nativos, sin el binder que el
+            // escritor anterior registró globalmente para exportar texto.
+            Cell::setValueBinder(new DefaultValueBinder());
+            return IOFactory::load($ruta);
+        } finally {
+            unlink($ruta);
+        }
+    }
+
+    public function test_exporta_xlsx_completo_con_cantidades_fechas_y_dias_reales(): void
+    {
+        $libro = $this->leerExcel($this->get(route('accesorios.retencion.exportar')));
+        $hoja = $libro->getActiveSheet();
+        $this->assertSame(5, $hoja->getHighestRow());
+        $this->assertSame('Sucursal', $hoja->getCell('A1')->getValue());
+        $this->assertSame('ACC2', $hoja->getCell('B2')->getValue());
+        $this->assertSame(4, $hoja->getCell('D2')->getValue());
+        $this->assertSame(69, $hoja->getCell('J2')->getValue());
+        $this->assertSame('2026-09-01', Date::excelToDateTimeObject($hoja->getCell('E2')->getValue())->format('Y-m-d'));
+        $this->assertSame('FCR 102', $hoja->getCell('G3')->getValue());
+        $this->assertSame(8, $hoja->getCell('J3')->getValue());
+        $this->assertSame('2026-11-01', Date::excelToDateTimeObject($hoja->getCell('H3')->getValue())->format('Y-m-d'));
+        $this->assertSame('2026-11-09', Date::excelToDateTimeObject($hoja->getCell('L3')->getValue())->format('Y-m-d'));
+        $this->assertNull($hoja->getCell('J5')->getValue());
+        $this->assertSame('Sin datos', $hoja->getCell('K5')->getValue());
+    }
+
+    public function test_exportacion_coincide_con_el_modal_en_filtros_y_cada_orden(): void
+    {
+        foreach (['dias', 'antiguedad', 'codigo', 'cantidad'] as $orden) {
+            $filtros = ['desde' => '2026-11-05', 'hasta' => '2026-11-09', 'fco' => '1', 'orden_detalle' => $orden];
+            $modal = $this->get(route('accesorios.detalle.resumen', $filtros + ['tipo' => 'retencion']));
+            $modal->assertOk();
+            $esperados = $modal->viewData('retencion')->map(function ($f) {
+                return [$f->sucursal, $f->codigo, $f->descripcion, $f->cantidad];
+            })->all();
+            $hoja = $this->leerExcel($this->get(route('accesorios.retencion.exportar', $filtros)))->getActiveSheet();
+            $this->assertSame($esperados, $hoja->rangeToArray('A2:D' . $hoja->getHighestRow(), null, false, false));
+        }
+
+        $filtros['sucursal'] = 'MARIANO';
+        $hoja = $this->leerExcel($this->get(route('accesorios.retencion.exportar', $filtros)))->getActiveSheet();
+        $this->assertSame(2, $hoja->getHighestRow());
+        $this->assertSame('SHOPPING MARIANO', $hoja->getCell('A2')->getValue());
+        $this->assertSame(18, $hoja->getCell('D2')->getValue());
+        $this->assertSame('FCR 102', $hoja->getCell('G2')->getValue());
+    }
+
+    public function test_excel_conserva_ceros_iniciales_texto_literal_y_dias_cero(): void
+    {
+        DB::table('accesorios_articulos')->where('id', 1)->update(['codigo' => '00123', 'descripcion' => '=1+1']);
+        $this->vender(1, 'MARIANO', '2026-11-09', 'FCR HOY', 1);
+        DB::table('ventas')->where('codigo', 'ACC1')->update(['codigo' => '00123']);
+        $hoja = $this->leerExcel($this->get(route('accesorios.retencion.exportar', [
+            'fco' => '1', 'sucursal' => 'MARIANO',
+        ])))->getActiveSheet();
+        $this->assertSame('00123', $hoja->getCell('B2')->getValue());
+        $this->assertSame(DataType::TYPE_STRING, $hoja->getCell('B2')->getDataType());
+        $this->assertSame('=1+1', $hoja->getCell('C2')->getValue());
+        $this->assertSame(DataType::TYPE_STRING, $hoja->getCell('C2')->getDataType());
+        $this->assertSame(0, $hoja->getCell('J2')->getValue());
+        $this->assertSame(DataType::TYPE_NUMERIC, $hoja->getCell('J2')->getDataType());
+    }
+
+    public function test_excel_sin_resultados_conserva_encabezados_y_valida_filtros(): void
+    {
+        $hoja = $this->leerExcel($this->get(route('accesorios.retencion.exportar', ['fco' => 'INEXISTENTE'])))->getActiveSheet();
+        $this->assertSame(1, $hoja->getHighestRow());
+        $this->assertSame('Días retenidos', $hoja->getCell('J1')->getValue());
+        $this->getJson(route('accesorios.retencion.exportar', ['orden_detalle' => 'invalido']))->assertStatus(422);
+    }
+
+    public function test_ruta_excel_conserva_la_proteccion_admin_de_las_exportaciones(): void
+    {
+        $ruta = app('router')->getRoutes()->getByName('accesorios.retencion.exportar');
+        $this->assertNotNull($ruta);
+        $this->assertContains('auth', $ruta->gatherMiddleware());
+        $this->assertContains('role:ADMIN', $ruta->gatherMiddleware());
+        $middle = (new \App\Http\Controllers\AccesoriosDashboardController())->getMiddleware();
+        $admin = collect($middle)->firstWhere('middleware', 'role:ADMIN');
+        $this->assertContains('exportarRetencion', $admin['options']['only']);
     }
 }

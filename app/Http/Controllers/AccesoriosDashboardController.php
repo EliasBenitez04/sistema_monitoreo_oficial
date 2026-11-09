@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\AccesoriosRetencionExport;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Maatwebsite\Excel\Facades\Excel;
 
 class AccesoriosDashboardController extends Controller
 {
@@ -16,7 +18,7 @@ class AccesoriosDashboardController extends Controller
         $this->middleware(['auth', 'role:ADMIN|visualizador_accesorios'])
             ->only(['index', 'detalleAgrupado']);
         $this->middleware(['auth', 'role:ADMIN'])
-            ->only(['exportar', 'exportarStock']);
+            ->only(['exportar', 'exportarStock', 'exportarRetencion']);
     }
 
     public function index(Request $request)
@@ -107,11 +109,23 @@ class AccesoriosDashboardController extends Controller
     }
 
 
-    /**
-     * Detalle por código y sucursal bajo exactamente los mismos filtros del dashboard.
-     * Las ventas incluyen NCR negativas; el stock reutiliza el cálculo documental.
-     */
-    public function detalleAgrupado(Request $request)
+    public function exportarRetencion(Request $request)
+    {
+        $datos = $this->datosDetalleFiltrado($request);
+        $servicio = new \App\Services\AccesoriosStockService();
+        $stock = $servicio->calcular($datos['catalogo']->pluck('id')->all(), $datos['hasta'], $datos['sucursal']);
+        $retencion = $servicio->retencion($datos['catalogo'], $stock, $datos['hasta'],
+            $request->input('orden_detalle') ?: 'dias');
+
+        return Excel::download(
+            new AccesoriosRetencionExport($retencion, $datos['hasta']),
+            'accesorios_menor_movimiento_' . $datos['hasta'] . '.xlsx',
+            \Maatwebsite\Excel\Excel::XLSX
+        );
+    }
+
+    /** Filtros compartidos por el modal y su exportación completa. */
+    private function datosDetalleFiltrado(Request $request): array
     {
         $request->validate([
             'desde' => 'nullable|date_format:Y-m-d',
@@ -140,8 +154,6 @@ class AccesoriosDashboardController extends Controller
             ]);
         }
 
-        $tipo = $request->input('tipo', 'ventas');
-        $ordenDetalle = $request->input('orden_detalle') ?: ($tipo === 'retencion' ? 'dias' : 'codigo');
         $sucursal = trim((string) $request->input('sucursal', ''));
         $catalogo = $this->catalogoFiltrado(
             trim((string) $request->input('linea', '')),
@@ -149,7 +161,23 @@ class AccesoriosDashboardController extends Controller
             trim((string) $request->input('fco', '')),
             (string) $request->input('fecha_envio', '')
         )->orderBy('a.codigo')->get(['a.id', 'a.codigo', 'a.descripcion']);
+        return compact('desde', 'hasta', 'sucursal', 'catalogo');
+    }
+
+    /**
+     * Detalle por código y sucursal bajo exactamente los mismos filtros del dashboard.
+     * Las ventas incluyen NCR negativas; el stock reutiliza el cálculo documental.
+     */
+    public function detalleAgrupado(Request $request)
+    {
+        $datos = $this->datosDetalleFiltrado($request);
+        $desde = $datos['desde'];
+        $hasta = $datos['hasta'];
+        $sucursal = $datos['sucursal'];
+        $catalogo = $datos['catalogo'];
         $ids = $catalogo->pluck('id')->all();
+        $tipo = $request->input('tipo', 'ventas');
+        $ordenDetalle = $request->input('orden_detalle') ?: ($tipo === 'retencion' ? 'dias' : 'codigo');
 
         if ($tipo === 'retencion') {
             $servicio = new \App\Services\AccesoriosStockService();

@@ -256,7 +256,12 @@
                 <h2><i class="fas fa-hourglass-half"></i> Artículos con menor movimiento</h2>
                 <p>{{ $whole($retencion->count()) }} combinaciones de código y sucursal con stock · {{ $whole($retencion->sum('cantidad')) }} unidades · Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</p>
             </div>
-            <button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="retencion"><i class="fas fa-list-ul"></i> Ver más</button>
+            <div class="acc-actions">
+                <button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="retencion"><i class="fas fa-list-ul"></i> Ver más</button>
+                @role('ADMIN')
+                    <a href="{{ route('accesorios.retencion.exportar', array_merge(request()->except(['page', 'tipo', 'orden_detalle']), ['orden_detalle' => 'dias'])) }}" class="acc-btn acc-btn-primary"><i class="fas fa-file-excel"></i> Exportar a Excel</a>
+                @endrole
+            </div>
         </div>
         @include('accesorios.tabla_retencion', ['filasRetencion' => $retencion->take(5)])
         <div class="acc-panel-foot">Los 5 primeros por días retenidos: desde la última venta o desde la llegada si todavía no hubo ventas posteriores. «Ver más» muestra todos y permite ordenar por días, antigüedad o cantidad.</div>
@@ -377,6 +382,9 @@
                 <div id="accDetalleContenido" aria-live="polite"></div>
             </div>
             <div class="modal-footer">
+                @role('ADMIN')
+                    <a id="accRetencionExportar" class="btn btn-success btn-sm d-none" data-url="{{ route('accesorios.retencion.exportar') }}" href="{{ route('accesorios.retencion.exportar', request()->query()) }}"><i class="fas fa-file-excel mr-1"></i> Exportar a Excel</a>
+                @endrole
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-dismiss="modal">Cerrar</button>
             </div>
         </div>
@@ -699,24 +707,37 @@ document.addEventListener('DOMContentLoaded', function () {
     var contenido = document.getElementById('accDetalleContenido');
     var titulo = document.getElementById('accDetalleTitulo');
     var selector = document.getElementById('accDetalleOrden');
+    var exportarRetencion = document.getElementById('accRetencionExportar');
     var urlBase = modal.getAttribute('data-url');
     var tipoActual = 'ventas';
     var peticion = null;
     var recargarAlCerrar = false;
     var mostrarConfirmacion = false;
 
-    function cargarDetalle() {
-        if (peticion) peticion.abort();
-        peticion = new AbortController();
-        var url = new URL(urlBase, window.location.href);
+    function urlConFiltros(base) {
+        var url = new URL(base, window.location.href);
         var filtros = new URLSearchParams(window.location.search);
         filtros.forEach(function (valor, clave) {
             if (clave !== 'page' && clave !== 'tipo' && clave !== 'orden_detalle') {
                 url.searchParams.append(clave, valor);
             }
         });
-        url.searchParams.set('tipo', tipoActual);
         url.searchParams.set('orden_detalle', selector.value);
+        return url;
+    }
+
+    function actualizarExportacion() {
+        if (!exportarRetencion) return;
+        exportarRetencion.classList.toggle('d-none', tipoActual !== 'retencion');
+        exportarRetencion.href = urlConFiltros(exportarRetencion.getAttribute('data-url')).toString();
+    }
+
+    function cargarDetalle() {
+        actualizarExportacion();
+        if (peticion) peticion.abort();
+        peticion = new AbortController();
+        var url = urlConFiltros(urlBase);
+        url.searchParams.set('tipo', tipoActual);
         contenido.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando detalle...</div>';
 
         fetch(url.toString(), {
@@ -747,6 +768,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? '<option value="dias">Días retenidos (mayor a menor)</option><option value="antiguedad">Días en local (mayor a menor)</option>'
                 : '') + '<option value="codigo">Código (A–Z)</option><option value="cantidad">Cantidad (mayor a menor)</option>';
             selector.value = esRetencion ? 'dias' : 'codigo';
+            actualizarExportacion();
             $(modal).modal('show');
         });
     });
