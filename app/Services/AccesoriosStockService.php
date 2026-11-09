@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -225,6 +227,8 @@ class AccesoriosStockService
                     'en_transito' => 0,
                     'ajuste' => 0,
                     'saldo' => 0,
+                    'fecha_llegada' => null,
+                    'ultima_recepcion' => null,
                 ];
             }
             return $agrupado[$id][$clave];
@@ -277,7 +281,13 @@ class AccesoriosStockService
                 }
                 if ($destino && $destino !== $salida) {
                     if ($recibida) {
-                        $asegurar($id, $destino, (string) $r->sucursal_destino)->entradas += $cantidad;
+                        $local = $asegurar($id, $destino, (string) $r->sucursal_destino);
+                        $local->entradas += $cantidad;
+                        $fecha = substr((string) $r->fecha_recepcion, 0, 10);
+                        $local->fecha_llegada = $local->fecha_llegada === null
+                            ? $fecha : min($local->fecha_llegada, $fecha);
+                        $local->ultima_recepcion = $local->ultima_recepcion === null
+                            ? $fecha : max($local->ultima_recepcion, $fecha);
                     } else {
                         $asegurar($id, $destino, (string) $r->sucursal_destino)->en_transito += $cantidad;
                         $movimientosNoRecibidos += $cantidad;
@@ -404,5 +414,98 @@ class AccesoriosStockService
             'enTransito' => $movimientosNoRecibidos,
             'corte' => $corte,
         ];
+    }
+
+    /**
+     * Existencias positivas ordenadas por tiempo sin venta en cada sucursal.
+     * Reutiliza el saldo al corte: "desde" no recorta recepciones ni facturas.
+     * Las fechas describen el código/local; no atribuyen unidades a lotes FCO.
+     */
+    public function retencion(Collection $catalogo, array $stock, string $corte, string $orden = 'dias'): Collection
+    {
+        $articulos = $catalogo->keyBy('id');
+        $locales = collect();
+        foreach ($stock['detalle'] as $id => $filas) {
+            if (!$articulos->has($id)) {
+                continue;
+            }
+            foreach ($filas as $local) {
+                if ((int) $local->saldo > 0) {
+                    $locales->push($local);
+                }
+            }
+        }
+
+        $ventasPorLocal = [];
+        $ids = $locales->pluck('articulo_id')->unique()->values()->all();
+        if ($ids && Schema::hasTable('ventas')) {
+            // Una única consulta para la última factura de cada código/local.
+            // ROW_NUMBER funciona en PostgreSQL 9.5. id desempata ventas del
+            // mismo día y mantiene el comprobante unido a su fecha real.
+            $ordenadas = DB::table('ventas as v')
+                ->join('accesorios_articulos as a', function ($join) {
+                    $join->on(DB::raw('UPPER(BTRIM(v.codigo))'), '=', 'a.codigo');
+                })
+                ->whereIn('a.id', $ids)
+                ->where('v.fecha', '<=', $corte)
+                ->where('v.cantidad', '>', 0)
+                ->whereRaw("UPPER(BTRIM(COALESCE(v.comprobante, ''))) NOT LIKE 'NCR%'")
+                ->select('a.id as articulo_id', 'v.id as venta_id', 'v.local', 'v.fecha', 'v.comprobante')
+                ->selectRaw('ROW_NUMBER() OVER (PARTITION BY a.id, UPPER(BTRIM(v.local)) ORDER BY v.fecha DESC, v.id DESC) AS posicion');
+
+            foreach (DB::query()->fromSub($ordenadas, 'ultimas')->where('posicion', 1)->get() as $venta) {
+                $clave = $this->identificar(null, $venta->local);
+                if ($clave === null) {
+                    continue;
+                }
+                $anterior = $ventasPorLocal[$venta->articulo_id][$clave] ?? null;
+                // Unificamos también MARIANO/SHOPPING MARIANO y demás alias.
+                if ($anterior === null || $venta->fecha > $anterior->fecha
+                    || ($venta->fecha === $anterior->fecha && (int) $venta->venta_id > (int) $anterior->venta_id)) {
+                    $ventasPorLocal[$venta->articulo_id][$clave] = $venta;
+                }
+            }
+        }
+
+        $fechaCorte = Carbon::parse($corte)->startOfDay();
+        $filas = $locales->map(function ($local) use ($articulos, $ventasPorLocal, $fechaCorte) {
+            $articulo = $articulos->get($local->articulo_id);
+            $venta = $ventasPorLocal[$local->articulo_id][$local->sucursal_key] ?? null;
+            $llegada = $local->fecha_llegada;
+            $ultimaVenta = $venta ? substr((string) $venta->fecha, 0, 10) : null;
+            // Si la factura es anterior a la llegada documentada, contamos
+            // desde la llegada. Nunca inventamos fechas para stock ajustado.
+            $referencia = $ultimaVenta;
+            $desdeLlegada = $llegada !== null && ($ultimaVenta === null || $llegada > $ultimaVenta);
+            if ($desdeLlegada) {
+                $referencia = $llegada;
+            }
+
+            return (object) [
+                'articulo_id' => (int) $local->articulo_id,
+                'codigo' => $articulo->codigo,
+                'descripcion' => $articulo->descripcion,
+                'sucursal' => $local->sucursal,
+                'cantidad' => (int) $local->saldo,
+                'fecha_llegada' => $llegada,
+                'ultima_recepcion' => $local->ultima_recepcion,
+                'ultima_venta' => $ultimaVenta,
+                'ultima_factura' => $venta ? trim((string) $venta->comprobante) : '',
+                'dias_local' => $llegada !== null ? (int) Carbon::parse($llegada)->diffInDays($fechaCorte) : null,
+                'dias_retenidos' => $referencia !== null ? (int) Carbon::parse($referencia)->diffInDays($fechaCorte) : null,
+                'desde_llegada' => $desdeLlegada,
+            ];
+        });
+
+        return $filas->sort(function ($a, $b) use ($orden) {
+            $campo = $orden === 'cantidad' ? 'cantidad' : ($orden === 'antiguedad' ? 'dias_local' : 'dias_retenidos');
+            $comparacion = 0;
+            if ($orden !== 'codigo') {
+                $comparacion = $a->$campo === null
+                    ? ($b->$campo === null ? 0 : 1)
+                    : ($b->$campo === null ? -1 : $b->$campo <=> $a->$campo);
+            }
+            return $comparacion ?: strcmp($a->codigo, $b->codigo) ?: strcmp($a->sucursal, $b->sucursal);
+        })->values();
     }
 }

@@ -121,8 +121,8 @@ class AccesoriosDashboardController extends Controller
             'fecha_envio' => 'nullable|date_format:Y-m-d',
             'linea' => 'nullable|string|max:100',
             'buscar' => 'nullable|string|max:100',
-            'tipo' => 'nullable|in:ventas,stock',
-            'orden_detalle' => 'nullable|in:codigo,cantidad',
+            'tipo' => 'nullable|in:ventas,stock,retencion',
+            'orden_detalle' => 'nullable|in:codigo,cantidad,dias,antiguedad',
         ]);
 
         if (!Schema::hasTable('accesorios_articulos')
@@ -141,7 +141,7 @@ class AccesoriosDashboardController extends Controller
         }
 
         $tipo = $request->input('tipo', 'ventas');
-        $ordenDetalle = $request->input('orden_detalle', 'codigo');
+        $ordenDetalle = $request->input('orden_detalle') ?: ($tipo === 'retencion' ? 'dias' : 'codigo');
         $sucursal = trim((string) $request->input('sucursal', ''));
         $catalogo = $this->catalogoFiltrado(
             trim((string) $request->input('linea', '')),
@@ -150,6 +150,14 @@ class AccesoriosDashboardController extends Controller
             (string) $request->input('fecha_envio', '')
         )->orderBy('a.codigo')->get(['a.id', 'a.codigo', 'a.descripcion']);
         $ids = $catalogo->pluck('id')->all();
+
+        if ($tipo === 'retencion') {
+            $servicio = new \App\Services\AccesoriosStockService();
+            $stock = $servicio->calcular($ids, $hasta, $sucursal);
+            $retencion = $servicio->retencion($catalogo, $stock, $hasta, $ordenDetalle);
+            return view('accesorios.detalle_retencion', compact('retencion', 'hasta', 'sucursal'));
+        }
+
         $gruposMap = [];
 
         $agregar = function (int $id, string $codigo, string $descripcion, string $local, int $cantidad, string $clave = '', int $ajuste = 0) use (&$gruposMap) {
@@ -478,6 +486,7 @@ class AccesoriosDashboardController extends Controller
         // Se acumula desde el inicio histórico hasta "hasta"; "desde" filtra
         // las estadísticas comerciales, no recorta el saldo del inventario.
         $stockDatos = $stockServicio->calcular($ids, $hasta, $sucursal);
+        $retencion = $stockServicio->retencion($catalogo, $stockDatos, $hasta);
         $stockPorCodigo = $stockDatos['porCodigo'];
         $saldosSucursal = $stockDatos['porSucursal'];
         $stockFuente = 'Stock: entradas recibidas - salidas - ventas netas + ajustes manuales auditados';
@@ -696,7 +705,7 @@ class AccesoriosDashboardController extends Controller
             'remisiones', 'pendientes', 'sucursales', 'evolucion', 'agrupacion',
             'evolucionPeriodosCompletos', 'rankingCompleto',
             'rankingPagina', 'alertas', 'stockFuente', 'stockCorte', 'stockTotal',
-            'saldosSucursal', 'stockDatos',
+            'saldosSucursal', 'stockDatos', 'retencion',
             'productosCriticos', 'productosReponer', 'productosConStock',
             'gananciaEstimada', 'costoEstimado', 'margenEstimado', 'ticketPromedio',
             'coberturaGlobal', 'ultimaVenta', 'conVentas', 'conStock', 'conRemisiones'

@@ -41,4 +41,6 @@ jobs:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           DB_CONNECTION: sqlite
           DB_DATABASE: ':memory:'
-        run: vendor/bin/phpunit tests/Feature/AccesoriosCompraEdicionTest.php tests/Feature/AccesoriosFacturasTest.php tests/Unit/MayoristaDescripcionFacturaTest.php tests/Unit/MayoristaFacturaSoloConsultaTest.php tests/Unit/MayoristaTopClientesTest.php
+        run: |
+          vendor/bin/phpunit tests/Feature/AccesoriosCompraEdicionTest.php tests/Feature/AccesoriosFacturasTest.php tests/Unit/MayoristaDescripcionFacturaTest.php tests/Unit/MayoristaFacturaSoloConsultaTest.php tests/Unit/MayoristaTopClientesTest.php
+          vendor/bin/phpunit tests/Feature/AccesoriosRetencionTest.php

@@ -250,6 +250,18 @@
         <div class="acc-panel-foot">Cuando un local recibe una transferencia de cualquier origen, sus entradas aumentan. Las ventas se descuentan una sola vez; las notas de crédito negativas revierten ventas.</div>
     </section>
 
+    <section class="acc-panel">
+        <div class="acc-panel-head">
+            <div>
+                <h2><i class="fas fa-hourglass-half"></i> Artículos con menor movimiento</h2>
+                <p>{{ $whole($retencion->count()) }} combinaciones de código y sucursal con stock · {{ $whole($retencion->sum('cantidad')) }} unidades · Corte {{ \Carbon\Carbon::parse($hasta)->format('d/m/Y') }}</p>
+            </div>
+            <button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="retencion"><i class="fas fa-list-ul"></i> Ver más</button>
+        </div>
+        @include('accesorios.tabla_retencion', ['filasRetencion' => $retencion->take(5)])
+        <div class="acc-panel-foot">Los 5 primeros por días retenidos: desde la última venta o desde la llegada si todavía no hubo ventas posteriores. «Ver más» muestra todos y permite ordenar por días, antigüedad o cantidad.</div>
+    </section>
+
     <section class="acc-charts-grid">
         <div class="acc-panel">
             <div class="acc-panel-head"><div><h2><i class="fas fa-store"></i> Ventas netas por sucursal</h2><p>Importes reales según sucursal del comprobante</p></div><button type="button" class="acc-btn acc-btn-primary" data-acc-tipo="ventas"><i class="fas fa-list-ul"></i> Ver más</button></div>
@@ -592,6 +604,11 @@
     #accdash .acc-detail-link{display:inline-flex;gap:5px;align-items:center;border:0;background:none;padding:4px 0;margin-top:6px;color:#165bad;font-size:11px;font-weight:800;cursor:pointer}
     #accdash .acc-detail-link:hover{text-decoration:underline}
     #accDetalleModal .modal-dialog{max-width:min(1080px,96vw)}
+    #accDetalleModal.acc-retencion-modal .modal-dialog{max-width:min(1450px,97vw)}
+    #accdash .acc-retention-table,#accDetalleModal .acc-detail-table.acc-retention-table{min-width:1050px;width:100%}
+    #accdash .acc-retention-table small,#accDetalleModal .acc-retention-table small{display:block;margin-top:4px;font-size:10px;line-height:1.4;color:#63718a}
+    #accdash .acc-retention-days,#accDetalleModal .acc-retention-days{display:inline-block;border-radius:7px;padding:5px 9px;font-weight:800;font-variant-numeric:tabular-nums;background:#fff0d8;color:#845307;white-space:nowrap}
+    #accdash .acc-retention-empty,#accDetalleModal .acc-retention-empty{text-align:center;padding:25px;color:#63718a}
     #accDetalleModal .modal-content{border:0;border-radius:14px;overflow:hidden;box-shadow:0 20px 65px rgba(11,38,81,.27)}
     #accDetalleModal .modal-header{background:linear-gradient(110deg,#113773,#1c5cb0);color:#fff;padding:20px 24px;border:0}
     #accDetalleModal .modal-title{font-size:18px;font-weight:800}
@@ -721,10 +738,15 @@ document.addEventListener('DOMContentLoaded', function () {
     Array.prototype.forEach.call(document.querySelectorAll('[data-acc-tipo]'), function (boton) {
         boton.addEventListener('click', function () {
             tipoActual = boton.getAttribute('data-acc-tipo');
-            titulo.textContent = tipoActual === 'stock'
-                ? 'Stock calculado por código y sucursal'
-                : 'Unidades vendidas netas por código y sucursal';
-            selector.value = 'codigo';
+            var esRetencion = tipoActual === 'retencion';
+            modal.classList.toggle('acc-retencion-modal', esRetencion);
+            titulo.textContent = esRetencion ? 'Artículos con menor movimiento por sucursal'
+                : (tipoActual === 'stock' ? 'Stock calculado por código y sucursal'
+                    : 'Unidades vendidas netas por código y sucursal');
+            selector.innerHTML = (esRetencion
+                ? '<option value="dias">Días retenidos (mayor a menor)</option><option value="antiguedad">Días en local (mayor a menor)</option>'
+                : '') + '<option value="codigo">Código (A–Z)</option><option value="cantidad">Cantidad (mayor a menor)</option>';
+            selector.value = esRetencion ? 'dias' : 'codigo';
             $(modal).modal('show');
         });
     });
