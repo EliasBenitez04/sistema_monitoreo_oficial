@@ -36,9 +36,18 @@ class InviernoTrazabilidadTest extends TestCase
         });
         DB::table('sucursal')->insert([
             ['cod_suc' => 1, 'suc_descri' => 'CASA CENTRAL'],
+            ['cod_suc' => 2, 'suc_descri' => 'SAN LORENZO'],
+            ['cod_suc' => 3, 'suc_descri' => 'LUQUE'],
+            ['cod_suc' => 4, 'suc_descri' => 'MALL'],
+            ['cod_suc' => 5, 'suc_descri' => 'L06 SAN LO2'],
+            ['cod_suc' => 6, 'suc_descri' => 'LA RURAL'],
             ['cod_suc' => 7, 'suc_descri' => 'BONANZA'],
+            ['cod_suc' => 8, 'suc_descri' => 'SHOP SAN LO3'],
+            ['cod_suc' => 9, 'suc_descri' => 'MULTIPLAZA'],
+            ['cod_suc' => 14, 'suc_descri' => 'PINEDO SHOPPING'],
+            ['cod_suc' => 15, 'suc_descri' => 'ÑEMBY'],
             ['cod_suc' => 16, 'suc_descri' => 'SHOPPING MARIANO'],
-            ['cod_suc' => 22, 'suc_descri' => 'LOS JARDINES'],
+            ['cod_suc' => 22, 'suc_descri' => 'JARDINES LUQUE'],
         ]);
         (require database_path('migrations/2026_09_18_141900_create_ot_logistica_remisiones_table.php'))->up();
         (require database_path('migrations/2026_11_10_090000_create_invierno_trazabilidad_tables.php'))->up();
@@ -116,6 +125,71 @@ class InviernoTrazabilidadTest extends TestCase
         $csv = UploadedFile::fake()->createWithContent('invierno.csv', "\xEF\xBB\xBFLOCAL;SERIE;NRO\nJARDINES;J1;465\n");
         $this->post(route('invierno.importar'), ['archivo' => $csv])->assertSessionHasNoErrors();
         $this->assertDatabaseCount('invierno_remisiones', 2);
+    }
+
+    public function test_importa_los_alias_de_invierno_y_espacios_del_excel_sin_duplicar(): void
+    {
+        $casos = [
+            ['BONANZA', 'F', 7], ['JARDINES', 'J1', 22], ['LUQUE', 'B', 3],
+            ['MARIANO', 'S', 16], ['MULTIPLAZA', 'H', 9], ['ÑEMBY', 'Ñ', 15],
+            ['PINEDO', 'J', 14], ['RURAL', 'E', 6], ['SAN LORENZO', 'A', 2],
+            ['SHOPP', 'G', 8], ['L06', 'D', 5], ['SLG', 'A', 2],
+            ['MALL', 'C', 4], ['MMALL', 'C', 4], ['MALL', 'V', 4],
+            ["MARIANO\u{00A0}", 'S', 16], ["PINEDO\u{202F}", 'J', 14],
+        ];
+        $csv = "LOCAL,SERIE,NRO\n";
+        foreach ($casos as $indice => [$local, $serie]) {
+            $csv .= $local.','.$serie.','.(10000 + $indice)."\n";
+        }
+        $archivo = UploadedFile::fake()->createWithContent('alias_invierno.csv', $csv);
+        $import = new InviernoRemisionesImport($this->service);
+        Excel::import($import, $archivo);
+        $this->assertSame([], $import->errores);
+        $this->assertSame(0, $import->rechazadas);
+        $this->assertSame(0, $import->existentes);
+        $this->assertSame(count($casos), $import->nuevas);
+        foreach ($casos as $indice => [$local, $serie, $codigo]) {
+            $this->assertDatabaseHas('invierno_remisiones', ['cod_sucursal_origen' => $codigo, 'serie' => $serie, 'numero_remision' => (string) (10000 + $indice)]);
+        }
+        $reimport = new InviernoRemisionesImport($this->service);
+        Excel::import($reimport, $archivo);
+        $this->assertSame(0, $reimport->nuevas);
+        $this->assertSame($import->nuevas, $reimport->existentes);
+        $this->assertSame(0, $reimport->rechazadas);
+    }
+
+    public function test_etiqueta_erronea_en_remision_no_vuelve_ambiguo_el_nombre_del_catalogo(): void
+    {
+        $this->movimiento(['cod_sucursal_salida' => 9, 'sucursal_salida' => 'MARIANO']);
+        $this->movimiento(['cod_sucursal_salida' => 3, 'sucursal_salida' => 'JARDINES']);
+        $this->documento('MARIANO');
+        $this->documento('JARDINES', 'J1', '465');
+        $this->assertDatabaseHas('invierno_remisiones', ['cod_sucursal_origen' => 16, 'local' => 'SHOPPING MARIANO']);
+        $this->assertDatabaseHas('invierno_remisiones', ['cod_sucursal_origen' => 22, 'local' => 'JARDINES LUQUE']);
+    }
+
+    public function test_ambiguedad_real_indica_nombre_y_codigos_y_admite_codigo_explicito(): void
+    {
+        DB::table('sucursal')->insert(['cod_suc' => 99, 'suc_descri' => 'SHOP MARIANO']);
+        try {
+            $this->documento('MARIANO');
+            $this->fail('Dos sucursales del catálogo con el mismo alias deben requerir un código.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('MARIANO', $e->getMessage());
+            $this->assertStringContainsString('16 · SHOPPING MARIANO', $e->getMessage());
+            $this->assertStringContainsString('99 · SHOP MARIANO', $e->getMessage());
+        }
+        $this->documento('016');
+        $this->assertDatabaseHas('invierno_remisiones', ['cod_sucursal_origen' => 16]);
+    }
+
+    public function test_error_de_local_desconocido_muestra_el_valor_importado(): void
+    {
+        $import = new InviernoRemisionesImport($this->service);
+        $import->collection(collect([collect(['local' => 'LOCAL SIN IDENTIFICAR', 'serie' => 'F', 'nro' => '1'])]));
+        $this->assertSame(1, $import->rechazadas);
+        $this->assertStringContainsString('Fila 2', $import->errores[0]);
+        $this->assertStringContainsString('LOCAL SIN IDENTIFICAR', $import->errores[0]);
     }
 
     public function test_rechaza_encabezados_incorrectos_sin_crear_documentos(): void

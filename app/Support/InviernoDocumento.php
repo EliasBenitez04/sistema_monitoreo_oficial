@@ -6,6 +6,31 @@ use Illuminate\Support\Str;
 
 class InviernoDocumento
 {
+    // Equivalencias del catálogo y del importador general de remisiones.
+    // Coincidencias exactas: no usar similitud ni la serie para adivinar el local.
+    private const ALIAS_LOCALES = [
+        'CENTRAL' => 'CASA CENTRAL',
+        'SL' => 'SAN LORENZO',
+        'SLG' => 'SAN LORENZO',
+        'MMALL' => 'MALL',
+        'L06 SAN LO2' => 'L06',
+        'L06 SAN LO 2' => 'L06',
+        'LA RURAL' => 'RURAL',
+        'SHOP SAN LO3' => 'SHOPP',
+        'SHOP SAN LO 3' => 'SHOPP',
+        'SHOP SAN LORENZO' => 'SHOPP',
+        'SHOPPING SAN LORENZO' => 'SHOPP',
+        'MULTI' => 'MULTIPLAZA',
+        'MULTI PLAZA' => 'MULTIPLAZA',
+        'PINEDO SHOPPING' => 'PINEDO',
+        'SHOPPING PINEDO' => 'PINEDO',
+        'SHOPPING MARIANO' => 'MARIANO',
+        'SHOP MARIANO' => 'MARIANO',
+        'LOS JARDINES' => 'JARDINES',
+        'JARDINES LUQUE' => 'JARDINES',
+        'MATRIZ' => 'COMERCIAL MATRIZ',
+    ];
+
     public static function texto($valor): string
     {
         return Str::upper(trim(str_replace("\xc2\xa0", ' ', (string) $valor)));
@@ -13,8 +38,12 @@ class InviernoDocumento
 
     public static function local($valor): string
     {
-        $nombre = preg_replace('/\s+/', ' ', Str::ascii(self::texto($valor)));
-        return ['JARDINES' => 'LOS JARDINES', 'CENTRAL' => 'CASA CENTRAL'][$nombre] ?? $nombre;
+        $nombre = Str::ascii(self::texto($valor));
+        $nombre = trim(preg_replace('/[\p{Z}\s]+/u', ' ', str_replace(['-', '_'], ' ', $nombre)));
+        if ($nombre !== '' && ctype_digit($nombre)) {
+            return ltrim($nombre, '0') ?: '0';
+        }
+        return self::ALIAS_LOCALES[$nombre] ?? $nombre;
     }
 
     public static function numero($valor): ?string

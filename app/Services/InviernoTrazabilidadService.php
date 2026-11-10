@@ -38,19 +38,29 @@ class InviernoTrazabilidadService
     public function mapaLocales(): array
     {
         $mapa = [];
-        foreach ($this->locales() as $codigo => $nombre) {
-            $mapa[Documento::local($nombre)][(int) $codigo] = true;
-            $mapa[(string) $codigo][(int) $codigo] = true;
+        $catalogo = DB::table('sucursal')->where('cod_suc', '>', 0)->where('cod_suc', '<>', 1)
+            ->pluck('suc_descri', 'cod_suc');
+        foreach ($catalogo as $codigo => $nombre) {
+            $clave = Documento::local($nombre);
+            if ($clave !== '' && !ctype_digit($clave)) {
+                $mapa[$clave][(int) $codigo] = true;
+            }
+            $mapa[(string) $codigo] = [(int) $codigo => true];
         }
-        // Incorporar las etiquetas reales de origen, sin adivinar por similitud.
+        // El catálogo prevalece: una etiqueta histórica errónea en una remisión
+        // no debe volver ambiguo un local ya identificado en el maestro.
+        $observados = [];
         foreach (DB::table('ot_logistica_remisiones')->where('cod_sucursal_salida', '>', 0)
             ->where('cod_sucursal_salida', '<>', 1)
             ->select('cod_sucursal_salida', 'sucursal_salida')->distinct()->get() as $fila) {
-            if (Documento::local($fila->sucursal_salida) !== '') {
-                $mapa[Documento::local($fila->sucursal_salida)][(int) $fila->cod_sucursal_salida] = true;
+            $codigo = (int) $fila->cod_sucursal_salida;
+            $mapa[(string) $codigo] = [$codigo => true];
+            $clave = Documento::local($fila->sucursal_salida);
+            if ($clave !== '' && !ctype_digit($clave) && !isset($mapa[$clave])) {
+                $observados[$clave][$codigo] = true;
             }
         }
-        return $mapa;
+        return $mapa + $observados;
     }
 
     public function registrar(array $fila, ?int $usuario, ?array $mapa = null, ?Collection $locales = null): bool
@@ -61,8 +71,13 @@ class InviernoTrazabilidadService
         $codigos = array_keys($mapa[$local] ?? []);
         $serie = Documento::texto($fila['serie'] ?? '');
         $numero = Documento::numero($fila['nro'] ?? null);
-        if (count($codigos) !== 1) {
-            $this->error('Local desconocido o ambiguo. Usá el nombre exacto del catálogo o su código de sucursal.');
+        $nombreIngresado = Documento::texto($fila['local'] ?? '');
+        if (count($codigos) === 0) {
+            $this->error('Local «'.$nombreIngresado.'» no reconocido. Usá un nombre del catálogo o su código de sucursal.');
+        }
+        if (count($codigos) > 1) {
+            $opciones = collect($codigos)->map(fn ($codigo) => $codigo.' · '.$locales->get($codigo))->implode('; ');
+            $this->error('Local «'.$nombreIngresado.'» coincide con varias sucursales: '.$opciones.'. Indicá el código de la sucursal correcta.');
         }
         if ($serie === '' || mb_strlen($serie) > 20 || $numero === null) {
             $this->error('Completá SERIE (hasta 20 caracteres) y NRO (hasta 30 dígitos, sin decimales).');
