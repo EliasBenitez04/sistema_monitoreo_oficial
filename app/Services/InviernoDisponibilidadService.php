@@ -47,6 +47,8 @@ class InviernoDisponibilidadService
                     'serie' => $documento->serie, 'numero_remision' => $documento->numero_remision,
                     'codigo' => $codigo, 'grupo' => $grupo,
                     'descripcion' => trim((string) ($entrada->descripcion ?: ($articulo->articulo ?? ''))),
+                    'cantidad_remision' => (int) $entrada->cantidad, 'estado_recepcion' => $entrada->estado,
+                    'estado_documento' => $documento->estado, 'estado_documento_texto' => $documento->estado_texto,
                     'fecha_remision' => Documento::fechaSalida($entrada),
                     'fecha_recepcion' => $entrada->fecha_recepcion,
                     'prendas' => $prendas, 'central' => $central, 'pendiente' => $prendas - $central,
@@ -62,6 +64,7 @@ class InviernoDisponibilidadService
         $lineas = $lineas->filter(function ($linea) use ($filtros, $buscar) {
             return (empty($filtros['local']) || $linea->local_codigo === (int) $filtros['local'])
                 && (empty($filtros['grupo']) || $linea->grupo === $filtros['grupo'])
+                && (empty($filtros['estado']) || $linea->estado_documento === $filtros['estado'])
                 && ($buscar === '' || str_contains(Documento::texto($linea->grupo.' '.$linea->codigo.' '
                     .$linea->descripcion.' '.$linea->local.' '.$linea->serie.' '.$linea->numero_remision), $buscar));
         })->values();
@@ -85,9 +88,27 @@ class InviernoDisponibilidadService
         $lineas = $lineas->filter(fn ($l) => isset($permitidos[$l->grupo]))->values();
         $resumen = $this->totales($lineas);
         $resumen['grupos'] = $grupos->count();
-        $resumen['sin_detalle'] = $documentos->filter(fn ($d) => $d->entradas->isEmpty()
-            && (empty($filtros['local']) || (int) $d->cod_sucursal_origen === (int) $filtros['local']))->count();
-        return compact('grupos', 'lineas', 'resumen', 'opcionesGrupos', 'codigos');
+        $sinDetalle = $documentos->filter(fn ($d) => $d->entradas->isEmpty()
+            && (empty($filtros['local']) || (int) $d->cod_sucursal_origen === (int) $filtros['local'])
+            && (empty($filtros['estado']) || $d->estado === $filtros['estado'])
+            && empty($filtros['grupo']) && empty($filtros['codigo'])
+            && in_array($filtros['situacion'] ?? 'todos', ['', 'todos'], true)
+            && ($buscar === '' || str_contains(Documento::texto($d->local.' '.$d->serie.' '.$d->numero_remision), $buscar)))->values();
+        $resumen['sin_detalle'] = $sinDetalle->count();
+        return compact('grupos', 'lineas', 'resumen', 'opcionesGrupos', 'codigos', 'sinDetalle');
+    }
+
+    public function articulos(Collection $lineas, string $orden = 'disponible'): Collection
+    {
+        return $lineas->groupBy('codigo')->map(function ($filas, $codigo) {
+            return (object) array_merge($this->totales($filas), [
+                'codigo' => (string) $codigo,
+                'descripcion' => $filas->pluck('descripcion')->filter()->unique()->sort()->implode(' | '),
+                'grupo' => $filas->pluck('grupo')->unique()->sort()->implode(' | '),
+            ]);
+        })->sort(function ($a, $b) use ($orden) {
+            return ($orden === 'codigo' ? 0 : $b->{$orden} <=> $a->{$orden}) ?: strcmp($a->codigo, $b->codigo);
+        })->values();
     }
 
     private function nombre($valor): string

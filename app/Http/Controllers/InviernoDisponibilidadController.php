@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\InviernoDisponibilidadExport;
+use App\Exports\InviernoArticulosExport;
 use App\Services\InviernoDisponibilidadService;
 use App\Services\InviernoTrazabilidadService;
 use Illuminate\Http\Request;
@@ -25,6 +26,9 @@ class InviernoDisponibilidadController extends Controller
             'grupo' => ($detalle ? 'required' : 'nullable').'|string|max:255',
             'codigo' => 'nullable|string|max:50', 'local' => 'nullable|integer|min:1',
             'buscar' => 'nullable|string|max:100', 'page' => 'nullable|integer|min:1',
+            'remisiones_page' => 'nullable|integer|min:1',
+            'estado' => ['nullable', Rule::in(array_keys(InviernoTrazabilidadService::ESTADOS))],
+            'orden_articulos' => ['nullable', Rule::in(['disponible', 'codigo', 'prendas', 'remitido'])],
             'situacion' => ['nullable', Rule::in(['todos', 'disponibles', 'pendientes', 'revisar'])],
             'orden' => ['nullable', Rule::in(['disponible', 'grupo', 'central', 'pendiente', 'remitido'])],
         ]);
@@ -59,5 +63,28 @@ class InviernoDisponibilidadController extends Controller
     {
         $datos = $this->service->consultar($this->filtros($request));
         return Excel::download(new InviernoDisponibilidadExport($datos), 'disponibilidad_invierno_'.now()->format('Ymd_His').'.xlsx');
+    }
+
+    public function articulos(Request $request)
+    {
+        $filtros = $this->filtros($request);
+        $datos = $this->service->consultar($filtros);
+        $articulos = $this->service->articulos($datos['lineas'], $filtros['orden_articulos'] ?? 'disponible');
+        $datos['paginados'] = $this->paginar($articulos, $request, 50);
+        $pagina = max(1, $request->integer('remisiones_page', 1));
+        $datos['lineasPaginadas'] = new LengthAwarePaginator($datos['lineas']->forPage($pagina, 50)->values(),
+            $datos['lineas']->count(), 50, $pagina, ['path' => $request->url(), 'query' => $request->query(), 'pageName' => 'remisiones_page']);
+        $datos['locales'] = app(InviernoTrazabilidadService::class)->locales();
+        $datos['estados'] = InviernoTrazabilidadService::ESTADOS;
+        return view('invierno.articulos', $datos);
+    }
+
+    public function exportarArticulos(Request $request)
+    {
+        $filtros = $this->filtros($request);
+        $datos = $this->service->consultar($filtros);
+        return Excel::download(new InviernoArticulosExport($datos,
+            $this->service->articulos($datos['lineas'], $filtros['orden_articulos'] ?? 'disponible')),
+            'prendas_invierno_por_remision_'.now()->format('Ymd_His').'.xlsx');
     }
 }

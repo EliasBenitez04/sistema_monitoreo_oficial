@@ -11,7 +11,10 @@
                 <h1><i class="fas fa-snowflake mr-2"></i>Prendas de invierno</h1>
                 <p>Seguí cada remisión desde el local de origen hasta Central y sus envíos posteriores a los locales.</p>
             </div>
-            <a href="{{ route('invierno.exportar', request()->only('local', 'estado', 'buscar')) }}" class="btn btn-light"><i class="fas fa-file-excel mr-1"></i> Exportar Excel</a>
+            <div class="d-flex flex-wrap">
+                <a href="{{ route('invierno.articulos.exportar') }}" class="btn btn-light mr-2 mb-1"><i class="fas fa-file-excel mr-1"></i> Exportar todas las prendas</a>
+                <a href="{{ route('invierno.exportar', request()->only('local', 'estado', 'buscar')) }}" class="btn btn-outline-light mb-1">Exportar resumen de remisiones</a>
+            </div>
         </header>
 
         @include('invierno._navegacion')

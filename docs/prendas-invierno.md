@@ -15,6 +15,20 @@ No requiere nuevas importaciones, asociaciones ni migraciones: reúne las línea
 
 El acumulado lee los datos actuales en cada consulta, por conjuntos, sin consultas por documento. Reimportar cantidades/recepciones o anular asociaciones actualiza la disponibilidad al volver a consultar. No modifica movimientos, cantidades ni asociaciones.
 
+## Listado general y exportación de prendas por remisión
+
+En `/prendas-invierno`, **Exportar todas las prendas** descarga el detalle completo de todas las remisiones registradas como invierno, incluidos pendientes y documentos con diferencias. Este botón descarga todo el listado, independientemente de los filtros de la pantalla de remisiones. **Exportar resumen de remisiones** conserva la exportación anterior y sus filtros.
+
+La pestaña **Artículos de invierno** (`/prendas-invierno/articulos`) reúne cada código completo una sola vez y acumula sus cantidades entre locales y remisiones. Permite buscar por código, descripción o remisión, filtrar por grupo, origen y estado, y ordenar por código o cantidades. **Ver remisiones** muestra el desglose del artículo, incluso si diferentes remisiones usan distintas descripciones o grupos de respaldo para el mismo código.
+
+Su botón **Exportar prendas y remisiones** respeta los filtros de ese listado y exporta todas sus páginas en tres hojas:
+
+1. **Prendas por remisión:** local y código de origen, serie, número y referencia completa de remisión, destino Casa Central, código completo, descripción, grupo, fechas, estado de recepción, cantidad original en la remisión, recibido, pendiente, salidas asociadas, recibido en locales, en tránsito, disponible, saldo por revisar, estado e incidencias del seguimiento.
+2. **Artículos acumulados:** una fila por código, cantidades consolidadas y número de remisiones distintas. Los códigos repetidos en varias remisiones no se pierden ni generan artículos duplicados en este resumen.
+3. **Remisiones sin detalle:** referencias registradas que todavía no tienen prendas importadas en ENVIOS. No se inventan artículos ni cantidades para esos documentos.
+
+La pertenencia a invierno se toma de las remisiones registradas en el módulo. El detalle conserva también cantidades de documentos con diferencias; el saldo disponible de esos documentos permanece pendiente de revisión. Series, números, códigos y descripciones se exportan como texto; las cantidades válidas como valores numéricos, incluidos los ceros. La consulta y la exportación no modifican remisiones ni crean asociaciones y mantienen los permisos `auth` y `ot index`.
+
 ## Habilitar después del pull
 
 ```bash

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exports\InviernoDisponibilidadExport;
+use App\Exports\InviernoArticulosExport;
 use App\Models\User;
 use App\Services\InviernoDisponibilidadService;
 use App\Services\InviernoTrazabilidadService;
@@ -268,5 +269,127 @@ class InviernoDisponibilidadTest extends TestCase
         $this->assertSame('CAMPERAS DE INVIERNO', $datos['grupos']->first()->grupo);
         $this->assertSame(10, $datos['resumen']['disponible']);
         $this->assertCount(1, $datos['grupos']);
+    }
+
+    public function test_articulos_generales_reunen_un_codigo_en_varias_remisiones_y_descripciones(): void
+    {
+        $a = $this->documento(); $b = $this->documento(16, 'S', '1303');
+        $this->entrada($a);
+        $this->entrada($b, '060617629AZ01', 7, ['descripcion' => 'CAMPERA OTRA DESCRIPCIÓN']);
+        $datos = $this->service->consultar();
+        $articulos = $this->service->articulos($datos['lineas']);
+        $this->assertCount(1, $articulos);
+        $this->assertSame(17, $articulos->first()->prendas);
+        $this->assertSame(2, $articulos->first()->documentos);
+        $this->get(route('invierno.articulos', ['codigo' => '060617629AZ01']))->assertOk()
+            ->assertViewHas('resumen', fn ($r) => $r['prendas'] === 17)
+            ->assertViewHas('paginados', fn ($p) => $p->total() === 1)
+            ->assertViewHas('lineasPaginadas', fn ($p) => $p->total() === 2)
+            ->assertSee('F 1188')->assertSee('S 1303')->assertSee('Ver remisiones');
+    }
+
+    private function leerExportArticulos(array $filtros = []): \PhpOffice\PhpSpreadsheet\Spreadsheet
+    {
+        $datos = $this->service->consultar($filtros);
+        $export = new InviernoArticulosExport($datos, $this->service->articulos($datos['lineas']));
+        $ruta = tempnam(sys_get_temp_dir(), 'inv_art_');
+        file_put_contents($ruta, Excel::raw($export, \Maatwebsite\Excel\Excel::XLSX));
+        try {
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder());
+            return IOFactory::load($ruta);
+        } finally {
+            @unlink($ruta);
+        }
+    }
+
+    public function test_excel_completo_asocia_cada_prenda_a_su_local_serie_numero_e_incluye_pendientes_y_sin_detalle(): void
+    {
+        $a = $this->documento(); $b = $this->documento(16, 'S', '1303');
+        $this->documento(7, 'J1', '465');
+        $entrada = $this->entrada($a); $salida = $this->salida($a);
+        $this->trazabilidad->asociar($a, $entrada, $salida, 3, null, null);
+        $this->entrada($b, '060617629AZ01', 7);
+        $this->entrada($b, 'OTRO01', 4, ['estado' => 'EN_TRANSITO', 'fecha_recepcion' => null]);
+        $this->entrada($a, '060617629AZ01', 999, ['numero_remision' => '9999']);
+        $libro = $this->leerExportArticulos();
+        try {
+            $this->assertSame(['Prendas por remisión', 'Artículos acumulados', 'Remisiones sin detalle'], $libro->getSheetNames());
+            $detalle = $libro->getSheet(0);
+            $this->assertSame(4, $detalle->getHighestDataRow());
+            $cantidades = [];
+            for ($fila = 2; $fila <= 4; $fila++) {
+                $clave = $detalle->getCell('A'.$fila)->getValue().'|'.$detalle->getCell('C'.$fila)->getValue()
+                    .'|'.$detalle->getCell('D'.$fila)->getValue().'|'.$detalle->getCell('H'.$fila)->getValue();
+                $cantidades[$clave] = $detalle->getCell('N'.$fila)->getValue();
+                $this->assertSame(DataType::TYPE_STRING, $detalle->getCell('D'.$fila)->getDataType());
+                $this->assertSame(DataType::TYPE_STRING, $detalle->getCell('H'.$fila)->getDataType());
+                $this->assertSame(DataType::TYPE_NUMERIC, $detalle->getCell('N'.$fila)->getDataType());
+                $this->assertSame('CASA CENTRAL', $detalle->getCell('G'.$fila)->getValue());
+            }
+            $this->assertSame(['16|S|1303|060617629AZ01' => 7, '7|F|1188|060617629AZ01' => 10,
+                '16|S|1303|OTRO01' => 4], $cantidades);
+            $this->assertSame(2, $libro->getSheet(2)->getHighestDataRow());
+            $this->assertSame('465', $libro->getSheet(2)->getCell('D2')->getValue());
+            $this->assertSame(3, $libro->getSheet(1)->getHighestDataRow());
+        } finally {
+            $libro->disconnectWorksheets();
+        }
+        $this->get(route('invierno.index'))->assertOk()->assertSee('Exportar todas las prendas');
+        $this->get(route('invierno.articulos.exportar'))->assertOk()->assertDownload();
+        $this->assertDatabaseCount('invierno_asignaciones', 1);
+    }
+
+    public function test_exportar_articulos_no_se_limita_a_la_pagina_y_resumen_suma_todos_los_codigos(): void
+    {
+        $d = $this->documento();
+        for ($i = 1; $i <= 51; $i++) $this->entrada($d, '060617629AZ'.str_pad((string) $i, 3, '0', STR_PAD_LEFT), $i);
+        $this->get(route('invierno.articulos', ['page' => 2]))->assertOk()
+            ->assertViewHas('paginados', fn ($p) => $p->total() === 51 && $p->count() === 1)
+            ->assertViewHas('resumen', fn ($r) => $r['prendas'] === 1326);
+        $libro = $this->leerExportArticulos(['page' => 2]);
+        try {
+            $this->assertSame(52, $libro->getSheet(0)->getHighestDataRow());
+            $this->assertSame(52, $libro->getSheet(1)->getHighestDataRow());
+        } finally {
+            $libro->disconnectWorksheets();
+        }
+    }
+
+    public function test_filtros_de_articulos_y_exportacion_conservan_el_mismo_alcance_y_permisos(): void
+    {
+        $a = $this->documento(); $b = $this->documento(16, 'S', '1303');
+        $this->entrada($a); $this->entrada($b, 'OTRO01', 4, ['estado' => 'EN_TRANSITO', 'fecha_recepcion' => null]);
+        $this->get(route('invierno.articulos', ['estado' => 'PENDIENTE_RECEPCION']))->assertOk()
+            ->assertViewHas('resumen', fn ($r) => $r['prendas'] === 4 && $r['codigos'] === 1);
+        $libro = $this->leerExportArticulos(['local' => 16]);
+        try {
+            $this->assertSame(2, $libro->getSheet(0)->getHighestDataRow());
+            $this->assertSame('OTRO01', $libro->getSheet(0)->getCell('H2')->getValue());
+            $this->assertSame(0, $libro->getSheet(0)->getCell('O2')->getValue());
+        } finally {
+            $libro->disconnectWorksheets();
+        }
+        $this->getJson(route('invierno.articulos', ['orden_articulos' => 'invalido']))->assertUnprocessable();
+        foreach (['articulos', 'articulos.exportar'] as $nombre) {
+            $middleware = app('router')->getRoutes()->getByName('invierno.'.$nombre)->gatherMiddleware();
+            $this->assertContains('auth', $middleware); $this->assertContains('permission:ot index', $middleware);
+        }
+    }
+
+    public function test_exportacion_de_prendas_con_diferencias_conserva_cantidad_y_deja_disponible_pendiente_de_revision(): void
+    {
+        $d = $this->documento(); $entrada = $this->entrada($d, '060617629AZ01', 5); $salida = $this->salida($d);
+        $this->trazabilidad->asociar($d, $entrada, $salida, 5, null, null);
+        DB::table('ot_logistica_remisiones')->where('id', $entrada)->update(['cantidad' => 4]);
+        $libro = $this->leerExportArticulos();
+        try {
+            $this->assertSame(4, $libro->getSheet(0)->getCell('N2')->getValue());
+            $this->assertNull($libro->getSheet(0)->getCell('T2')->getValue());
+            $this->assertSame(4, $libro->getSheet(0)->getCell('U2')->getValue());
+            $this->assertNotEmpty($libro->getSheet(0)->getCell('W2')->getValue());
+            $this->assertSame(0, $libro->getSheet(1)->getCell('K2')->getValue());
+        } finally {
+            $libro->disconnectWorksheets();
+        }
     }
 }
