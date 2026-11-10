@@ -3723,7 +3723,16 @@ class ControlTerminacionController extends Controller
         ]);
 
         $request->validate([
-            'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:102400',
+            'archivo_envios' => [
+                'bail', 'required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:102400',
+                // Un CSV válido también puede detectarse como text/plain.
+                // La extensión original sigue limitada a los formatos del importador.
+                function ($atributo, $archivo, $fallar) {
+                    if (!in_array(strtolower($archivo->getClientOriginalExtension()), ['xlsx', 'xls', 'csv'], true)) {
+                        $fallar('El archivo ENVIOS debe tener extensión .xlsx, .xls o .csv.');
+                    }
+                },
+            ],
             'import_token' => 'nullable|string|max:100|regex:/^[A-Za-z0-9_-]+$/',
         ]);
 

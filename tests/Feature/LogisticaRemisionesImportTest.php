@@ -255,6 +255,21 @@ class LogisticaRemisionesImportTest extends TestCase
         }
     }
 
+    public function test_admite_csv_detectado_como_texto_plano_y_rechaza_extensiones_no_permitidas(): void
+    {
+        $contenido = "COD_ARTICULO;SERIE;NUMERO_REMISION;COD_SUCURSAL_SALIDA;COD_SUCURSAL;CANTIDAD\n050617629AZ01;1;1188;1;7;4\n";
+        $csv = UploadedFile::fake()->createWithContent('envios.csv', $contenido)->mimeType('text/plain');
+        $this->post(route('control.terminacion.importar-remisiones'), ['archivo_envios' => $csv],
+            ['Accept' => 'application/json'])->assertOk()->assertJsonPath('resumen.insertadas', 1);
+        $this->assertDatabaseHas('ot_logistica_remisiones', ['cantidad' => 4]);
+        foreach (['txt', 'php'] as $extension) {
+            $archivo = UploadedFile::fake()->createWithContent('envios.' . $extension, $contenido)->mimeType('text/plain');
+            $this->post(route('control.terminacion.importar-remisiones'), ['archivo_envios' => $archivo],
+                ['Accept' => 'application/json'])->assertUnprocessable()->assertJsonValidationErrors('archivo_envios');
+        }
+        $this->assertDatabaseCount('ot_logistica_remisiones', 1);
+    }
+
     public function test_xlsx_grande_conserva_contadores_y_corrige_una_linea_repetida_entre_bloques(): void
     {
         $filas = [];
