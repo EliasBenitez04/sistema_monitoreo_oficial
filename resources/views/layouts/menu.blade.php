@@ -385,6 +385,13 @@
 {{-- ===================== OT ===================== --}}
 @can('ot index')
 
+    <li class="nav-item">
+        <a href="{{ route('invierno.index') }}" class="nav-link {{ request()->routeIs('invierno.*') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-snowflake"></i>
+            <p>Prendas de invierno</p>
+        </a>
+    </li>
+
     <li class="nav-header">
         SEGUIMIENTO OT
     </li>

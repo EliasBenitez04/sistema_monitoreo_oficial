@@ -25,6 +25,7 @@ use App\Http\Controllers\VentaController;
 use App\Http\Controllers\VentaMayoristaController;
 use App\Http\Controllers\MayoristaMatrizController;
 use App\Http\Controllers\MayoristaAuditoriaController;
+use App\Http\Controllers\InviernoTrazabilidadController;
 
 
 /*
@@ -43,6 +44,19 @@ Route::get('/home', [
 ])->name('home');
 
 Auth::routes();
+
+// Seguimiento documental: devolución de invierno a Central y salidas a locales.
+Route::middleware(['auth', 'permission:ot index'])->prefix('prendas-invierno')->name('invierno.')->group(function () {
+    Route::get('/', [InviernoTrazabilidadController::class, 'index'])->name('index');
+    Route::get('/plantilla', [InviernoTrazabilidadController::class, 'plantilla'])->name('plantilla');
+    Route::get('/exportar', [InviernoTrazabilidadController::class, 'exportar'])->name('exportar');
+    Route::post('/importar', [InviernoTrazabilidadController::class, 'importar'])->middleware('permission:ot importar')->name('importar');
+    Route::post('/', [InviernoTrazabilidadController::class, 'registrar'])->middleware('permission:ot importar')->name('registrar');
+    Route::get('/{id}', [InviernoTrazabilidadController::class, 'show'])->whereNumber('id')->name('show');
+    Route::post('/{id}/asociaciones', [InviernoTrazabilidadController::class, 'asociar'])->whereNumber('id')->middleware('permission:ot edit')->name('asociar');
+    Route::patch('/{id}/asociaciones/{asignacion}/anular', [InviernoTrazabilidadController::class, 'anular'])->whereNumber(['id', 'asignacion'])->middleware('permission:ot edit')->name('anular');
+    Route::delete('/{id}', [InviernoTrazabilidadController::class, 'retirar'])->whereNumber('id')->middleware('permission:ot edit')->name('retirar');
+});
 
 Route::post('/login', [
     App\Http\Controllers\Auth\Logincontroller::class,

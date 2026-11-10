@@ -1,0 +1,80 @@
+<?php
+
+namespace App\Support;
+
+use Illuminate\Support\Str;
+
+class InviernoDocumento
+{
+    public static function texto($valor): string
+    {
+        return Str::upper(trim(str_replace("\xc2\xa0", ' ', (string) $valor)));
+    }
+
+    public static function local($valor): string
+    {
+        $nombre = preg_replace('/\s+/', ' ', Str::ascii(self::texto($valor)));
+        return ['JARDINES' => 'LOS JARDINES', 'CENTRAL' => 'CASA CENTRAL'][$nombre] ?? $nombre;
+    }
+
+    public static function numero($valor): ?string
+    {
+        $numero = trim((string) $valor);
+        if ($numero === '' || strlen($numero) > 30 || !ctype_digit($numero)) {
+            return null;
+        }
+        return ltrim($numero, '0') ?: '0';
+    }
+
+    public static function numeroSql(string $alias): string
+    {
+        // LTRIM con dos argumentos funciona en PostgreSQL 9.5 y SQLite.
+        return "COALESCE(NULLIF(LTRIM(TRIM({$alias}.numero_remision), '0'), ''), '0')";
+    }
+
+    public static function coincideEntrada(object $documento, object $entrada): bool
+    {
+        return (int) $entrada->cod_sucursal_salida === (int) $documento->cod_sucursal_origen
+            && (int) $entrada->cod_sucursal_destino === 1
+            && self::texto($entrada->serie) === $documento->serie
+            && self::numero($entrada->numero_remision) === $documento->numero_remision;
+    }
+
+    public static function fechaSalida(object $movimiento): ?string
+    {
+        return $movimiento->fecha_remision ?: ($movimiento->fecha_creacion ?? null);
+    }
+
+    public static function recibido(object $movimiento): bool
+    {
+        return self::texto($movimiento->estado) === 'RECIBIDO'
+            && !empty($movimiento->fecha_recepcion)
+            && $movimiento->fecha_recepcion <= now()->toDateString()
+            && (!self::fechaSalida($movimiento) || $movimiento->fecha_recepcion >= self::fechaSalida($movimiento));
+    }
+
+    public static function problema(object $movimiento): ?string
+    {
+        if (self::texto($movimiento->serie) === '' || self::numero($movimiento->numero_remision) === null) {
+            return 'Serie o número de remisión inválido.';
+        }
+        if ((int) $movimiento->cantidad <= 0 || self::texto($movimiento->codigo) === '') {
+            return 'Cantidad o código de artículo inválido.';
+        }
+        $salida = self::fechaSalida($movimiento);
+        if (!$salida || $salida > now()->toDateString()) {
+            return 'Fecha de remisión ausente o futura.';
+        }
+        $estado = self::texto($movimiento->estado);
+        if (!in_array($estado, ['EN_TRANSITO', 'RECIBIDO'], true)) {
+            return 'Estado de remisión no válido para el seguimiento.';
+        }
+        if ($estado === 'RECIBIDO' && !self::recibido($movimiento)) {
+            return 'Recepción sin fecha válida o anterior a la remisión.';
+        }
+        if ($estado === 'EN_TRANSITO' && !empty($movimiento->fecha_recepcion)) {
+            return 'La fecha de recepción contradice el estado en tránsito.';
+        }
+        return null;
+    }
+}

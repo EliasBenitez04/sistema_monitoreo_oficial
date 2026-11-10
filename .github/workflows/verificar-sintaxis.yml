@@ -19,13 +19,13 @@ jobs:
           find app routes database tests -type f -name '*.php' -print0 | xargs -0 -n 1 php -l
       - name: Instalar dependencias para el compilador Blade
         run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
-      - name: Compilar vistas Blade de Accesorios y verificar sintaxis
+      - name: Compilar vistas Blade de Accesorios, Mayoristas e Invierno
         run: |
           php -r '
             require "vendor/autoload.php";
             $filesystem = new \Illuminate\Filesystem\Filesystem();
             $compiler = new \Illuminate\View\Compilers\BladeCompiler($filesystem, sys_get_temp_dir());
-            foreach (array_merge(glob("resources/views/accesorios/*.blade.php"), glob("resources/views/ventas/mayoristas_matriz_factura.blade.php"), glob("resources/views/ventas/mayoristas_matriz.blade.php")) as $path) {
+            foreach (array_merge(glob("resources/views/accesorios/*.blade.php"), glob("resources/views/ventas/mayoristas_matriz_factura.blade.php"), glob("resources/views/ventas/mayoristas_matriz.blade.php"), glob("resources/views/invierno/*.blade.php"), glob("resources/views/layouts/menu.blade.php")) as $path) {
               $compiled = $compiler->compileString(file_get_contents($path));
               $target = sys_get_temp_dir() . "/" . sha1($path) . ".php";
               file_put_contents($target, $compiled);
@@ -44,3 +44,4 @@ jobs:
         run: |
           vendor/bin/phpunit tests/Feature/AccesoriosCompraEdicionTest.php tests/Feature/AccesoriosFacturasTest.php tests/Unit/MayoristaDescripcionFacturaTest.php tests/Unit/MayoristaFacturaSoloConsultaTest.php tests/Unit/MayoristaTopClientesTest.php
           vendor/bin/phpunit tests/Feature/AccesoriosRetencionTest.php
+          vendor/bin/phpunit tests/Feature/InviernoTrazabilidadTest.php
