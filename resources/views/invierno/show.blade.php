@@ -18,6 +18,7 @@
             <div>@include('invierno._estado')</div>
         </header>
 
+        @include('invierno._navegacion')
         @include('invierno._alertas')
         @if($documento->incidencias)
             <div class="alert alert-danger"><strong>Revisá los datos antes de cerrar el seguimiento.</strong><ul class="mb-0 mt-2">@foreach($documento->incidencias as $incidencia)<li>{{ $incidencia }}</li>@endforeach</ul><small class="d-block mt-2">Las cantidades de vínculos observados no se computan como envíos válidos. El saldo de este documento queda pendiente de revisión.</small></div>

@@ -1,6 +1,19 @@
 # Prendas de invierno
 
-Ruta: `/prendas-invierno`. El menú aparece para los usuarios con `ot index`.
+El menú **Prendas de invierno** abre `/prendas-invierno/disponibilidad`, el acumulado por grupo. El seguimiento individual sigue en `/prendas-invierno`. Ambas pantallas están disponibles para usuarios con `ot index`.
+
+## Disponibilidad por grupo
+
+No requiere nuevas importaciones, asociaciones ni migraciones: reúne las líneas de las remisiones que ya están registradas como invierno. No incluye remisiones ajenas al listado ni salidas sin asociación confirmada.
+
+- Agrupa por `maestro_codigos.grupo` del código completo; si falta, usa `grupo_plan` y luego la descripción de la remisión. Sin descripción se muestra **SIN CLASIFICAR**. No infiere grupos desde otras variantes ni desde una OT.
+- Acumula prendas documentadas, recibido en Central, pendiente de recepción, enviado asociado, recibido en locales y en tránsito. Por defecto ordena de mayor a menor disponible.
+- **Disponible Central = recibido confirmado − salidas asociadas válidas**, con el mismo criterio de incidencias del seguimiento por remisión. El saldo de documentos con diferencias queda fuera del disponible y se informa como **Saldo por revisar**. No es un stock físico certificado.
+- Permite filtrar por grupo, origen, código/descripción/remisión y situación. El filtro de situación selecciona grupos completos: ver grupos con pendientes no oculta sus prendas ya recibidas.
+- **Ver detalle** muestra cada código con su cantidad y remisión de origen, con filtro por código y acceso a **Ver remisión** para consultar sus asociaciones. Los totales incluyen todas las páginas.
+- **Exportar Excel** descarga dos hojas, resumen por grupo y detalle de remisiones, con los mismos filtros. Preserva códigos, series y números como texto, y cantidades como valores numéricos.
+
+El acumulado lee los datos actuales en cada consulta, por conjuntos, sin consultas por documento. Reimportar cantidades/recepciones o anular asociaciones actualiza la disponibilidad al volver a consultar. No modifica movimientos, cantidades ni asociaciones.
 
 ## Habilitar después del pull
 
@@ -58,6 +71,7 @@ Permisos existentes: `ot index` para consulta/plantilla/exportación, `ot import
 
 ```bash
 vendor/bin/phpunit tests/Feature/InviernoTrazabilidadTest.php
+vendor/bin/phpunit tests/Feature/InviernoDisponibilidadTest.php
 ```
 
 Pruebas con base aislada: importación real XLSX/CSV, duplicados y errores, identificación por origen/destino, recepción parcial, asociación manual, recepción final, restricciones de código/fecha/estado/cantidad, saldo compartido, anulaciones, cambios posteriores, vistas, Excel y autorización. Las consultas usan operaciones disponibles en PostgreSQL 9.5; la suite funcional usa SQLite en memoria.

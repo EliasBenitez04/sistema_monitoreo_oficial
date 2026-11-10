@@ -14,6 +14,7 @@
             <a href="{{ route('invierno.exportar', request()->only('local', 'estado', 'buscar')) }}" class="btn btn-light"><i class="fas fa-file-excel mr-1"></i> Exportar Excel</a>
         </header>
 
+        @include('invierno._navegacion')
         @include('invierno._alertas')
 
         <div class="row">

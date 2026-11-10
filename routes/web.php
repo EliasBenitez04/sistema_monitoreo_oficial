@@ -26,6 +26,7 @@ use App\Http\Controllers\VentaMayoristaController;
 use App\Http\Controllers\MayoristaMatrizController;
 use App\Http\Controllers\MayoristaAuditoriaController;
 use App\Http\Controllers\InviernoTrazabilidadController;
+use App\Http\Controllers\InviernoDisponibilidadController;
 
 
 /*
@@ -48,6 +49,9 @@ Auth::routes();
 // Seguimiento documental: devolución de invierno a Central y salidas a locales.
 Route::middleware(['auth', 'permission:ot index'])->prefix('prendas-invierno')->name('invierno.')->group(function () {
     Route::get('/', [InviernoTrazabilidadController::class, 'index'])->name('index');
+    Route::get('/disponibilidad', [InviernoDisponibilidadController::class, 'index'])->name('disponibilidad');
+    Route::get('/disponibilidad/grupo', [InviernoDisponibilidadController::class, 'detalle'])->name('disponibilidad.detalle');
+    Route::get('/disponibilidad/excel', [InviernoDisponibilidadController::class, 'exportar'])->name('disponibilidad.exportar');
     Route::get('/plantilla', [InviernoTrazabilidadController::class, 'plantilla'])->name('plantilla');
     Route::get('/exportar', [InviernoTrazabilidadController::class, 'exportar'])->name('exportar');
     Route::post('/importar', [InviernoTrazabilidadController::class, 'importar'])->middleware('permission:ot importar')->name('importar');
