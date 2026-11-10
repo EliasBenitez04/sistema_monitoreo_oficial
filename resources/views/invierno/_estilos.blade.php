@@ -35,6 +35,21 @@
     .invierno .btn { border-radius: 6px; }
     .invierno details > summary { cursor: pointer; font-weight: 600; }
     .invierno .pagination { margin-bottom: 0; }
+    .invierno .iw-product { display: flex; align-items: center; gap: 14px; min-width: 265px; }
+    .invierno .iw-photo { display: inline-flex; flex: 0 0 72px; width: 72px; height: 82px; border: 1px solid #dfe7f0; border-radius: 8px; background: #f8fafc; overflow: hidden; align-items: center; justify-content: center; }
+    .invierno .iw-photo img { width: 100%; height: 100%; object-fit: contain; }
+    .invierno .iw-photo:hover { border-color: #3c7aaf; }
+    .invierno .iw-photo-empty { flex-direction: column; gap: 7px; color: #8394a9; }
+    .invierno .iw-photo-empty i { font-size: 1.4rem; }
+    .invierno .iw-photo-empty small { font-size: .68rem; }
+    .invierno .iw-file-zone { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 28px 20px; border: 2px dashed #a6bfd7; background: #f5f9fd; border-radius: 10px; cursor: pointer; }
+    .invierno .iw-file-zone i { font-size: 2.2rem; color: #3c7aaf; margin-bottom: 12px; }
+    .invierno .iw-file-zone span { color: #61758b; font-size: .78rem; margin-top: 8px; }
+    .invierno .iw-file-example { background: #edf3f9; color: #294d74; padding: 12px 14px; border-radius: 7px; font: .8rem monospace; overflow-wrap: anywhere; margin: 10px 0; }
+    .invierno .iw-import-summary { background: #edf3f9; color: #42617e; border-radius: 7px; padding: 13px 16px; font-size: .83rem; }
+    .invierno .iw-import-stat { padding: 12px 16px; background: #f3f7fb; border-radius: 8px; margin-bottom: 8px; }
+    .invierno .iw-import-stat strong { display: block; color: #294d74; font-size: 1.7rem; }
+    .invierno .iw-import-stat span { color: #61758b; font-size: .82rem; }
     @media(max-width: 767px) { .invierno { padding: 16px 8px; } .invierno .iw-hero { padding: 22px 18px; } .invierno .iw-hero h1 { font-size: 1.35rem; } }
 </style>
 @endpush

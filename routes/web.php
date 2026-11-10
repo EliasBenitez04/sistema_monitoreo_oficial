@@ -54,6 +54,9 @@ Route::middleware(['auth', 'permission:ot index'])->prefix('prendas-invierno')->
     Route::get('/disponibilidad/excel', [InviernoDisponibilidadController::class, 'exportar'])->name('disponibilidad.exportar');
     Route::get('/articulos', [InviernoDisponibilidadController::class, 'articulos'])->name('articulos');
     Route::get('/articulos/excel', [InviernoDisponibilidadController::class, 'exportarArticulos'])->name('articulos.exportar');
+    Route::get('/imagenes/importar', [\App\Http\Controllers\InviernoImagenController::class, 'index'])->middleware('permission:ot importar')->name('imagenes.index');
+    Route::post('/imagenes/importar', [\App\Http\Controllers\InviernoImagenController::class, 'importar'])->middleware('permission:ot importar')->name('imagenes.importar');
+    Route::get('/imagenes/{codigo}/foto', [\App\Http\Controllers\InviernoImagenController::class, 'foto'])->name('imagenes.foto');
     Route::get('/plantilla', [InviernoTrazabilidadController::class, 'plantilla'])->name('plantilla');
     Route::get('/exportar', [InviernoTrazabilidadController::class, 'exportar'])->name('exportar');
     Route::post('/importar', [InviernoTrazabilidadController::class, 'importar'])->middleware('permission:ot importar')->name('importar');

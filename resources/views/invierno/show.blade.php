@@ -42,7 +42,7 @@
                     <tbody>
                     @forelse($documento->entradas as $linea)
                         <tr class="{{ $entrada && $entrada->id === $linea->id ? 'table-primary' : '' }}">
-                            <td><span class="iw-code">{{ $linea->codigo }}</span><div>{{ $linea->descripcion }}</div>@if($linea->problema)<small class="text-danger">{{ $linea->problema }}</small>@endif</td>
+                            <td><div class="iw-product">@include('invierno._imagen', ['imagenCodigo' => $linea->codigo])<div><span class="iw-code">{{ $linea->codigo }}</span><div>{{ $linea->descripcion }}</div>@if($linea->problema)<small class="text-danger">{{ $linea->problema }}</small>@endif</div></div></td>
                             <td>{{ $fecha(\App\Support\InviernoDocumento::fechaSalida($linea)) }}</td>
                             <td>@if(\App\Support\InviernoDocumento::recibido($linea) && !$linea->problema)<span class="iw-pill iw-success">Confirmado</span><small class="d-block mt-1">{{ $fecha($linea->fecha_recepcion) }}</small>@else<span class="iw-pill {{ $linea->problema ? 'iw-danger' : 'iw-warning' }}">{{ $linea->problema ? 'Revisar' : 'Pendiente' }}</span>@endif</td>
                             <td class="num">{{ $n($linea->cantidad) }}</td><td class="num">{{ $n($linea->asignada) }}</td>

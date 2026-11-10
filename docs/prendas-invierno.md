@@ -38,6 +38,32 @@ php artisan optimize:clear
 
 La migración agrega `invierno_remisiones` e `invierno_asignaciones`. Requiere que ya exista `ot_logistica_remisiones`; no vuelve a ejecutar las migraciones históricas de permisos. No modifica remisiones, stock ni vínculos de otros módulos.
 
+## Imágenes de las prendas
+
+La pestaña **Importar imágenes** (`/prendas-invierno/imagenes/importar`) funciona como el importador de Ecommerce de `sistema_mayorista`: acepta imágenes JPG/PNG/WEBP individuales (hasta 20 de 30 MB) o un ZIP de hasta 200 MB y 500 entradas. Los archivos pueden estar en carpetas internas. El contenido de imágenes descomprimido se limita a 500 MB por lote; los paquetes no se extraen usando las rutas de sus entradas.
+
+Ejemplos de nombres aceptados:
+
+- `060617629.jpg`: imagen genérica del modelo, usada por los colores que no tengan foto propia.
+- `060617629AZ.png`: modelo y color, compartido por todos sus talles.
+- `060617629AZ01.jpg`: código completo; se guarda por modelo y color como en Ecommerce.
+- `100613678CV V35 C13.388 OT26697 BERMUDA ECO VARÓN 08-10-26.jpg`: el mismo formato largo de Ecommerce. V, C, OT, descripción y fecha son opcionales y no modifican costos, precios ni cantidades.
+
+El código se valida contra `maestro_codigos.cod_articulo`, `cod_imagen` y `cod_base`. La pertenencia al listado se verifica por coincidencias exactas y por el formato de variante de 9 dígitos, dos letras de color y dos caracteres de talle. No se asocia por descripción ni por OT. Se aceptan fotos de cualquier prenda del maestro; las pantallas de invierno siguen mostrando solamente las prendas de sus remisiones registradas. Los nombres desconocidos, códigos ajenos al maestro, imágenes dañadas y archivos no admitidos se omiten y se informa el motivo.
+
+La foto del color tiene prioridad sobre la genérica. Cada nueva carga del mismo código reemplaza su foto anterior; no duplica artículos ni toca remisiones o asociaciones. Las fotos aparecen en **Artículos de invierno**, **Ver detalle** de cada grupo y **Ver remisión**. Se pueden ampliar tocando la miniatura. La lectura de las fotos de cada página se realiza por conjuntos.
+
+Después del pull, habilitar esta función con:
+
+```bash
+php artisan migrate --path=database/migrations/2026_11_10_160000_create_articulo_imagenes_table.php
+php artisan optimize:clear
+```
+
+Solo agrega la tabla `articulo_imagenes`. Las fotos se guardan localmente en `storage/app/public/articulos-imagenes`, fuera de Git. Se entregan mediante una ruta autenticada y no necesitan `storage:link`, también en XAMPP/Windows. El servidor necesita PHP ZIP y límites `upload_max_filesize` / `post_max_size` suficientes para el lote. El permiso `ot index` permite ver fotos; `ot importar` permite abrir y usar el importador. Se conserva la restricción global del rol `visualizador_accesorios`.
+
+Verificación específica: `vendor/bin/phpunit tests/Feature/InviernoImagenesTest.php` y `vendor/bin/phpunit tests/Unit/ArticuloImagenNombreTest.php`.
+
 ## Uso
 
 1. Mantener al día el archivo ENVIOS en la importación general de remisiones.

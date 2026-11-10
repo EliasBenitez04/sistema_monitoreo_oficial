@@ -48,6 +48,7 @@ class InviernoDisponibilidadController extends Controller
         $datos = $this->service->consultar($filtros);
         $datos['grupo'] = $filtros['grupo'];
         $datos['paginados'] = $this->paginar($datos['lineas']->sortBy('codigo')->values(), $request, 50);
+        $datos['imagenes'] = app(\App\Services\ArticuloImagenService::class)->paraCodigos($datos['paginados']->getCollection()->pluck('codigo'));
         $datos['locales'] = app(InviernoTrazabilidadService::class)->locales();
         return view('invierno.disponibilidad-detalle', $datos);
     }
@@ -71,6 +72,7 @@ class InviernoDisponibilidadController extends Controller
         $datos = $this->service->consultar($filtros);
         $articulos = $this->service->articulos($datos['lineas'], $filtros['orden_articulos'] ?? 'disponible');
         $datos['paginados'] = $this->paginar($articulos, $request, 50);
+        $datos['imagenes'] = app(\App\Services\ArticuloImagenService::class)->paraCodigos($datos['paginados']->getCollection()->pluck('codigo'));
         $pagina = max(1, $request->integer('remisiones_page', 1));
         $datos['lineasPaginadas'] = new LengthAwarePaginator($datos['lineas']->forPage($pagina, 50)->values(),
             $datos['lineas']->count(), 50, $pagina, ['path' => $request->url(), 'query' => $request->query(), 'pageName' => 'remisiones_page']);

@@ -46,4 +46,6 @@ jobs:
           vendor/bin/phpunit tests/Feature/AccesoriosRetencionTest.php
           vendor/bin/phpunit tests/Feature/InviernoTrazabilidadTest.php
           vendor/bin/phpunit tests/Feature/InviernoDisponibilidadTest.php
+          vendor/bin/phpunit tests/Feature/InviernoImagenesTest.php
+          vendor/bin/phpunit tests/Unit/ArticuloImagenNombreTest.php
           vendor/bin/phpunit tests/Feature/LogisticaRemisionesImportTest.php

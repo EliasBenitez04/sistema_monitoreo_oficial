@@ -146,7 +146,8 @@ class InviernoTrazabilidadController extends Controller
             }
         }
         $historial = DB::table('invierno_asignaciones')->where('invierno_remision_id', $id)->whereNotNull('anulada_at')->orderByDesc('id')->get();
-        return view('invierno.show', compact('documento', 'entrada', 'salidas', 'historial'));
+        $imagenes = app(\App\Services\ArticuloImagenService::class)->paraCodigos($documento->entradas->pluck('codigo'));
+        return view('invierno.show', compact('documento', 'entrada', 'salidas', 'historial', 'imagenes'));
     }
 
     public function asociar(Request $request, int $id)

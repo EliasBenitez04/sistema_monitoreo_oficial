@@ -32,7 +32,7 @@
                     @forelse($paginados as $l)
                         <tr>
                             <td><strong>{{ $l->local }}</strong><div class="iw-code">{{ $l->serie }} {{ $l->numero_remision }}</div><small class="text-muted">Remitido: {{ $fecha($l->fecha_remision) }}</small></td>
-                            <td><span class="iw-code">{{ $l->codigo }}</span><div>{{ $l->descripcion ?: 'Sin descripción' }}</div>@if($l->revisar)<small class="text-danger">El documento tiene diferencias. Abrí la remisión para revisarlas.</small>@endif</td>
+                            <td><div class="iw-product">@include('invierno._imagen', ['imagenCodigo' => $l->codigo])<div><span class="iw-code">{{ $l->codigo }}</span><div>{{ $l->descripcion ?: 'Sin descripción' }}</div>@if($l->revisar)<small class="text-danger">El documento tiene diferencias. Abrí la remisión para revisarlas.</small>@endif</div></div></td>
                             <td>@if($l->revisar)<span class="iw-pill iw-warning">Revisar documento</span>@elseif($l->central > 0)<span class="iw-pill iw-success">Confirmada</span>@else<span class="iw-pill iw-muted">Pendiente</span>@endif<small class="d-block mt-1">{{ $fecha($l->fecha_recepcion) }}</small></td>
                             <td class="num">{{ $n($l->prendas) }}</td><td class="num">{{ $n($l->central) }}</td><td class="num">{{ $n($l->remitido) }}<small class="d-block text-muted">{{ $n($l->recibido_local) }} recibidas · {{ $n($l->transito_local) }} en tránsito</small></td>
                             <td class="num font-weight-bold {{ $l->disponible > 0 ? 'text-success' : '' }}">{{ $l->disponible === null ? 'Por revisar' : $n($l->disponible) }}</td>
