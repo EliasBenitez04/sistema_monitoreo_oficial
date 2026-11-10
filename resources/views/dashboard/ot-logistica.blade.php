@@ -333,18 +333,7 @@
         </table></div>
     </div>
 
-    <div class="card lg-card">
-        <div class="card-body py-3">
-            <div class="d-flex justify-content-between align-items-center flex-wrap">
-                <div><strong><i class="fas fa-file-upload text-success mr-1"></i>Actualizar remisiones</strong><div class="lg-subtitle">Importá ENVIOS cuando necesites actualizar recepción y documentación.</div></div>
-                <form method="POST" action="{{ route('control.terminacion.importar-remisiones') }}" enctype="multipart/form-data" class="d-flex mt-2 mt-md-0">@csrf
-                    <input type="hidden" name="origen" value="dashboard-logistica"><input type="hidden" name="fecha_desde" value="{{ $fechaDesde }}"><input type="hidden" name="fecha_hasta" value="{{ $fechaHasta }}">
-                    <input type="file" name="archivo_envios" class="form-control-file mr-2" accept=".xlsx,.xls,.csv" required>
-                    <button class="btn btn-success btn-sm"><i class="fas fa-upload mr-1"></i>Importar</button>
-                </form>
-            </div>
-        </div>
-    </div>
+    @include('remisiones.progreso-importacion')
 </div>
 
     {{-- Detalle calculado con la misma conciliación y los mismos filtros del KPI. --}}

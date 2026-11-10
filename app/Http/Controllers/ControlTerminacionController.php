@@ -6,9 +6,11 @@ use App\Imports\ControlTerminacionRemisionImport;
 use App\Services\LogisticaConciliacionService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ControlTerminacionController extends Controller
@@ -3722,27 +3724,40 @@ class ControlTerminacionController extends Controller
 
         $request->validate([
             'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:102400',
+            'import_token' => 'nullable|string|max:100|regex:/^[A-Za-z0-9_-]+$/',
         ]);
 
         if (!Schema::hasTable('ot_logistica_remisiones')) {
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false,
+                    'message' => 'Primero creá la tabla ot_logistica_remisiones antes de importar ENVIOS.'], 422);
+            }
             return redirect()
                 ->route($rutaRetorno, $parametrosRetorno)
                 ->with('error', 'Primero creá la tabla ot_logistica_remisiones antes de importar ENVIOS.');
         }
 
+        $token = $request->input('import_token') ?: Str::random(40);
+        $claveProgreso = $this->claveProgresoRemisiones($request, $token);
+        $import = new ControlTerminacionRemisionImport(function (array $datos) use ($claveProgreso) {
+            Cache::put($claveProgreso, $datos, 3600);
+        });
+
         try {
             $archivo = $request->file('archivo_envios');
             $inicio = microtime(true);
-            $import = new ControlTerminacionRemisionImport();
             $extension = strtolower($archivo->getClientOriginalExtension());
 
             if ($extension === 'xlsx') {
                 $import->importarXlsxStreaming($archivo->getRealPath());
+            } elseif ($extension === 'csv') {
+                $import->importarCsvStreaming($archivo->getRealPath());
             } else {
                 Excel::import($import, $archivo);
             }
 
             $segundos = round(microtime(true) - $inicio, 2);
+            $resumen = $import->finalizar();
 
             $mensaje = 'Logística actualizada. '
                 . 'Documentos: ' . $import->getDocumentosArchivo()
@@ -3751,6 +3766,8 @@ class ControlTerminacionController extends Controller
                 . ' | Líneas: ' . $import->getProcesadas()
                 . ' | Nuevas: ' . $import->getInsertadas()
                 . ' | Actualizadas: ' . $import->getActualizadas()
+                . ' | Sin cambios: ' . $import->getSinCambios()
+                . ' | Cantidades corregidas: ' . $import->getCantidadesCorregidas()
                 . ' | Vinculadas a OT: ' . $import->getVinculadasOt()
                 . ' | Vinculadas a logística: ' . $import->getVinculadas()
                 . ' | Sin detalle logístico: ' . $import->getSinVincular()
@@ -3758,20 +3775,52 @@ class ControlTerminacionController extends Controller
                 . ' | Omitidas: ' . $import->getOmitidas()
                 . ' | Tiempo: ' . $segundos . ' s.';
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $mensaje,
+                    'resumen' => $resumen,
+                    'redirect' => route($rutaRetorno, $parametrosRetorno),
+                ]);
+            }
             return redirect()
                 ->route($rutaRetorno, $parametrosRetorno)
                 ->with('success', $mensaje);
         } catch (\Throwable $e) {
+            $mensaje = 'No se pudo completar la importación de ENVIOS: ' . $e->getMessage();
+            if ($import->getProcesadas() > 0) {
+                $mensaje .= ' Los bloques anteriores ya guardados se conservan. Podés reimportar el archivo para completar la carga.';
+            }
+            $import->marcarError($mensaje);
             Log::error('ERROR IMPORTACION ENVIOS LOGISTICA', [
                 'error' => $e->getMessage(),
                 'archivo' => $e->getFile(),
                 'linea' => $e->getLine(),
             ]);
 
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $mensaje,
+                    'resumen' => $import->resumen()], $e instanceof \InvalidArgumentException ? 422 : 500);
+            }
             return redirect()
                 ->route($rutaRetorno, $parametrosRetorno)
-                ->with('error', 'No se pudo importar ENVIOS para logística: ' . $e->getMessage());
+                ->with('error', $mensaje);
         }
+    }
+
+    public function progresoRemisiones(Request $request, string $token)
+    {
+        return response()->json(Cache::get($this->claveProgresoRemisiones($request, $token), [
+            'estado' => 'ESPERANDO',
+            'mensaje' => 'Esperando inicio de importación...',
+            'procesadas' => 0,
+            'porcentaje' => null,
+        ]))->header('Cache-Control', 'no-store, private');
+    }
+
+    private function claveProgresoRemisiones(Request $request, string $token): string
+    {
+        return 'logistica_import_' . ($request->user()->id ?? 'invitado') . '_' . $token;
     }
 
 }

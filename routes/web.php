@@ -1022,7 +1022,13 @@ Route::post(
 Route::post(
     '/control/terminacion/importar-remisiones',
     [ControlTerminacionController::class, 'importarRemisiones']
-)->name('control.terminacion.importar-remisiones');
+)->middleware('auth')->name('control.terminacion.importar-remisiones');
+
+Route::get(
+    '/control/terminacion/importar-remisiones/progreso/{token}',
+    [ControlTerminacionController::class, 'progresoRemisiones']
+)->middleware('auth')->where('token', '[A-Za-z0-9_-]{1,100}')
+    ->name('control.terminacion.remisiones.progreso');
 
 Route::get('/remisiones/importar', [RemisionesController::class, 'index'])->name('remisiones.index');
 Route::post('/remisiones/importar', [RemisionesController::class, 'importar'])->name('remisiones.importar');

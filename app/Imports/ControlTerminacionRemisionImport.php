@@ -19,6 +19,11 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     private $procesadas = 0;
     private $insertadas = 0;
     private $actualizadas = 0;
+    private $sinCambios = 0;
+    private $cantidadesCorregidas = 0;
+    private $duplicadas = 0;
+    private $leidas = 0;
+    private $total = null;
     private $vinculadas = 0;
     private $vinculadasOt = 0;
     private $sinVincular = 0;
@@ -29,6 +34,73 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
     private $usoDetalle = [];
     private $asignadoImportacion = [];
+    private $catalogoSucursales;
+    private $conAccesorios;
+    private $onProgreso;
+    private $inicio;
+
+    public function __construct(?callable $onProgreso = null)
+    {
+        $this->onProgreso = $onProgreso;
+        $this->inicio = microtime(true);
+        $this->notificar('PREPARANDO', 'Preparando archivo de remisiones...');
+    }
+
+    /** Lee CSV en una sola pasada, sin recargar el archivo por cada bloque. */
+    public function importarCsvStreaming(string $ruta): void
+    {
+        $archivo = fopen($ruta, 'rb');
+        if (!$archivo) {
+            throw new \RuntimeException('No se pudo abrir el archivo CSV.');
+        }
+        try {
+            $primera = '';
+            while (($linea = fgets($archivo)) !== false) {
+                $primera = preg_replace('/^\xEF\xBB\xBF/', '', $this->textoCsv($linea));
+                if (trim($primera) !== '') break;
+            }
+            $delimitador = ',';
+            if (preg_match('/^sep=([;,|\t])\s*$/i', trim($primera), $configuracion)) {
+                $delimitador = $configuracion[1];
+                $primera = $this->textoCsv((string) fgets($archivo));
+            } else {
+                $columnas = 0;
+                foreach ([',', ';', "\t", '|'] as $candidato) {
+                    $cantidad = count(str_getcsv($primera, $candidato, '"', ''));
+                    if ($cantidad > $columnas) {
+                        $columnas = $cantidad;
+                        $delimitador = $candidato;
+                    }
+                }
+            }
+            $encabezados = array_map(fn ($valor) => Str::slug(trim((string) $valor), '_'),
+                str_getcsv($primera, $delimitador, '"', ''));
+            $this->validarEncabezados($encabezados);
+            $this->notificar('PROCESANDO', 'Leyendo remisiones del CSV...');
+            $lote = [];
+            while (($valores = fgetcsv($archivo, 0, $delimitador, '"', '')) !== false) {
+                $fila = [];
+                foreach ($encabezados as $indice => $encabezado) {
+                    if ($encabezado !== '') {
+                        $fila[$encabezado] = isset($valores[$indice]) ? $this->textoCsv($valores[$indice]) : null;
+                    }
+                }
+                $lote[] = $fila;
+                if (count($lote) >= 2000) {
+                    $this->collection(collect($lote));
+                    $lote = [];
+                }
+            }
+            if ($lote) $this->collection(collect($lote));
+        } finally {
+            fclose($archivo);
+        }
+    }
+
+    private function textoCsv(string $texto): string
+    {
+        return mb_check_encoding($texto, 'UTF-8') ? $texto : mb_convert_encoding($texto, 'UTF-8', 'Windows-1252');
+    }
 
     /**
      * Importador XLSX de bajo consumo.
@@ -69,6 +141,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             throw new \RuntimeException('No se pudo crear el directorio temporal para procesar el XLSX.');
         }
 
+        $reader = null;
+
         try {
             $sharedStrings = $this->leerSharedStrings($zip);
 
@@ -98,6 +172,13 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $tamanoLote = 2000;
 
             while ($reader->read()) {
+                if ($reader->nodeType === \XMLReader::ELEMENT && $reader->localName === 'dimension') {
+                    if (preg_match('/[A-Z]+(\d+)$/i', (string) $reader->getAttribute('ref'), $dimension)) {
+                        $this->total = max(0, (int) $dimension[1] - 1);
+                    }
+                    $this->notificar('PROCESANDO', 'Leyendo remisiones del Excel...');
+                }
+
                 if ($reader->nodeType !== \XMLReader::ELEMENT || $reader->localName !== 'row') {
                     continue;
                 }
@@ -111,12 +192,17 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 $valores = $this->leerFilaXml($xmlFila, $sharedStrings);
 
                 if (empty($encabezados)) {
+                    if (empty(array_filter($valores, fn ($valor) => trim((string) $valor) !== ''))) {
+                        continue;
+                    }
                     foreach ($valores as $indice => $valor) {
                         $encabezados[$indice] = Str::slug(
                             trim((string) $valor),
                             '_'
                         );
                     }
+
+                    $this->validarEncabezados($encabezados);
 
                     continue;
                 }
@@ -145,6 +231,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             }
 
             $reader->close();
+            $reader = null;
 
             if (!empty($lote)) {
                 $filasLote = collect($lote);
@@ -156,6 +243,9 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 gc_collect_cycles();
             }
         } finally {
+            if ($reader) {
+                $reader->close();
+            }
             $zip->close();
             $this->eliminarDirectorioTemporal($directorioTemporal);
         }
@@ -321,62 +411,80 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         set_time_limit(0);
         DB::disableQueryLog();
 
-        /*
-        |--------------------------------------------------------------------------
-        | PROCESAMIENTO POR BLOQUES
-        |--------------------------------------------------------------------------
-        |
-        | WithChunkReading evita cargar un XLSX grande completo en memoria.
-        | Cada llamada procesa como máximo 1.500 filas y conserva los contadores
-        | del objeto importador entre bloques.
-        |
-        */
+        if ($rows->isEmpty()) {
+            return;
+        }
+        $this->validarEncabezados(array_keys((array) ($rows->first() instanceof Collection
+            ? $rows->first()->all() : $rows->first())));
+
+        // Cada bloque se confirma completo. Si falla un lote de escritura,
+        // ni los datos ni los contadores de ese bloque quedan a medias.
+        $contadores = [];
+        foreach (['procesadas', 'insertadas', 'actualizadas', 'sinCambios', 'cantidadesCorregidas',
+            'duplicadas', 'leidas', 'vinculadas', 'vinculadasOt', 'sinVincular', 'sinOt',
+            'omitidas', 'documentosEstado'] as $propiedad) {
+            $contadores[$propiedad] = $this->{$propiedad};
+        }
+        try {
+            DB::transaction(function () use ($rows) {
+                $this->procesarBloque($rows);
+            });
+        } catch (\Throwable $e) {
+            foreach ($contadores as $propiedad => $valor) {
+                $this->{$propiedad} = $valor;
+            }
+            throw $e;
+        }
+        $this->notificar('PROCESANDO', 'Actualizando cantidades y recepción de remisiones...');
+    }
+
+    private function procesarBloque(Collection $rows): void
+    {
         $filas = $this->normalizarFilas($rows);
 
         if ($filas->isEmpty()) {
             return;
         }
 
-        $this->procesadas += $filas->count();
-        $this->calcularResumenDocumentos($filas);
-
-        /*
-        |--------------------------------------------------------------------------
-        | CANDIDATOS LOGÍSTICOS EN UNA SOLA CONSULTA
-        |--------------------------------------------------------------------------
-        |
-        | Traemos todos los movimientos de los códigos presentes en el Excel.
-        | La fecha NO se usa como filtro excluyente: se usa después para escoger
-        | el movimiento más cercano. No filtramos por nombre exacto de sucursal
-        | en SQL porque históricamente
-        | pueden existir nombres como:
-        |
-        | SL / SAN LORENZO
-        | L06 / L06 SAN LO 2
-        | Shopp / SHOP SAN LO3
-        |
-        | La sucursal se normaliza después en PHP.
-        |
-        */
-        $vinculos = $this->precargarVinculos($filas);
-        $otsPorCodigo = $this->precargarOtsPorCodigo($filas);
-
-        /*
-        |--------------------------------------------------------------------------
-        | REMISIONES YA EXISTENTES
-        |--------------------------------------------------------------------------
-        */
         $existentes = $this->precargarExistentes($filas);
 
+        // En una reimportación no volvemos a consultar todo el historial de
+        // las OT que ya tienen vínculo. Las pendientes sí pueden repararse.
+        $porVincular = $filas->filter(function ($fila) use ($existentes) {
+            $existente = $existentes->get($this->claveFila($fila));
+            return $fila['cantidad'] > 0 && empty($existente->id_logistica_detalle);
+        });
+        $sinOt = $filas->filter(function ($fila) use ($existentes) {
+            $existente = $existentes->get($this->claveFila($fila));
+            return $fila['cantidad'] > 0 && empty($existente->id_ot);
+        });
+        $vinculos = $this->precargarVinculos($porVincular);
+        $otsPorCodigo = $this->precargarOtsPorCodigo($sinOt);
+
         // Un accesorio se vincula por código, sin inventar el FCO de origen.
-        $conAccesorios = Schema::hasTable('accesorios_articulos')
-            && Schema::hasColumn('ot_logistica_remisiones', 'accesorio_articulo_id');
+        if ($this->conAccesorios === null) {
+            $this->conAccesorios = Schema::hasTable('accesorios_articulos')
+                && Schema::hasColumn('ot_logistica_remisiones', 'accesorio_articulo_id');
+        }
+        $conAccesorios = $this->conAccesorios;
         $idsAccesorios = $conAccesorios
             ? DB::table('accesorios_articulos')
                 ->whereIn('codigo', $filas->pluck('codigo')->unique()->all())
                 ->pluck('id', 'codigo')
             : collect();
         $this->usoDetalle = $this->precargarUsoDetalles($vinculos);
+
+        // Aplicar primero TODAS las correcciones de cantidades ya vinculadas.
+        // Así el saldo liberado de 5 a 4 está disponible para las demás filas
+        // del bloque, independientemente del orden del archivo.
+        foreach ($filas as $fila) {
+            $existente = $existentes->get($this->claveFila($fila));
+            if ($existente && $existente->id_logistica_detalle) {
+                $id = $existente->id_logistica_detalle;
+                $this->usoDetalle[$id] = ($this->usoDetalle[$id] ?? 0)
+                    + (int) $fila['cantidad'] - (int) $existente->cantidad;
+            }
+        }
 
         // El uso ya persistido se leyó de BD. Este acumulador solo corresponde
         // a las filas todavía no grabadas del bloque actual.
@@ -386,15 +494,17 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         $registros = [];
 
         foreach ($filas as $fila) {
-            $clave = $this->clave(
-                $fila['serie'],
-                $fila['numero_remision'],
-                $fila['codigo'],
-                $fila['cod_sucursal_salida'],
-                $fila['cod_sucursal_destino']
-            );
-
+            $clave = $this->claveFila($fila);
             $existente = $existentes->get($clave);
+
+            // Un cero explícito puede corregir una línea existente. No se
+            // crea un movimiento nuevo sin prendas ni se interpreta vacío
+            // o texto inválido como una cantidad cero.
+            if (!$existente && $fila['cantidad'] === 0) {
+                $this->omitidas++;
+                continue;
+            }
+            $this->procesadas++;
 
             /*
              * Un vínculo ya resuelto se conserva. Solo intentamos reparar filas
@@ -404,7 +514,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $idTrazabilidad = $existente->id_trazabilidad ?? null;
             $idLogisticaDetalle = $existente->id_logistica_detalle ?? null;
 
-            if (!$idLogisticaDetalle) {
+            if (!$idLogisticaDetalle && $fila['cantidad'] > 0) {
                 $vinculo = $this->resolverVinculoEnMemoria(
                     $vinculos,
                     $fila['codigo'],
@@ -422,10 +532,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                         ($this->asignadoImportacion[$idLogisticaDetalle] ?? 0)
                         + (int) $fila['cantidad'];
                 }
-            } elseif ($existente && (int) $existente->cantidad !== (int) $fila['cantidad']) {
-                $diferenciaCantidad = (int) $fila['cantidad'] - (int) $existente->cantidad;
-                $this->usoDetalle[$idLogisticaDetalle] =
-                    ($this->usoDetalle[$idLogisticaDetalle] ?? 0) + $diferenciaCantidad;
             }
 
             /*
@@ -441,6 +547,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             $fechaRecepcion = $fila['fecha_recepcion']
                 ?: ($existente->fecha_recepcion ?? null);
+            $this->registrarDocumento($fila, $fechaRecepcion);
 
             if (!$idOt) {
                 $otFallback = $this->resolverOtEnMemoria(
@@ -464,12 +571,6 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 $this->vinculadasOt++;
             } else {
                 $this->sinOt++;
-            }
-
-            if ($existente) {
-                $this->actualizadas++;
-            } else {
-                $this->insertadas++;
             }
 
             $registro = [
@@ -510,7 +611,18 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 ) ?: ($existente->accesorio_articulo_id ?? null);
             }
 
-            $registros[] = $registro;
+            if (!$existente) {
+                $this->insertadas++;
+                $registros[] = $registro;
+            } elseif ($this->tieneCambios($existente, $registro)) {
+                $this->actualizadas++;
+                if ((int) $existente->cantidad !== $fila['cantidad']) {
+                    $this->cantidadesCorregidas++;
+                }
+                $registros[] = $registro;
+            } else {
+                $this->sinCambios++;
+            }
         }
 
         /*
@@ -551,24 +663,15 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     private function normalizarFilas(Collection $rows)
     {
         $filas = collect();
-
-        $codigosDestino = $rows
-            ->map(function ($row) {
-                return $this->enteroONull($row['cod_sucursal'] ?? null);
-            })
-            ->filter()
-            ->unique()
-            ->values();
-
-        $catalogoSucursales = collect();
-
-        if ($codigosDestino->isNotEmpty()) {
-            $catalogoSucursales = DB::table('sucursal')
-                ->whereIn('cod_suc', $codigosDestino->all())
-                ->pluck('suc_descri', 'cod_suc');
+        if ($this->catalogoSucursales === null) {
+            $this->catalogoSucursales = DB::table('sucursal')->pluck('suc_descri', 'cod_suc');
         }
 
         foreach ($rows as $row) {
+            if (collect($row)->every(fn ($valor) => trim((string) $valor) === '')) {
+                continue;
+            }
+            $this->leidas++;
             $codigo = $this->normalizarCodigoCompleto($row['cod_articulo'] ?? null);
             $serie = trim((string) ($row['serie'] ?? ''));
             $numeroRemision = trim((string) ($row['numero_remision'] ?? ''));
@@ -582,7 +685,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 $numeroRemision === '' ||
                 !$codSalida ||
                 !$codDestino ||
-                $cantidad <= 0
+                $cantidad === null || $cantidad < 0
             ) {
                 $this->omitidas++;
                 continue;
@@ -590,7 +693,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
             $sucursalSalida = trim((string) ($row['sucursal_salida'] ?? ''));
             $sucursalDestino = trim((string) ($row['sucursal'] ?? ''));
-            $nombreCatalogo = $catalogoSucursales->get($codDestino);
+            $nombreCatalogo = $this->catalogoSucursales->get($codDestino);
 
             $filas->push([
                 'codigo' => $codigo,
@@ -624,21 +727,50 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             ]);
         }
 
-        /*
-         * Protección adicional: si por algún motivo el Excel trae la misma
-         * línea repetida, procesamos una sola vez la clave de la remisión.
-         */
-        return $filas
-            ->unique(function ($fila) {
-                return $this->clave(
-                    $fila['serie'],
-                    $fila['numero_remision'],
-                    $fila['codigo'],
-                    $fila['cod_sucursal_salida'],
-                    $fila['cod_sucursal_destino']
-                );
-            })
-            ->values();
+        // Ante una línea repetida prevalece el último valor del bloque.
+        // Evita tanto ignorar una corrección como repetir una clave en upsert.
+        $unicas = $filas->keyBy(fn ($fila) => $this->claveFila($fila));
+        $this->duplicadas += $filas->count() - $unicas->count();
+        return $unicas->values();
+    }
+
+    private function validarEncabezados(array $encabezados): void
+    {
+        $faltantes = array_diff([
+            'cod_articulo', 'serie', 'numero_remision', 'cod_sucursal_salida', 'cod_sucursal', 'cantidad',
+        ], $encabezados);
+        if ($faltantes) {
+            throw new \InvalidArgumentException('El archivo ENVIOS no tiene las columnas requeridas: '
+                . implode(', ', $faltantes) . '.');
+        }
+    }
+
+    private function claveFila(array $fila): string
+    {
+        return $this->clave($fila['serie'], $fila['numero_remision'], $fila['codigo'],
+            $fila['cod_sucursal_salida'], $fila['cod_sucursal_destino']);
+    }
+
+    private function tieneCambios(object $existente, array $registro): bool
+    {
+        foreach ($registro as $columna => $nuevo) {
+            if (in_array($columna, ['created_at', 'updated_at'], true)) {
+                continue;
+            }
+            $anterior = $existente->{$columna} ?? null;
+            if ($anterior === null || $nuevo === null) {
+                if ($anterior !== $nuevo) {
+                    return true;
+                }
+            } elseif (in_array($columna, ['precio_venta', 'costo_unitario'], true)) {
+                if (round((float) $anterior, 2) !== round((float) $nuevo, 2)) {
+                    return true;
+                }
+            } elseif ((string) $anterior !== (string) $nuevo) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function precargarVinculos(Collection $filas)
@@ -1047,21 +1179,12 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             });
     }
 
-    private function calcularResumenDocumentos(Collection $filas)
+    private function registrarDocumento(array $fila, $fechaRecepcion): void
     {
-        foreach ($filas as $fila) {
-            $claveDocumento = implode('|', [
-                $fila['serie'],
-                $fila['numero_remision'],
-                $fila['cod_sucursal_salida'],
-                $fila['cod_sucursal_destino'],
-            ]);
-
-            $recibido = !empty($fila['fecha_recepcion']);
-
-            $this->documentosEstado[$claveDocumento] =
-                ($this->documentosEstado[$claveDocumento] ?? false) || $recibido;
-        }
+        $claveDocumento = implode('|', [$fila['serie'], $fila['numero_remision'],
+            $fila['cod_sucursal_salida'], $fila['cod_sucursal_destino']]);
+        $this->documentosEstado[$claveDocumento] =
+            ($this->documentosEstado[$claveDocumento] ?? false) || !empty($fechaRecepcion);
     }
 
     /**
@@ -1296,10 +1419,10 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
         return (int) $valor;
     }
 
-    private function parseQuantity($valor): int
+    private function parseQuantity($valor): ?int
     {
         if ($valor === null || $valor === '') {
-            return 0;
+            return null;
         }
 
         if (is_numeric($valor)) {
@@ -1317,7 +1440,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
 
         return is_numeric($texto)
             ? (int) round((float) $texto)
-            : 0;
+            : null;
     }
 
     private function decimalONull($valor)
@@ -1404,6 +1527,66 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
     public function getActualizadas()
     {
         return $this->actualizadas;
+    }
+
+    public function getSinCambios()
+    {
+        return $this->sinCambios;
+    }
+
+    public function getCantidadesCorregidas()
+    {
+        return $this->cantidadesCorregidas;
+    }
+
+    public function resumen(): array
+    {
+        return [
+            'leidas' => $this->leidas,
+            'procesadas' => $this->procesadas,
+            'insertadas' => $this->insertadas,
+            'actualizadas' => $this->actualizadas,
+            'sin_cambios' => $this->sinCambios,
+            'cantidades_corregidas' => $this->cantidadesCorregidas,
+            'duplicadas' => $this->duplicadas,
+            'omitidas' => $this->omitidas,
+            'vinculadas_ot' => $this->vinculadasOt,
+            'vinculadas_logistica' => $this->vinculadas,
+            'sin_ot' => $this->sinOt,
+            'sin_vincular' => $this->sinVincular,
+            'documentos' => $this->getDocumentosArchivo(),
+            'recibidos' => $this->getDocumentosRecibidos(),
+            'en_transito' => $this->getDocumentosEnTransito(),
+            'total' => $this->total,
+            'segundos' => round(microtime(true) - $this->inicio, 2),
+        ];
+    }
+
+    public function finalizar(): array
+    {
+        $this->total = $this->leidas;
+        $this->notificar('COMPLETADO', 'Remisiones importadas correctamente.');
+        return $this->resumen();
+    }
+
+    public function marcarError(string $mensaje): void
+    {
+        $this->notificar('ERROR', $mensaje);
+    }
+
+    private function notificar(string $estado, string $mensaje): void
+    {
+        if (!$this->onProgreso) {
+            return;
+        }
+        ($this->onProgreso)(array_merge($this->resumen(), [
+            'estado' => $estado,
+            'mensaje' => $mensaje,
+            // El total del XLSX puede incluir filas con formato pero vacías.
+            // El 100% solo se publica cuando terminó de guardarse el archivo.
+            'porcentaje' => $estado === 'COMPLETADO' ? 100 : ($this->total
+                ? min(99, round($this->leidas * 100 / $this->total, 1)) : null),
+        ]));
     }
 
     public function getVinculadas()
