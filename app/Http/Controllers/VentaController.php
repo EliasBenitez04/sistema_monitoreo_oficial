@@ -162,9 +162,33 @@ class VentaController extends Controller
             ->limit(15)
             ->get();
 
+        $hayMaestroCodigos = Schema::hasTable('maestro_codigos');
+        $porGrupo = collect();
+
+        if ($hayMaestroCodigos) {
+            $grupo = "NULLIF(BTRIM(mc.grupo), '')";
+
+            $porGrupo = (clone $base)
+                ->join('maestro_codigos as mc', 'mc.cod_articulo', '=', 'v.codigo')
+                ->whereRaw($grupo . ' IS NOT NULL')
+                ->selectRaw(
+                    "$grupo as grupo,
+                     COALESCE(SUM(v.cantidad), 0) as unidades_netas,
+                     COALESCE(SUM(v.p_venta), 0) as venta_neta"
+                )
+                ->groupByRaw($grupo)
+                ->orderByDesc('unidades_netas')
+                ->orderByDesc('venta_neta')
+                ->orderBy('grupo')
+                ->get();
+        }
+
+        $gruposMasVendidos = $porGrupo->take(20);
+        $gruposMenosVendidos = $porGrupo->reverse()->take(20);
+
         $queryProductos = clone $base;
 
-        if (Schema::hasTable('maestro_codigos')) {
+        if ($hayMaestroCodigos) {
             $queryProductos->leftJoin(
                 'maestro_codigos as mc',
                 'mc.cod_articulo',
@@ -179,7 +203,7 @@ class VentaController extends Controller
                 'v.descripcion'
             )
             ->when(
-                Schema::hasTable('maestro_codigos'),
+                $hayMaestroCodigos,
                 function ($q) {
                     $q->addSelect(
                         'mc.grupo',
@@ -198,7 +222,7 @@ class VentaController extends Controller
                 'v.descripcion'
             )
             ->when(
-                Schema::hasTable('maestro_codigos'),
+                $hayMaestroCodigos,
                 function ($q) {
                     $q->groupBy(
                         'mc.grupo',
@@ -226,7 +250,7 @@ class VentaController extends Controller
 
         $detalleQuery = DB::table('ventas as v');
 
-        if (Schema::hasTable('maestro_codigos')) {
+        if ($hayMaestroCodigos) {
             $detalleQuery->leftJoin(
                 'maestro_codigos as mc',
                 'mc.cod_articulo',
@@ -250,7 +274,7 @@ class VentaController extends Controller
             'v.*'
         );
 
-        if (Schema::hasTable('maestro_codigos')) {
+        if ($hayMaestroCodigos) {
             $detalleQuery->addSelect(
                 'mc.grupo',
                 'mc.grupo_plan',
@@ -333,6 +357,8 @@ class VentaController extends Controller
             'resumen',
             'porLocal',
             'porVendedor',
+            'gruposMasVendidos',
+            'gruposMenosVendidos',
             'porProducto',
             'porDia',
             'locales',

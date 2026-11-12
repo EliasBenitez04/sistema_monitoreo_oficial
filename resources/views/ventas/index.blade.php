@@ -373,93 +373,151 @@
         <div class="col-xl-8">
             <div class="card shadow-sm h-100">
                 <div class="card-header">
-                    <h3 class="card-title">
-                        <i class="fas fa-award mr-1"></i> Top productos
+                    <h3 class="card-title float-none mb-2">
+                        <i class="fas fa-award mr-1"></i> Ventas por grupo
                     </h3>
+                    <ul class="nav nav-tabs card-header-tabs" role="tablist" aria-label="Rankings de ventas">
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link active" id="ventas-grupos-mas-tab" data-toggle="tab"
+                               href="#ventas-grupos-mas" role="tab" aria-controls="ventas-grupos-mas"
+                               aria-selected="true">Más vendidos</a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="ventas-grupos-menos-tab" data-toggle="tab"
+                               href="#ventas-grupos-menos" role="tab" aria-controls="ventas-grupos-menos"
+                               aria-selected="false">Menos vendidos</a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="ventas-productos-codigo-tab" data-toggle="tab"
+                               href="#ventas-productos-codigo" role="tab" aria-controls="ventas-productos-codigo"
+                               aria-selected="false">Por código</a>
+                        </li>
+                    </ul>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 ventas-table"
-                           id="topProductosTable">
-                        <thead>
-                            <tr>
-                                <th>Código / artículo</th>
-                                <th>Grupo</th>
-                                <th>Temporada</th>
-                                <th class="text-right">
-                                    <button type="button"
-                                            class="top-productos-sort"
-                                            data-sort="unidades"
-                                            title="Ordenar por unidades netas">
-                                        Unid. netas
-                                        <i class="fas fa-sort ml-1 sort-icon"></i>
-                                    </button>
-                                </th>
-                                <th class="text-right">
-                                    <button type="button"
-                                            class="top-productos-sort"
-                                            data-sort="venta"
-                                            title="Ordenar por venta neta">
-                                        Venta neta
-                                        <i class="fas fa-sort ml-1 sort-icon"></i>
-                                    </button>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody id="topProductosBody">
-                            @forelse($porProducto as $item)
-                                <tr class="venta-producto-row"
-                                    data-codigo="{{ $item->codigo }}"
-                                    data-unidades="{{ (float) $item->unidades_netas }}"
-                                    data-venta="{{ (float) $item->venta_neta }}"
-                                    title="Ver sucursales y vendedores">
-                                    <td>
+                <div class="tab-content">
+                    @foreach(['mas' => $gruposMasVendidos, 'menos' => $gruposMenosVendidos] as $orden => $grupos)
+                        <div class="tab-pane{{ $loop->first ? ' active' : '' }}"
+                             id="ventas-grupos-{{ $orden }}" role="tabpanel"
+                             aria-labelledby="ventas-grupos-{{ $orden }}-tab">
+                            <p class="small text-muted px-3 my-2">
+                                Hasta 20 grupos con movimientos, ordenados por unidades netas.
+                            </p>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0 ventas-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Grupo</th>
+                                            <th scope="col" class="text-right"
+                                                aria-sort="{{ $loop->first ? 'descending' : 'ascending' }}">Unid. netas</th>
+                                            <th scope="col" class="text-right">Venta neta</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($grupos as $item)
+                                            <tr>
+                                                <td>{{ $item->grupo }}</td>
+                                                <td class="text-right text-nowrap">{{ number_format($item->unidades_netas,0,',','.') }}</td>
+                                                <td class="text-right text-nowrap font-weight-bold">
+                                                    Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="3" class="text-center text-muted py-3">
+                                                    Sin movimientos con grupo asignado para los filtros seleccionados.
+                                                </td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endforeach
+                    <div class="tab-pane table-responsive" id="ventas-productos-codigo" role="tabpanel"
+                         aria-labelledby="ventas-productos-codigo-tab">
+                        <table class="table table-sm table-hover mb-0 ventas-table"
+                               id="topProductosTable">
+                            <thead>
+                                <tr>
+                                    <th>Código / artículo</th>
+                                    <th>Grupo</th>
+                                    <th>Temporada</th>
+                                    <th class="text-right">
                                         <button type="button"
-                                                class="btn btn-link p-0 text-left venta-producto-detalle"
-                                                data-codigo="{{ $item->codigo }}">
-                                            <strong>{{ $item->codigo }}</strong><br>
-                                            <small class="text-muted">{{ $item->descripcion }}</small>
-                                            <small class="d-block text-primary mt-1">
-                                                <i class="fas fa-search mr-1"></i>
-                                                Ver quién lo vendió
-                                            </small>
+                                                class="top-productos-sort"
+                                                data-sort="unidades"
+                                                title="Ordenar por unidades netas">
+                                            Unid. netas
+                                            <i class="fas fa-sort ml-1 sort-icon"></i>
                                         </button>
-                                    </td>
-                                    <td>{{ $item->grupo ?? '-' }}</td>
-                                    <td>
-                                        @if(!empty($item->temporada))
-                                            @php
-                                                $temporadaProducto = strtoupper(
-                                                    trim((string) $item->temporada)
-                                                );
-
-                                                $claseTemporada = 'temporada-otro';
-
-                                                if ($temporadaProducto === 'VERANO') {
-                                                    $claseTemporada = 'temporada-verano';
-                                                } elseif ($temporadaProducto === 'INVIERNO') {
-                                                    $claseTemporada = 'temporada-invierno';
-                                                } elseif ($temporadaProducto === 'AMBOS') {
-                                                    $claseTemporada = 'temporada-ambos';
-                                                }
-                                            @endphp
-
-                                            <span class="badge temporada-badge {{ $claseTemporada }}">
-                                                {{ $item->temporada }}
-                                            </span>
-                                        @else
-                                            -
-                                        @endif
-                                    </td>
-                                    <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
-                                    <td class="text-right font-weight-bold">
-                                        Gs {{ number_format($item->venta_neta,0,',','.') }}
-                                    </td>
+                                    </th>
+                                    <th class="text-right">
+                                        <button type="button"
+                                                class="top-productos-sort"
+                                                data-sort="venta"
+                                                title="Ordenar por venta neta">
+                                            Venta neta
+                                            <i class="fas fa-sort ml-1 sort-icon"></i>
+                                        </button>
+                                    </th>
                                 </tr>
-                            @empty
-                                <tr><td colspan="5" class="text-center text-muted py-3">Sin datos.</td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody id="topProductosBody">
+                                @forelse($porProducto as $item)
+                                    <tr class="venta-producto-row"
+                                        data-codigo="{{ $item->codigo }}"
+                                        data-unidades="{{ (float) $item->unidades_netas }}"
+                                        data-venta="{{ (float) $item->venta_neta }}"
+                                        title="Ver sucursales y vendedores">
+                                        <td>
+                                            <button type="button"
+                                                    class="btn btn-link p-0 text-left venta-producto-detalle"
+                                                    data-codigo="{{ $item->codigo }}">
+                                                <strong>{{ $item->codigo }}</strong><br>
+                                                <small class="text-muted">{{ $item->descripcion }}</small>
+                                                <small class="d-block text-primary mt-1">
+                                                    <i class="fas fa-search mr-1"></i>
+                                                    Ver quién lo vendió
+                                                </small>
+                                            </button>
+                                        </td>
+                                        <td>{{ $item->grupo ?? '-' }}</td>
+                                        <td>
+                                            @if(!empty($item->temporada))
+                                                @php
+                                                    $temporadaProducto = strtoupper(
+                                                        trim((string) $item->temporada)
+                                                    );
+
+                                                    $claseTemporada = 'temporada-otro';
+
+                                                    if ($temporadaProducto === 'VERANO') {
+                                                        $claseTemporada = 'temporada-verano';
+                                                    } elseif ($temporadaProducto === 'INVIERNO') {
+                                                        $claseTemporada = 'temporada-invierno';
+                                                    } elseif ($temporadaProducto === 'AMBOS') {
+                                                        $claseTemporada = 'temporada-ambos';
+                                                    }
+                                                @endphp
+
+                                                <span class="badge temporada-badge {{ $claseTemporada }}">
+                                                    {{ $item->temporada }}
+                                                </span>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                        <td class="text-right">{{ number_format($item->unidades_netas,0,',','.') }}</td>
+                                        <td class="text-right font-weight-bold">
+                                            Gs {{ number_format($item->venta_neta,0,',','.') }}
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="5" class="text-center text-muted py-3">Sin datos.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
