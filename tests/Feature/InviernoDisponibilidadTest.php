@@ -213,6 +213,10 @@ class InviernoDisponibilidadTest extends TestCase
         }
         $this->get(route('invierno.disponibilidad', ['page' => 2]))->assertOk()
             ->assertViewHas('resumen', fn ($r) => $r['disponible'] === 351 && $r['grupos'] === 26)
+            ->assertViewHas('resumenImagenes', [
+                'prendas_con_imagen' => 0, 'prendas_sin_imagen' => 351,
+                'codigos_con_imagen' => 0, 'codigos_sin_imagen' => 26,
+            ])
             ->assertViewHas('paginados', fn ($p) => $p->count() === 1 && $p->total() === 26);
         $this->entrada($d, '060617629AZ99', 4, ['descripcion' => 'GRUPO 26', 'fecha_recepcion' => null, 'estado' => 'EN_TRANSITO']);
         $datos = $this->service->consultar(['situacion' => 'pendientes']);
@@ -220,6 +224,44 @@ class InviernoDisponibilidadTest extends TestCase
         $this->assertSame(30, $datos['resumen']['prendas']);
         $this->assertSame(26, $datos['resumen']['disponible']);
         $this->assertSame(4, $datos['resumen']['pendiente']);
+    }
+
+    public function test_resume_unidades_y_codigos_distintos_con_y_sin_imagen_segun_filtros(): void
+    {
+        (require database_path('migrations/2026_11_10_160000_create_articulo_imagenes_table.php'))->up();
+        $bonanza = $this->documento();
+        $mariano = $this->documento(16, 'S', '1303');
+        $this->maestro('060617629AZ01', 'CAMPERAS');
+        $this->maestro('060617629AZ02', 'CAMPERAS');
+        $this->maestro('060617629GR01', 'CAMPERAS');
+        $this->maestro('050617500AZ01', 'BUZOS');
+        $this->entrada($bonanza, '060617629AZ01', 10);
+        $this->entrada($bonanza, '060617629AZ02', 6);
+        $this->entrada($mariano, '060617629AZ01', 20);
+        $this->entrada($mariano, '060617629GR01', 8, ['fecha_recepcion' => null, 'estado' => 'EN_TRANSITO']);
+        $this->entrada($mariano, '050617500AZ01', 12);
+        DB::table('articulo_imagenes')->insert([
+            'codigo_imagen' => '060617629AZ',
+            'imagen' => 'articulos-imagenes/060617629AZ_0000000000000000.png',
+            'nombre_archivo' => '060617629AZ.png',
+        ]);
+
+        $this->get(route('invierno.disponibilidad'))->assertOk()
+            ->assertSee('Prendas con imagen asociada')->assertSee('Prendas sin imagen asociada')
+            ->assertViewHas('resumenImagenes', [
+                'prendas_con_imagen' => 36, 'prendas_sin_imagen' => 20,
+                'codigos_con_imagen' => 2, 'codigos_sin_imagen' => 2,
+            ]);
+        $this->get(route('invierno.disponibilidad', ['local' => 7]))->assertOk()
+            ->assertViewHas('resumenImagenes', [
+                'prendas_con_imagen' => 16, 'prendas_sin_imagen' => 0,
+                'codigos_con_imagen' => 2, 'codigos_sin_imagen' => 0,
+            ]);
+        $this->get(route('invierno.disponibilidad', ['situacion' => 'pendientes']))->assertOk()
+            ->assertViewHas('resumenImagenes', [
+                'prendas_con_imagen' => 36, 'prendas_sin_imagen' => 8,
+                'codigos_con_imagen' => 2, 'codigos_sin_imagen' => 1,
+            ]);
     }
 
     public function test_excel_resumen_y_detalle_respetan_filtros_y_preservan_codigos_como_texto(): void

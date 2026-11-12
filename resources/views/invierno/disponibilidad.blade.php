@@ -16,6 +16,23 @@
         @include('invierno._navegacion')
         @include('invierno._disponibilidad-totales')
 
+        <section class="row" aria-label="Imágenes de las prendas documentadas">
+            <div class="col-6">
+                <div class="card iw-metric iw-green">
+                    <span>Prendas con imagen asociada</span>
+                    <strong class="text-success">{{ $n($resumenImagenes['prendas_con_imagen']) }}</strong>
+                    <small>{{ $n($resumenImagenes['codigos_con_imagen']) }} códigos distintos</small>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card iw-metric iw-orange">
+                    <span>Prendas sin imagen asociada</span>
+                    <strong>{{ $n($resumenImagenes['prendas_sin_imagen']) }}</strong>
+                    <small>{{ $n($resumenImagenes['codigos_sin_imagen']) }} códigos distintos</small>
+                </div>
+            </div>
+        </section>
+
         @if($resumen['sin_detalle'])
             <div class="alert alert-info">Hay {{ $n($resumen['sin_detalle']) }} remisiones registradas de invierno{{ request('local') ? ' de este origen' : '' }} sin detalle importado. Sus cantidades aparecerán cuando actualices ENVIOS.</div>
         @endif

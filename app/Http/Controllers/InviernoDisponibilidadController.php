@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\InviernoDisponibilidadExport;
 use App\Exports\InviernoArticulosExport;
+use App\Services\ArticuloImagenService;
 use App\Services\InviernoDisponibilidadService;
 use App\Services\InviernoTrazabilidadService;
 use Illuminate\Http\Request;
@@ -34,9 +35,21 @@ class InviernoDisponibilidadController extends Controller
         ]);
     }
 
-    public function index(Request $request)
+    public function index(Request $request, ArticuloImagenService $imagenes)
     {
         $datos = $this->service->consultar($this->filtros($request));
+        $fotosPorCodigo = $imagenes->paraCodigos($datos['lineas']->pluck('codigo'));
+        $prendasConImagen = (int) $datos['lineas']->sum(
+            fn ($linea) => $fotosPorCodigo->has($linea->codigo) ? $linea->prendas : 0
+        );
+        $codigosConImagen = $fotosPorCodigo->count();
+        $datos['resumenImagenes'] = [
+            'prendas_con_imagen' => $prendasConImagen,
+            'prendas_sin_imagen' => $datos['resumen']['prendas'] - $prendasConImagen,
+            'codigos_con_imagen' => $codigosConImagen,
+            'codigos_sin_imagen' => $datos['resumen']['codigos'] - $codigosConImagen,
+        ];
+
         $datos['paginados'] = $this->paginar($datos['grupos'], $request, 25);
         $datos['locales'] = app(InviernoTrazabilidadService::class)->locales();
         return view('invierno.disponibilidad', $datos);
