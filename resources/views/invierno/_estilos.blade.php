@@ -45,6 +45,8 @@
     .invierno .iw-file-zone { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 28px 20px; border: 2px dashed #a6bfd7; background: #f5f9fd; border-radius: 10px; cursor: pointer; }
     .invierno .iw-file-zone i { font-size: 2.2rem; color: #3c7aaf; margin-bottom: 12px; }
     .invierno .iw-file-zone span { color: #61758b; font-size: .78rem; margin-top: 8px; }
+    .invierno #iw-imagenes-zona:focus-within,
+    .invierno #iw-imagenes-zona.iw-arrastrando { border-color: #3c7aaf; background: #e7f1fc; }
     .invierno .iw-file-example { background: #edf3f9; color: #294d74; padding: 12px 14px; border-radius: 7px; font: .8rem monospace; overflow-wrap: anywhere; margin: 10px 0; }
     .invierno .iw-import-summary { background: #edf3f9; color: #42617e; border-radius: 7px; padding: 13px 16px; font-size: .83rem; }
     .invierno .iw-import-stat { padding: 12px 16px; background: #f3f7fb; border-radius: 8px; margin-bottom: 8px; }
