@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Exports\InviernoDisponibilidadExport;
 use App\Exports\InviernoArticulosExport;
+use App\Exports\InviernoCodigosSinImagenExport;
+use App\Exports\InviernoDisponibilidadExport;
 use App\Services\ArticuloImagenService;
 use App\Services\InviernoDisponibilidadService;
 use App\Services\InviernoTrazabilidadService;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -38,16 +40,15 @@ class InviernoDisponibilidadController extends Controller
     public function index(Request $request, ArticuloImagenService $imagenes)
     {
         $datos = $this->service->consultar($this->filtros($request));
-        $fotosPorCodigo = $imagenes->paraCodigos($datos['lineas']->pluck('codigo'));
-        $prendasConImagen = (int) $datos['lineas']->sum(
-            fn ($linea) => $fotosPorCodigo->has($linea->codigo) ? $linea->prendas : 0
+        $sinImagen = $this->codigosSinImagen($datos['lineas'], $imagenes)->flip();
+        $prendasSinImagen = (int) $datos['lineas']->sum(
+            fn ($linea) => $sinImagen->has($linea->codigo) ? $linea->prendas : 0
         );
-        $codigosConImagen = $fotosPorCodigo->count();
         $datos['resumenImagenes'] = [
-            'prendas_con_imagen' => $prendasConImagen,
-            'prendas_sin_imagen' => $datos['resumen']['prendas'] - $prendasConImagen,
-            'codigos_con_imagen' => $codigosConImagen,
-            'codigos_sin_imagen' => $datos['resumen']['codigos'] - $codigosConImagen,
+            'prendas_con_imagen' => $datos['resumen']['prendas'] - $prendasSinImagen,
+            'prendas_sin_imagen' => $prendasSinImagen,
+            'codigos_con_imagen' => $datos['resumen']['codigos'] - $sinImagen->count(),
+            'codigos_sin_imagen' => $sinImagen->count(),
         ];
 
         $datos['paginados'] = $this->paginar($datos['grupos'], $request, 25);
@@ -77,6 +78,22 @@ class InviernoDisponibilidadController extends Controller
     {
         $datos = $this->service->consultar($this->filtros($request));
         return Excel::download(new InviernoDisponibilidadExport($datos), 'disponibilidad_invierno_'.now()->format('Ymd_His').'.xlsx');
+    }
+
+    public function exportarCodigosSinImagen(Request $request, ArticuloImagenService $imagenes)
+    {
+        $datos = $this->service->consultar($this->filtros($request));
+        $codigos = $this->codigosSinImagen($datos['lineas'], $imagenes);
+        $claves = $imagenes->clavesParaImportar($codigos);
+
+        return Excel::download(new InviernoCodigosSinImagenExport($claves),
+            'codigos_base_sin_imagen_'.now()->format('Ymd_His').'.xlsx');
+    }
+
+    private function codigosSinImagen(Collection $lineas, ArticuloImagenService $imagenes): Collection
+    {
+        $codigos = $lineas->pluck('codigo')->unique();
+        return $codigos->diff($imagenes->paraCodigos($codigos)->keys());
     }
 
     public function articulos(Request $request)

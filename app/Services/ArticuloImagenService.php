@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -64,23 +65,7 @@ class ArticuloImagenService
     public function paraCodigos(Collection $codigos): Collection
     {
         if ($codigos->isEmpty() || !Schema::hasTable('articulo_imagenes')) return collect();
-        $codigos = $codigos->map(fn ($c) => $this->normalizar($c))->unique()->values();
-        $maestro = collect();
-        if (Schema::hasTable('maestro_codigos')) {
-            foreach ($codigos->chunk(500) as $bloque) {
-                $maestro = $maestro->concat(DB::table('maestro_codigos')
-                    ->whereIn(DB::raw('UPPER(TRIM(cod_articulo))'), $bloque->all())
-                    ->get(['cod_articulo', 'cod_imagen', 'cod_base']));
-            }
-        }
-        $maestro = $maestro->groupBy(fn ($m) => $this->normalizar($m->cod_articulo));
-        $candidatos = $codigos->mapWithKeys(function ($codigo) use ($maestro) {
-            $variantes = $maestro->get($codigo, collect());
-            $exacta = $variantes->firstWhere('cod_articulo', $codigo);
-            // No elegir un alias al azar si el catalogo tiene claves ambiguas.
-            $fila = $exacta ?: ($variantes->count() === 1 ? $variantes->first() : null);
-            return [$codigo => $this->claves($codigo, $fila)];
-        });
+        $candidatos = $this->referenciasPorCodigo($codigos)->map(fn ($referencia) => $referencia['claves']);
         $fotos = collect();
         foreach ($candidatos->flatten()->unique()->chunk(500) as $bloque) {
             $fotos = $fotos->concat(DB::table('articulo_imagenes')->whereIn('codigo_imagen', $bloque->all())->get());
@@ -96,6 +81,50 @@ class ArticuloImagenService
             }
         }
         return $resuelto;
+    }
+
+    /** Prefiere una foto por modelo y usa la clave de color si es la única disponible. */
+    public function clavesParaImportar(Collection $codigos): Collection
+    {
+        if ($codigos->isEmpty()) return collect();
+
+        $referencias = $this->referenciasPorCodigo($codigos);
+        $permitidos = $this->permitidos($referencias->pluck('claves')->flatten()
+            ->filter(fn ($clave) => preg_match('/\A[0-9]{9}(?:[A-Z]{2})?\z/', $clave))->all());
+
+        return $referencias->map(function (array $referencia) use ($permitidos) {
+            $base = $referencia['base'];
+            if (strlen($base) === 9 && isset($permitidos[$base])) {
+                return $base;
+            }
+
+            $validas = array_filter($referencia['claves'], fn ($clave) => isset($permitidos[$clave]));
+            return Arr::first($validas, fn ($clave) => strlen($clave) === 9) ?? Arr::first($validas);
+        });
+    }
+
+    private function referenciasPorCodigo(Collection $codigos): Collection
+    {
+        $codigos = $codigos->map(fn ($c) => $this->normalizar($c))->unique()->values();
+        $maestro = collect();
+        if (Schema::hasTable('maestro_codigos')) {
+            foreach ($codigos->chunk(500) as $bloque) {
+                $maestro = $maestro->concat(DB::table('maestro_codigos')
+                    ->whereIn(DB::raw('UPPER(TRIM(cod_articulo))'), $bloque->all())
+                    ->get(['cod_articulo', 'cod_imagen', 'cod_base']));
+            }
+        }
+        $maestro = $maestro->groupBy(fn ($m) => $this->normalizar($m->cod_articulo));
+        return $codigos->mapWithKeys(function ($codigo) use ($maestro) {
+            $variantes = $maestro->get($codigo, collect());
+            $exacta = $variantes->firstWhere('cod_articulo', $codigo);
+            // No elegir un alias al azar si el catalogo tiene claves ambiguas.
+            $fila = $exacta ?: ($variantes->count() === 1 ? $variantes->first() : null);
+            return [$codigo => [
+                'claves' => $this->claves($codigo, $fila),
+                'base' => $this->normalizar($fila->cod_base ?? ''),
+            ]];
+        });
     }
 
     public function guardar(string $nombre, string $contenido, array $datos, ?int $usuario): string

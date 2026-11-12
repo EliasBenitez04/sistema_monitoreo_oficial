@@ -17,18 +17,28 @@
         @include('invierno._disponibilidad-totales')
 
         <section class="row" aria-label="Imágenes de las prendas documentadas">
-            <div class="col-6">
+            <div class="col-sm-6">
                 <div class="card iw-metric iw-green">
                     <span>Prendas con imagen asociada</span>
                     <strong class="text-success">{{ $n($resumenImagenes['prendas_con_imagen']) }}</strong>
                     <small>{{ $n($resumenImagenes['codigos_con_imagen']) }} códigos distintos</small>
                 </div>
             </div>
-            <div class="col-6">
+            <div class="col-sm-6">
                 <div class="card iw-metric iw-orange">
-                    <span>Prendas sin imagen asociada</span>
-                    <strong>{{ $n($resumenImagenes['prendas_sin_imagen']) }}</strong>
-                    <small>{{ $n($resumenImagenes['codigos_sin_imagen']) }} códigos distintos</small>
+                    <div class="iw-split">
+                        <div>
+                            <span>Prendas sin imagen asociada</span>
+                            <strong>{{ $n($resumenImagenes['prendas_sin_imagen']) }}</strong>
+                            <small>{{ $n($resumenImagenes['codigos_sin_imagen']) }} códigos distintos</small>
+                        </div>
+                        @if($resumenImagenes['codigos_sin_imagen'] > 0)
+                            <a class="btn btn-sm btn-outline-primary"
+                               href="{{ route('invierno.disponibilidad.codigos-sin-imagen.exportar', request()->except('page', 'remisiones_page')) }}">
+                                <i class="fas fa-file-excel mr-1" aria-hidden="true"></i> Exportar códigos base
+                            </a>
+                        @endif
+                    </div>
                 </div>
             </div>
         </section>

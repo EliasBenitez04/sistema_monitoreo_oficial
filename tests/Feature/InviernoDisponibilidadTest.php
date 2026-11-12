@@ -291,6 +291,58 @@ class InviernoDisponibilidadTest extends TestCase
         $this->get(route('invierno.disponibilidad.exportar', ['grupo' => '=1+1']))->assertOk()->assertDownload();
     }
 
+    public function test_exporta_bases_unicas_de_prendas_sin_imagen_con_los_filtros_del_panel(): void
+    {
+        (require database_path('migrations/2026_11_10_160000_create_articulo_imagenes_table.php'))->up();
+        $bonanza = $this->documento();
+        $mariano = $this->documento(16, 'S', '1303');
+        foreach (['060617629AZ01', '060617629GR01', '060617629GR02', '050617500AZ01'] as $codigo) {
+            $this->maestro($codigo, 'CAMPERAS');
+            $this->entrada($bonanza, $codigo);
+        }
+        DB::table('maestro_codigos')->insert([
+            ['cod_articulo' => 'CODIGO-FIJO', 'grupo' => 'CAMPERAS', 'cod_base' => '001234567', 'cod_imagen' => '001999999'],
+            ['cod_articulo' => 'SOLO-COLOR', 'grupo' => 'CAMPERAS', 'cod_base' => null, 'cod_imagen' => '001987654AZ'],
+        ]);
+        $this->entrada($bonanza, 'CODIGO-FIJO');
+        $this->entrada($bonanza, 'SOLO-COLOR');
+        $this->entrada($bonanza, '030617651AZ01', 10, ['descripcion' => 'CAMPERAS']);
+        $this->maestro('020617651AZ01', 'CAMPERAS');
+        $this->entrada($mariano, '020617651AZ01');
+        foreach (['060617629AZ', '050617500'] as $codigo) {
+            DB::table('articulo_imagenes')->insert([
+                'codigo_imagen' => $codigo,
+                'imagen' => 'articulos-imagenes/'.$codigo.'_0000000000000000.png',
+                'nombre_archivo' => $codigo.'.png',
+            ]);
+        }
+
+        $filtros = ['local' => 7, 'grupo' => 'CAMPERAS'];
+        $rutaExportar = 'invierno.disponibilidad.codigos-sin-imagen.exportar';
+        $this->get(route('invierno.disponibilidad', $filtros + ['page' => 2]))->assertOk()
+            ->assertSee(route($rutaExportar, $filtros));
+        $respuesta = $this->get(route($rutaExportar, $filtros + ['page' => 2]));
+        $respuesta->assertOk()->assertDownload('codigos_base_sin_imagen_20261110_120000.xlsx');
+        $ruta = $respuesta->baseResponse->getFile()->getPathname();
+        try {
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder());
+            $libro = IOFactory::load($ruta);
+            $this->assertSame(['Códigos base', 'Revisar maestro'], $libro->getSheetNames());
+            $this->assertSame([
+                ['CÓDIGO BASE PARA IMAGEN'], ['001234567'], ['001987654AZ'], ['060617629'],
+            ], $libro->getSheet(0)->toArray());
+            $this->assertSame(DataType::TYPE_STRING, $libro->getSheet(0)->getCell('A2')->getDataType());
+            $this->assertSame([['CÓDIGO COMPLETO'], ['030617651AZ01']], $libro->getSheet(1)->toArray());
+            $libro->disconnectWorksheets();
+        } finally {
+            @unlink($ruta);
+        }
+
+        $middleware = app('router')->getRoutes()->getByName($rutaExportar)->gatherMiddleware();
+        $this->assertContains('auth', $middleware);
+        $this->assertContains('permission:ot index', $middleware);
+    }
+
     public function test_consultas_por_conjunto_y_no_por_cada_remision(): void
     {
         for ($i = 1; $i <= 40; $i++) $this->entrada($this->documento(7, 'F', (string) $i));
