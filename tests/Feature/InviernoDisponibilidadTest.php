@@ -353,6 +353,40 @@ class InviernoDisponibilidadTest extends TestCase
         $this->assertLessThanOrEqual(8, count($consultas), 'La lectura no debe hacer consultas por documento.');
     }
 
+    public function test_listado_reutiliza_el_maestro_y_lee_el_origen_registrado(): void
+    {
+        (require database_path('migrations/2026_11_10_160000_create_articulo_imagenes_table.php'))->up();
+        (require database_path('migrations/2026_11_13_090000_index_invierno_disponibilidad.php'))->up();
+        $documento = $this->documento();
+        DB::table('sucursal')->where('cod_suc', 7)->delete();
+        DB::table('maestro_codigos')->insert([
+            'cod_articulo' => ' codigo-fijo ', 'grupo' => 'CAMPERAS', 'cod_imagen' => '001987654AZ',
+        ]);
+        $this->entrada($documento, 'CODIGO-FIJO', 10, ['serie' => ' f ', 'numero_remision' => '001188', 'sucursal_salida' => null]);
+        $this->entrada($documento, 'CODIGO-FIJO', 100, ['cod_sucursal_destino' => 16]);
+
+        $consultasMaestro = 0;
+        DB::listen(function (QueryExecuted $consulta) use (&$consultasMaestro) {
+            if (str_contains($consulta->sql, 'from "maestro_codigos"')) {
+                $consultasMaestro++;
+            }
+        });
+        $ruta = route('invierno.disponibilidad', ['local' => 7, 'grupo' => 'CAMPERAS']);
+        $this->get($ruta)->assertOk()
+            ->assertViewHas('locales', fn ($locales) => $locales->get(7) === 'BONANZA')
+            ->assertViewHas('resumenImagenes', fn ($r) => $r['prendas_sin_imagen'] === 10);
+        $this->assertSame(1, $consultasMaestro);
+
+        DB::table('articulo_imagenes')->insert([
+            'codigo_imagen' => '001987654AZ',
+            'imagen' => 'articulos-imagenes/001987654AZ_0000000000000000.png',
+            'nombre_archivo' => '001987654AZ.png',
+        ]);
+        $this->get($ruta)->assertOk()
+            ->assertViewHas('resumenImagenes', fn ($r) => $r['prendas_con_imagen'] === 10 && $r['prendas_sin_imagen'] === 0);
+        $this->assertSame(2, $consultasMaestro);
+    }
+
     public function test_catalogo_con_espacios_y_minusculas_resuelve_solo_el_codigo_completo_correcto(): void
     {
         $d = $this->documento();

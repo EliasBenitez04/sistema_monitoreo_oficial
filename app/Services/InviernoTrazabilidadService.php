@@ -97,7 +97,7 @@ class InviernoTrazabilidadService
     {
         return DB::table('ot_logistica_remisiones as r')
             ->where('r.cod_sucursal_salida', $documento->cod_sucursal_origen)
-            ->where('r.cod_sucursal_destino', 1)
+            ->whereRaw('r.cod_sucursal_destino = 1')
             ->whereRaw('UPPER(TRIM(r.serie)) = ?', [$documento->serie])
             ->whereRaw(Documento::numeroSql('r').' = ?', [$documento->numero_remision])
             ->orderBy('r.codigo')->orderBy('r.id')->get();
@@ -111,10 +111,13 @@ class InviernoTrazabilidadService
     public function panorama(): Collection
     {
         $documentos = DB::table('invierno_remisiones')->orderByDesc('id')->get()->keyBy('id');
-        $entradas = DB::table('ot_logistica_remisiones as r')
-            ->join('invierno_remisiones as i', function ($join) {
+        if ($documentos->isEmpty()) return $documentos;
+
+        $entradas = DB::table('invierno_remisiones as i')
+            ->join('ot_logistica_remisiones as r', function ($join) {
                 $join->on('r.cod_sucursal_salida', '=', 'i.cod_sucursal_origen')
-                    ->where('r.cod_sucursal_destino', 1)
+                    // Predicado fijo del índice parcial de devoluciones a Central.
+                    ->whereRaw('r.cod_sucursal_destino = 1')
                     ->whereRaw('UPPER(TRIM(r.serie)) = i.serie')
                     ->whereRaw(Documento::numeroSql('r').' = i.numero_remision');
             })->select('r.*', 'i.id as invierno_remision_id')->get();
@@ -131,27 +134,33 @@ class InviernoTrazabilidadService
         $sumasSalida = $activas->groupBy('remision_salida_id')->map->sum('cantidad');
         $porDocumento = $entradas->groupBy('invierno_remision_id');
         $vinculosDocumento = $activas->groupBy('invierno_remision_id');
+        $hoy = now()->toDateString();
 
         foreach ($documentos as $documento) {
             $lineas = $porDocumento->get($documento->id, collect());
             $incidencias = [];
             $total = 0;
             $confirmado = 0;
+            $codigos = [];
+            $duplicadas = false;
             foreach ($lineas as $linea) {
-                $problema = Documento::problema($linea);
+                $problema = Documento::problema($linea, $hoy);
                 if ($problema) {
                     $incidencias[] = 'Entrada #'.$linea->id.': '.$problema;
                 }
                 $total += max(0, (int) $linea->cantidad);
-                if (!$problema && Documento::recibido($linea)) {
+                $linea->recibida = !$problema && Documento::recibido($linea, $hoy);
+                if ($linea->recibida) {
                     $confirmado += (int) $linea->cantidad;
                 }
                 $linea->asignada = (int) $sumasEntrada->get($linea->id, 0);
-                $linea->disponible = !$problema && Documento::recibido($linea)
-                    ? (int) $linea->cantidad - $linea->asignada : 0;
+                $linea->disponible = $linea->recibida ? (int) $linea->cantidad - $linea->asignada : 0;
                 $linea->problema = $problema;
+                $codigo = Documento::texto($linea->codigo);
+                $duplicadas = $duplicadas || isset($codigos[$codigo]);
+                $codigos[$codigo] = true;
             }
-            if ($lineas->groupBy(fn ($r) => Documento::texto($r->codigo))->contains(fn ($grupo) => $grupo->count() > 1)) {
+            if ($duplicadas) {
                 $incidencias[] = 'Hay líneas duplicadas para el mismo código completo. Revisá las remisiones importadas.';
             }
             $remitido = 0;
@@ -160,7 +169,7 @@ class InviernoTrazabilidadService
             foreach ($vinculosDocumento->get($documento->id, collect()) as $vinculo) {
                 $entrada = $movimientos->get($vinculo->remision_entrada_id);
                 $salida = $movimientos->get($vinculo->remision_salida_id);
-                $problema = $this->problemaVinculo($documento, $entrada, $salida);
+                $problema = $this->problemaVinculo($documento, $entrada, $salida, $hoy);
                 if (!$problema && (Documento::texto($entrada->codigo) !== $vinculo->codigo
                     || Documento::texto($salida->serie) !== $vinculo->serie_salida
                     || Documento::numero($salida->numero_remision) !== $vinculo->numero_salida
@@ -177,13 +186,14 @@ class InviernoTrazabilidadService
                 $vinculo->entrada = $entrada;
                 $vinculo->salida = $salida;
                 $vinculo->problema = $problema;
+                $vinculo->recibida = !$problema && Documento::recibido($salida, $hoy);
                 if ($problema) {
                     $incidencias[] = 'Asociación #'.$vinculo->id.': '.$problema;
                     $porRevisar += (int) $vinculo->cantidad;
                     continue;
                 }
                 $remitido += (int) $vinculo->cantidad;
-                if (Documento::recibido($salida)) {
+                if ($vinculo->recibida) {
                     $recibidoLocal += (int) $vinculo->cantidad;
                 }
             }
@@ -214,12 +224,12 @@ class InviernoTrazabilidadService
         return $d->transito_local > 0 ? 'EN_TRANSITO_LOCALES' : 'COMPLETO';
     }
 
-    public function problemaVinculo(object $documento, ?object $entrada, ?object $salida): ?string
+    public function problemaVinculo(object $documento, ?object $entrada, ?object $salida, ?string $hoy = null): ?string
     {
         if (!$entrada || !$salida || !Documento::coincideEntrada($documento, $entrada)) {
             return 'La entrada ya no corresponde al documento registrado.';
         }
-        if (Documento::problema($entrada) || !Documento::recibido($entrada)) {
+        if (Documento::problema($entrada, $hoy) || !Documento::recibido($entrada, $hoy)) {
             return 'La entrada no tiene una recepción válida y confirmada en Central.';
         }
         if ((int) $salida->cod_sucursal_salida !== 1 || (int) $salida->cod_sucursal_destino <= 0
@@ -229,7 +239,7 @@ class InviernoTrazabilidadService
         if (Documento::texto($entrada->codigo) !== Documento::texto($salida->codigo)) {
             return 'El código completo (incluye color y talle) no coincide.';
         }
-        if ($problema = Documento::problema($salida)) {
+        if ($problema = Documento::problema($salida, $hoy)) {
             return 'Salida: '.$problema;
         }
         if (Documento::fechaSalida($salida) < $entrada->fecha_recepcion) {

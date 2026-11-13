@@ -62,10 +62,10 @@ class ArticuloImagenService
     }
 
     /** Una lectura para la pagina, sin consultas ni joins por cada prenda. */
-    public function paraCodigos(Collection $codigos): Collection
+    public function paraCodigos(Collection $codigos, ?Collection $filasMaestro = null): Collection
     {
         if ($codigos->isEmpty() || !Schema::hasTable('articulo_imagenes')) return collect();
-        $candidatos = $this->referenciasPorCodigo($codigos)->map(fn ($referencia) => $referencia['claves']);
+        $candidatos = $this->referenciasPorCodigo($codigos, $filasMaestro)->map(fn ($referencia) => $referencia['claves']);
         $fotos = collect();
         foreach ($candidatos->flatten()->unique()->chunk(500) as $bloque) {
             $fotos = $fotos->concat(DB::table('articulo_imagenes')->whereIn('codigo_imagen', $bloque->all())->get());
@@ -103,15 +103,17 @@ class ArticuloImagenService
         });
     }
 
-    private function referenciasPorCodigo(Collection $codigos): Collection
+    private function referenciasPorCodigo(Collection $codigos, ?Collection $maestro = null): Collection
     {
         $codigos = $codigos->map(fn ($c) => $this->normalizar($c))->unique()->values();
-        $maestro = collect();
-        if (Schema::hasTable('maestro_codigos')) {
-            foreach ($codigos->chunk(500) as $bloque) {
-                $maestro = $maestro->concat(DB::table('maestro_codigos')
-                    ->whereIn(DB::raw('UPPER(TRIM(cod_articulo))'), $bloque->all())
-                    ->get(['cod_articulo', 'cod_imagen', 'cod_base']));
+        if ($maestro === null) {
+            $maestro = collect();
+            if (Schema::hasTable('maestro_codigos')) {
+                foreach ($codigos->chunk(500) as $bloque) {
+                    $maestro = $maestro->concat(DB::table('maestro_codigos')
+                        ->whereIn(DB::raw('UPPER(TRIM(cod_articulo))'), $bloque->all())
+                        ->get(['cod_articulo', 'cod_imagen', 'cod_base']));
+                }
             }
         }
         $maestro = $maestro->groupBy(fn ($m) => $this->normalizar($m->cod_articulo));

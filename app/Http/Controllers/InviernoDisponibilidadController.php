@@ -37,22 +37,10 @@ class InviernoDisponibilidadController extends Controller
         ]);
     }
 
-    public function index(Request $request, ArticuloImagenService $imagenes)
+    public function index(Request $request)
     {
-        $datos = $this->service->consultar($this->filtros($request));
-        $sinImagen = $this->codigosSinImagen($datos['lineas'], $imagenes)->flip();
-        $prendasSinImagen = (int) $datos['lineas']->sum(
-            fn ($linea) => $sinImagen->has($linea->codigo) ? $linea->prendas : 0
-        );
-        $datos['resumenImagenes'] = [
-            'prendas_con_imagen' => $datos['resumen']['prendas'] - $prendasSinImagen,
-            'prendas_sin_imagen' => $prendasSinImagen,
-            'codigos_con_imagen' => $datos['resumen']['codigos'] - $sinImagen->count(),
-            'codigos_sin_imagen' => $sinImagen->count(),
-        ];
-
+        $datos = $this->service->listado($this->filtros($request));
         $datos['paginados'] = $this->paginar($datos['grupos'], $request, 25);
-        $datos['locales'] = app(InviernoTrazabilidadService::class)->locales();
         return view('invierno.disponibilidad', $datos);
     }
 

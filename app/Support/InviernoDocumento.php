@@ -55,10 +55,11 @@ class InviernoDocumento
         return ltrim($numero, '0') ?: '0';
     }
 
-    public static function numeroSql(string $alias): string
+    public static function numeroSql(?string $alias = null): string
     {
         // LTRIM con dos argumentos funciona en PostgreSQL 9.5 y SQLite.
-        return "COALESCE(NULLIF(LTRIM(TRIM({$alias}.numero_remision), '0'), ''), '0')";
+        $columna = $alias === null ? 'numero_remision' : $alias.'.numero_remision';
+        return "COALESCE(NULLIF(LTRIM(TRIM($columna), '0'), ''), '0')";
     }
 
     public static function coincideEntrada(object $documento, object $entrada): bool
@@ -74,15 +75,15 @@ class InviernoDocumento
         return $movimiento->fecha_remision ?: ($movimiento->fecha_creacion ?? null);
     }
 
-    public static function recibido(object $movimiento): bool
+    public static function recibido(object $movimiento, ?string $hoy = null): bool
     {
         return self::texto($movimiento->estado) === 'RECIBIDO'
             && !empty($movimiento->fecha_recepcion)
-            && $movimiento->fecha_recepcion <= now()->toDateString()
+            && $movimiento->fecha_recepcion <= ($hoy ?? now()->toDateString())
             && (!self::fechaSalida($movimiento) || $movimiento->fecha_recepcion >= self::fechaSalida($movimiento));
     }
 
-    public static function problema(object $movimiento): ?string
+    public static function problema(object $movimiento, ?string $hoy = null): ?string
     {
         if (self::texto($movimiento->serie) === '' || self::numero($movimiento->numero_remision) === null) {
             return 'Serie o número de remisión inválido.';
@@ -90,15 +91,16 @@ class InviernoDocumento
         if ((int) $movimiento->cantidad <= 0 || self::texto($movimiento->codigo) === '') {
             return 'Cantidad o código de artículo inválido.';
         }
+        $hoy = $hoy ?? now()->toDateString();
         $salida = self::fechaSalida($movimiento);
-        if (!$salida || $salida > now()->toDateString()) {
+        if (!$salida || $salida > $hoy) {
             return 'Fecha de remisión ausente o futura.';
         }
         $estado = self::texto($movimiento->estado);
         if (!in_array($estado, ['EN_TRANSITO', 'RECIBIDO'], true)) {
             return 'Estado de remisión no válido para el seguimiento.';
         }
-        if ($estado === 'RECIBIDO' && !self::recibido($movimiento)) {
+        if ($estado === 'RECIBIDO' && !self::recibido($movimiento, $hoy)) {
             return 'Recepción sin fecha válida o anterior a la remisión.';
         }
         if ($estado === 'EN_TRANSITO' && !empty($movimiento->fecha_recepcion)) {
