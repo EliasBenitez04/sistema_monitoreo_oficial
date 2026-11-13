@@ -59,20 +59,51 @@
         </div>
         <div class="table-responsive">
             <table class="table table-hover">
-                <thead><tr><th>Grupo de prendas</th><th class="num">Documentadas</th><th class="num">Recibido Central</th><th class="num">Pendiente Central</th><th class="num">Enviado a locales</th><th class="num">Disponible Central</th><th></th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Grupo de prendas</th>
+                        <th class="num">Documentadas</th>
+                        <th class="num">Recibido Central</th>
+                        <th class="num">Pendiente Central</th>
+                        <th class="num">Enviado a locales</th>
+                        <th class="num">Disponible Central</th>
+                        <th></th>
+                    </tr>
+                </thead>
                 <tbody>
                 @forelse($paginados as $g)
                     <tr>
-                        <td><strong>{{ $g->grupo }}</strong><small class="d-block text-muted">{{ $n($g->codigos) }} códigos · {{ $n($g->documentos) }} remisiones</small>@if($g->lineas_revision)<small class="d-block text-warning">{{ $n($g->por_revisar) }} de saldo por revisar · {{ $n($g->lineas_revision) }} líneas con diferencias</small>@endif</td>
-                        <td class="num">{{ $n($g->prendas) }}</td><td class="num">{{ $n($g->central) }}</td><td class="num">{{ $n($g->pendiente) }}</td><td class="num">{{ $n($g->remitido) }}</td>
-                        <td class="num"><strong class="{{ $g->disponible > 0 ? 'text-success' : 'text-muted' }}" style="font-size:1.15rem">{{ $n($g->disponible) }}</strong></td>
+                        <td>
+                            <strong>{{ $g->grupo }}</strong>
+                            <small class="d-block text-muted">{{ $n($g->codigos) }} códigos · {{ $n($g->documentos) }} remisiones</small>
+                            @if($g->lineas_revision)<small class="d-block text-warning">{{ $n($g->por_revisar) }} de saldo por revisar · {{ $n($g->lineas_revision) }} líneas con diferencias</small>@endif
+                        </td>
+                        @foreach(['prendas', 'central', 'pendiente', 'remitido', 'disponible'] as $etapa)
+                            <td class="num">
+                                <strong class="{{ $etapa === 'disponible' && $g->disponible > 0 ? 'text-success' : '' }}">{{ $n($g->{$etapa}) }}</strong>
+                                @if($g->{$etapa} > 0)
+                                    @include('invierno._valores-celda', ['valor' => $g->valorizacion[$etapa]])
+                                @endif
+                            </td>
+                        @endforeach
                         <td><a class="btn btn-sm btn-outline-primary text-nowrap" href="{{ route('invierno.disponibilidad.detalle', array_merge(request()->except('page', 'codigo', 'situacion', 'orden', 'completa'), ['grupo' => $g->grupo])) }}">Ver detalle <i class="fas fa-arrow-right ml-1"></i></a></td>
                     </tr>
                 @empty
                     <tr><td colspan="7" class="iw-empty"><i class="fas fa-snowflake"></i><strong>No hay prendas de invierno para estos filtros.</strong>Revisá las remisiones registradas o limpiá los filtros.</td></tr>
                 @endforelse
                 </tbody>
-                @if($paginados->total())<tfoot><tr class="bg-light font-weight-bold"><td>TOTAL FILTRADO · {{ $n($resumen['grupos']) }} grupos</td><td class="num">{{ $n($resumen['prendas']) }}</td><td class="num">{{ $n($resumen['central']) }}</td><td class="num">{{ $n($resumen['pendiente']) }}</td><td class="num">{{ $n($resumen['remitido']) }}</td><td class="num text-success">{{ $n($resumen['disponible']) }}</td><td></td></tr></tfoot>@endif
+                @if($paginados->total())
+                    <tfoot><tr class="bg-light font-weight-bold">
+                        <td>TOTAL FILTRADO · {{ $n($resumen['grupos']) }} grupos</td>
+                        @foreach(['prendas', 'central', 'pendiente', 'remitido', 'disponible'] as $etapa)
+                            <td class="num">
+                                <strong class="{{ $etapa === 'disponible' ? 'text-success' : '' }}">{{ $n($resumen[$etapa]) }}</strong>
+                                @include('invierno._valores-celda', ['valor' => $resumen['valorizacion'][$etapa]])
+                            </td>
+                        @endforeach
+                        <td></td>
+                    </tr></tfoot>
+                @endif
             </table>
         </div>
         @if($paginados->hasPages())<div class="card-footer bg-white">{{ $paginados->links('pagination::bootstrap-4') }}</div>@endif

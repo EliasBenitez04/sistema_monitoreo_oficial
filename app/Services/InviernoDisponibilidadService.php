@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\InviernoDocumento as Documento;
+use App\Support\InviernoValorizacion as Valorizacion;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -50,7 +51,7 @@ class InviernoDisponibilidadService
                 && ($buscar === '' || str_contains(Documento::texto($referencia), $buscar))) {
                 $sinDetalle->push($documento);
             }
-            $asignaciones = $documento->asignaciones->whereNull('problema')->groupBy('remision_entrada_id');
+            $revisar = !empty($documento->incidencias);
             foreach ($documento->entradas as $entrada) {
                 $codigo = Documento::texto($entrada->codigo);
                 $articulo = $maestro->get($codigo);
@@ -69,8 +70,10 @@ class InviernoDisponibilidadService
 
                 $fila = [
                     'documento_id' => (int) $documento->id, 'codigo' => $codigo, 'grupo' => $grupo,
-                    'revisar' => !empty($documento->incidencias),
-                ] + $this->cantidadesEntrada($documento, $entrada, $asignaciones->get($entrada->id));
+                    'revisar' => $revisar,
+                    'costo_centavos' => Valorizacion::centavos($entrada->costo_unitario),
+                    'precio_centavos' => Valorizacion::centavos($entrada->precio_venta),
+                ] + Documento::cantidadesEntrada($entrada, $revisar);
                 if (!$esListado) {
                     $fila += [
                         'entrada_id' => (int) $entrada->id, 'local_codigo' => (int) $documento->cod_sucursal_origen,
@@ -121,22 +124,6 @@ class InviernoDisponibilidadService
             return compact('grupos', 'resumen', 'opcionesGrupos', 'resumenImagenes', 'locales');
         }
         return compact('grupos', 'lineas', 'resumen', 'opcionesGrupos', 'codigos', 'sinDetalle');
-    }
-
-    private function cantidadesEntrada(object $documento, object $entrada, ?Collection $vinculos): array
-    {
-        $prendas = max(0, (int) $entrada->cantidad);
-        $central = $entrada->recibida ? $prendas : 0;
-        $remitido = (int) ($vinculos?->sum('cantidad') ?? 0);
-        $recibido = (int) ($vinculos?->where('recibida', true)->sum('cantidad') ?? 0);
-        // Si el documento tiene incidencias, su saldo queda retenido hasta revisarlo.
-        $revisar = !empty($documento->incidencias);
-        $saldo = max(0, $central - $remitido);
-        return [
-            'prendas' => $prendas, 'central' => $central, 'pendiente' => $prendas - $central,
-            'remitido' => $remitido, 'recibido_local' => $recibido, 'transito_local' => $remitido - $recibido,
-            'disponible' => $revisar ? null : $saldo, 'por_revisar' => $revisar ? $saldo : 0,
-        ];
     }
 
     public function articulos(Collection $lineas, string $orden = 'disponible'): Collection
@@ -203,12 +190,17 @@ class InviernoDisponibilidadService
     private function totales(Collection $lineas): array
     {
         $totales = array_fill_keys(self::CANTIDADES, 0);
+        $valorizacion = new Valorizacion();
         $documentos = [];
         $codigos = [];
         $revision = 0;
         foreach ($lineas as $linea) {
             foreach (self::CANTIDADES as $columna) {
-                $totales[$columna] += $linea->{$columna} ?? 0;
+                $cantidad = $linea->{$columna} ?? 0;
+                $totales[$columna] += $cantidad;
+                if ($cantidad > 0) {
+                    $valorizacion->sumar($columna, $cantidad, $linea->costo_centavos, $linea->precio_centavos);
+                }
             }
             $documentos[$linea->documento_id] = true;
             $codigos[] = $linea->codigo;
@@ -217,6 +209,7 @@ class InviernoDisponibilidadService
         $totales['documentos'] = count($documentos);
         $totales['codigos'] = count(array_unique($codigos, SORT_REGULAR));
         $totales['lineas_revision'] = $revision;
+        $totales['valorizacion'] = $valorizacion->totales();
         return $totales;
     }
 

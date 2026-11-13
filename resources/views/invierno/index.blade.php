@@ -1,5 +1,6 @@
 @extends('layouts.app')
 @include('invierno._estilos')
+@section('carga_liviana', '1')
 
 @section('content')
 @php($n = fn ($v) => number_format((int) $v, 0, ',', '.'))
@@ -28,6 +29,9 @@
             <div class="col-6 col-lg-2"><div class="card iw-metric iw-green"><span>Saldo documental Central</span><strong>{{ $n($resumen['saldo']) }}</strong><small>Documentos sin incidencias</small></div></div>
             <div class="col-6 col-lg-2"><div class="card iw-metric iw-orange"><span>Requieren revisión</span><strong>{{ $n($resumen['revisar']) }}</strong><small>Documentos con inconsistencias</small></div></div>
         </div>
+
+        @include('invierno._valorizacion-resumen', ['valorizacion' => $resumen['valorizacion'],
+            'sinDetalleValorizado' => $resumen['documentos'] === $resumen['sin_remision']])
 
         @can('ot importar')
         <div class="card mb-3">
@@ -76,7 +80,7 @@
             </div>
             <div class="table-responsive">
                 <table class="table table-hover">
-                    <thead><tr><th>Origen / remisión</th><th>Estado</th><th class="num">Prendas</th><th class="num">Confirmado Central</th><th class="num">Pendiente Central</th><th class="num">Enviado a locales</th><th class="num">Recibido locales</th><th class="num">Saldo Central</th><th></th></tr></thead>
+                    <thead><tr><th>Origen / remisión</th><th>Estado</th><th class="num">Prendas</th><th class="num">Confirmado Central</th><th class="num">Pendiente Central</th><th class="num">Enviado a locales</th><th class="num">Recibido locales</th><th class="num">Saldo Central</th><th class="num iw-importe-encabezado">Valor documentado</th><th class="num iw-importe-encabezado">Valor disponible</th><th></th></tr></thead>
                     <tbody>
                     @forelse($documentos as $documento)
                         <tr>
@@ -88,10 +92,16 @@
                             <td class="num">{{ $n($documento->remitido) }}</td>
                             <td class="num">{{ $n($documento->recibido_local) }}</td>
                             <td class="num font-weight-bold">{{ $documento->saldo_central === null || $documento->entradas->isEmpty() ? '—' : $n($documento->saldo_central) }}</td>
+                            @if($documento->entradas->isEmpty())
+                                <td colspan="2" class="text-muted">Sin detalle importado</td>
+                            @else
+                                @include('invierno._valores-totales', ['valores' => $valorizaciones[$documento->id],
+                                    'disponiblePorRevisar' => $documento->saldo_central === null])
+                            @endif
                             <td><a class="btn btn-sm btn-outline-primary text-nowrap" href="{{ route('invierno.show', $documento->id) }}">Ver detalle <i class="fas fa-arrow-right ml-1"></i></a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="iw-empty"><i class="fas fa-snowflake"></i><strong>No hay remisiones para estos filtros.</strong>Importá el listado de invierno o ajustá los filtros para empezar el seguimiento.</td></tr>
+                        <tr><td colspan="11" class="iw-empty"><i class="fas fa-snowflake"></i><strong>No hay remisiones para estos filtros.</strong>Importá el listado de invierno o ajustá los filtros para empezar el seguimiento.</td></tr>
                     @endforelse
                     </tbody>
                 </table>

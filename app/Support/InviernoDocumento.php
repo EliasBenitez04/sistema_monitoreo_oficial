@@ -75,6 +75,21 @@ class InviernoDocumento
         return $movimiento->fecha_remision ?: ($movimiento->fecha_creacion ?? null);
     }
 
+    public static function cantidadesEntrada(object $entrada, bool $revisar): array
+    {
+        $prendas = max(0, (int) $entrada->cantidad);
+        $central = $entrada->recibida ? $prendas : 0;
+        $remitido = $entrada->remitido_valido ?? 0;
+        $recibido = $entrada->recibido_local_valido ?? 0;
+        $saldo = max(0, $central - $remitido);
+
+        return [
+            'prendas' => $prendas, 'central' => $central, 'pendiente' => $prendas - $central,
+            'remitido' => $remitido, 'recibido_local' => $recibido, 'transito_local' => $remitido - $recibido,
+            'disponible' => $revisar ? null : $saldo, 'por_revisar' => $revisar ? $saldo : 0,
+        ];
+    }
+
     public static function recibido(object $movimiento, ?string $hoy = null): bool
     {
         return self::texto($movimiento->estado) === 'RECIBIDO'

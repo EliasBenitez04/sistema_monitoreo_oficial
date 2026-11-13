@@ -19,6 +19,7 @@
     .invierno .table th { background: #f3f6fa; color: #586b80; font-size: .71rem; text-transform: uppercase; letter-spacing: .04em; border-top: 0; padding: 13px 15px; vertical-align: middle; }
     .invierno .table td { padding: 14px 15px; vertical-align: middle; border-top: 1px solid #eaf0f5; }
     .invierno .table td.num, .invierno .table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .invierno .table th.iw-importe-encabezado { white-space: normal; min-width: 7.5rem; }
     .invierno .iw-code { font-family: monospace; font-size: .92rem; color: #294d74; font-weight: 700; }
     .invierno .iw-pill { display: inline-block; border-radius: 6px; padding: 5px 8px; font-size: .73rem; font-weight: 700; white-space: normal; }
     .invierno .iw-muted { background: #edf1f6; color: #596a7e; }
@@ -27,6 +28,13 @@
     .invierno .iw-warning { background: #fff2d6; color: #8f621b; }
     .invierno .iw-danger { background: #fbe8e6; color: #a0352c; }
     .invierno .iw-note { font-size: .83rem; color: #61758b; }
+    .invierno .iw-importe { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .invierno .iw-valores-celda { font-size: .75rem; font-weight: 400; line-height: 1.45; }
+    .invierno .iw-valores-celda .iw-importe { font-weight: 600; }
+    .invierno .iw-importe-pendiente { color: #8f621b; font-size: .72rem; font-weight: 400; }
+    .invierno .iw-disponible-importe { color: #24714d; font-weight: 700; }
+    .invierno .iw-valor-titulo { font-size: 1rem; font-weight: 700; margin: 0 0 .5rem; }
+    .invierno .iw-valor-destacado .iw-importe { font-size: 1.4rem; font-weight: 700; color: #23354d; }
     .invierno .iw-empty { text-align: center; padding: 48px 20px !important; color: #708095; }
     .invierno .iw-empty i { display: block; font-size: 1.8rem; margin-bottom: 12px; }
     .invierno .iw-empty strong { color: #324c68; display: block; margin-bottom: 6px; }

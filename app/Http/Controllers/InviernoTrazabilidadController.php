@@ -6,6 +6,7 @@ use App\Exports\InviernoTrazabilidadExport;
 use App\Imports\InviernoRemisionesImport;
 use App\Services\InviernoTrazabilidadService;
 use App\Support\InviernoDocumento as Documento;
+use App\Support\InviernoValorizacion as Valorizacion;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -44,15 +45,27 @@ class InviernoTrazabilidadController extends Controller
         $filtrados = $this->filtrados($request);
         $documentos = new LengthAwarePaginator($filtrados->forPage($request->integer('page', 1), 25)->values(),
             $filtrados->count(), 25, $request->integer('page', 1), ['path' => $request->url(), 'query' => $request->query()]);
+        $valorizacionFiltrada = new Valorizacion();
+        $valorizaciones = [];
+        foreach ($filtrados as $documento) {
+            $valorizacionFiltrada->sumarRemision($documento);
+        }
+        foreach ($documentos as $documento) {
+            $valorizacion = new Valorizacion();
+            $valorizacion->sumarRemision($documento);
+            $valorizaciones[$documento->id] = $valorizacion->totales();
+        }
         $resumen = [
             'documentos' => $filtrados->count(), 'prendas' => $filtrados->sum('total'),
             'central' => $filtrados->sum('confirmado_central'), 'pendiente' => $filtrados->sum('pendiente_central'),
             'remitido' => $filtrados->sum('remitido'), 'recibido' => $filtrados->sum('recibido_local'),
             'saldo' => $filtrados->sum('saldo_central'), 'revisar' => $filtrados->where('estado', 'REVISAR')->count(),
             'sin_remision' => $filtrados->where('estado', 'SIN_REMISION')->count(),
+            'valorizacion' => $valorizacionFiltrada->totales(),
         ];
         return view('invierno.index', ['documentos' => $documentos, 'resumen' => $resumen,
-            'locales' => $this->service->locales(), 'estados' => InviernoTrazabilidadService::ESTADOS]);
+            'locales' => $this->service->locales(), 'estados' => InviernoTrazabilidadService::ESTADOS,
+            'valorizaciones' => $valorizaciones]);
     }
 
     public function registrar(Request $request)
@@ -114,7 +127,7 @@ class InviernoTrazabilidadController extends Controller
     {
         $request->validate(['entrada' => 'nullable|integer|min:1', 'buscar_salida' => 'nullable|string|max:100',
             'destino' => 'nullable|integer|min:1', 'salidas_page' => 'nullable|integer|min:1']);
-        $documento = $this->service->panorama()->firstWhere('id', $id);
+        $documento = $this->service->panorama(documentoId: $id)->first();
         abort_unless($documento, 404);
         $entrada = $request->filled('entrada') ? $documento->entradas->firstWhere('id', $request->integer('entrada')) : null;
         abort_if($request->filled('entrada') && !$entrada, 404);
@@ -147,7 +160,10 @@ class InviernoTrazabilidadController extends Controller
         }
         $historial = DB::table('invierno_asignaciones')->where('invierno_remision_id', $id)->whereNotNull('anulada_at')->orderByDesc('id')->get();
         $imagenes = app(\App\Services\ArticuloImagenService::class)->paraCodigos($documento->entradas->pluck('codigo'));
-        return view('invierno.show', compact('documento', 'entrada', 'salidas', 'historial', 'imagenes'));
+        $valorizacionRemision = new Valorizacion();
+        $valorizacionRemision->sumarRemision($documento);
+        $valorizacion = $valorizacionRemision->totales();
+        return view('invierno.show', compact('documento', 'entrada', 'salidas', 'historial', 'imagenes', 'valorizacion'));
     }
 
     public function asociar(Request $request, int $id)

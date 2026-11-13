@@ -1,10 +1,12 @@
 @extends('layouts.app')
 @include('invierno._estilos')
+@section('carga_liviana', '1')
 
 @section('content')
 @php
     $n = fn ($v) => number_format((int) $v, 0, ',', '.');
     $fecha = fn ($v) => $v ? \Carbon\Carbon::parse($v)->format('d/m/Y') : '—';
+    $moneda = \App\Support\InviernoValorizacion::class;
 @endphp
 <section class="content invierno">
     <div class="container-fluid">
@@ -34,11 +36,14 @@
             <div class="col-6 col-lg-3"><div class="card iw-metric iw-orange"><span>Saldo documental en Central</span><strong>{{ $documento->saldo_central === null || $documento->entradas->isEmpty() ? '—' : $n($documento->saldo_central) }}</strong><small>{{ $documento->saldo_central === null ? 'Pendiente de revisión' : 'Recibido menos salidas asociadas' }}</small></div></div>
         </div>
 
+        @include('invierno._valorizacion-resumen', ['tituloDocumentado' => 'Total de la remisión',
+            'saldoPorRevisar' => $documento->saldo_central === null, 'sinDetalleValorizado' => $documento->entradas->isEmpty()])
+
         <div class="card mb-4">
             <div class="card-header"><h2 class="card-title mb-0"><i class="fas fa-warehouse mr-2"></i>1. Recepción de la mercadería en Central</h2></div>
             <div class="table-responsive">
                 <table class="table table-hover">
-                    <thead><tr><th>Código completo / descripción</th><th>Fecha remisión</th><th>Recepción Central</th><th class="num">Prendas</th><th class="num">Asociadas</th><th class="num">Disponibles</th><th></th></tr></thead>
+                    <thead><tr><th>Código completo / descripción</th><th>Fecha remisión</th><th>Recepción Central</th><th class="num">Prendas</th><th class="num">Asociadas</th><th class="num">Disponibles</th><th class="num iw-importe-encabezado">Valores unitarios</th><th class="num iw-importe-encabezado">Valor de la línea</th><th class="num iw-importe-encabezado">Valor disponible</th><th></th></tr></thead>
                     <tbody>
                     @forelse($documento->entradas as $linea)
                         <tr class="{{ $entrada && $entrada->id === $linea->id ? 'table-primary' : '' }}">
@@ -47,6 +52,8 @@
                             <td>@if(\App\Support\InviernoDocumento::recibido($linea) && !$linea->problema)<span class="iw-pill iw-success">Confirmado</span><small class="d-block mt-1">{{ $fecha($linea->fecha_recepcion) }}</small>@else<span class="iw-pill {{ $linea->problema ? 'iw-danger' : 'iw-warning' }}">{{ $linea->problema ? 'Revisar' : 'Pendiente' }}</span>@endif</td>
                             <td class="num">{{ $n($linea->cantidad) }}</td><td class="num">{{ $n($linea->asignada) }}</td>
                             <td class="num font-weight-bold">{{ $linea->problema ? '—' : $n($linea->disponible) }}</td>
+                            @include('invierno._valores-fila', ['costo' => $moneda::centavos($linea->costo_unitario), 'precio' => $moneda::centavos($linea->precio_venta),
+                                'cantidadDocumentada' => max(0, (int) $linea->cantidad), 'cantidadDisponible' => $documento->saldo_central === null ? null : (int) $linea->disponible])
                             <td>
                                 @can('ot edit')
                                     @if($linea->disponible > 0 && !$linea->problema)
@@ -56,9 +63,16 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="iw-empty">El detalle estará disponible cuando se importe la remisión.</td></tr>
+                        <tr><td colspan="10" class="iw-empty">El detalle estará disponible cuando se importe la remisión.</td></tr>
                     @endforelse
                     </tbody>
+                    @if($documento->entradas->isNotEmpty())
+                        <tfoot><tr class="bg-light font-weight-bold"><td colspan="3">TOTAL REMISIÓN</td>
+                            <td class="num">{{ $n($documento->total) }}</td><td class="num">{{ $n($documento->entradas->sum('asignada')) }}</td>
+                            <td class="num">{{ $documento->saldo_central === null ? 'Por revisar' : $n($documento->saldo_central) }}</td>
+                            <td></td>@include('invierno._valores-totales', ['valores' => $valorizacion,
+                                'disponiblePorRevisar' => $documento->saldo_central === null])<td></td></tr></tfoot>
+                    @endif
                 </table>
             </div>
         </div>
@@ -77,7 +91,7 @@
             </div>
             <div class="table-responsive">
                 <table class="table">
-                    <thead><tr><th>Remisión de salida</th><th>Local de destino</th><th>Fecha / recepción</th><th class="num">Cantidad total</th><th class="num">Saldo sin asignar</th><th style="min-width:260px">Cantidad a asociar</th></tr></thead>
+                    <thead><tr><th>Remisión de salida</th><th>Local de destino</th><th>Fecha / recepción</th><th class="num">Cantidad total</th><th class="num">Saldo sin asignar</th><th class="num iw-importe-encabezado">Costo unitario de salida</th><th class="num iw-importe-encabezado">Precio de venta unitario de salida</th><th style="min-width:260px">Cantidad a asociar</th></tr></thead>
                     <tbody>
                     @forelse($salidas ?? [] as $salida)
                         <tr>
@@ -85,6 +99,8 @@
                             <td>{{ $salida->sucursal_destino ?: 'Sucursal '.$salida->cod_sucursal_destino }}<small class="d-block text-muted">Código {{ $salida->cod_sucursal_destino }}</small></td>
                             <td>{{ $fecha(\App\Support\InviernoDocumento::fechaSalida($salida)) }}<div class="mt-1"><span class="iw-pill {{ \App\Support\InviernoDocumento::recibido($salida) ? 'iw-success' : 'iw-warning' }}">{{ \App\Support\InviernoDocumento::recibido($salida) ? 'Recibido: '.$fecha($salida->fecha_recepcion) : 'En tránsito' }}</span></div></td>
                             <td class="num">{{ $n($salida->cantidad) }}</td><td class="num">{{ $n($salida->disponible) }}</td>
+                            <td class="num iw-importe">{{ $moneda::mostrar($moneda::centavos($salida->costo_unitario)) }}</td>
+                            <td class="num iw-importe">{{ $moneda::mostrar($moneda::centavos($salida->precio_venta)) }}</td>
                             <td>@if($salida->problema)<span class="text-danger small">{{ $salida->problema }}</span>@else
                                 <form method="POST" action="{{ route('invierno.asociar', $documento->id) }}">
                                     @csrf
@@ -96,7 +112,7 @@
                             @endif</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="iw-empty"><i class="fas fa-truck"></i><strong>No hay salidas disponibles con estos criterios.</strong>Revisá el saldo de la entrada, los filtros y la última importación general de remisiones.</td></tr>
+                        <tr><td colspan="8" class="iw-empty"><i class="fas fa-truck"></i><strong>No hay salidas disponibles con estos criterios.</strong>Revisá el saldo de la entrada, los filtros y la última importación general de remisiones.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
@@ -110,22 +126,26 @@
             <div class="card-header iw-split"><h2 class="card-title mb-0"><i class="fas fa-route mr-2"></i>Salidas asociadas y recepción en locales</h2><span class="iw-note">{{ $documento->asignaciones->count() }} vínculos activos</span></div>
             <div class="table-responsive">
                 <table class="table">
-                    <thead><tr><th>Código / remisión de salida</th><th>Destino</th><th>Fecha de salida</th><th>Recepción en el local</th><th class="num">Prendas asociadas</th><th>Control del vínculo</th>@can('ot edit')<th>Corregir asociación</th>@endcan</tr></thead>
+                    <thead><tr><th>Código / remisión de salida</th><th>Destino</th><th>Fecha de salida</th><th>Recepción en el local</th><th class="num">Prendas asociadas</th><th class="num iw-importe-encabezado">Costo asociado según entrada</th><th class="num iw-importe-encabezado">Valor venta asociado según entrada</th><th>Control del vínculo</th>@can('ot edit')<th>Corregir asociación</th>@endcan</tr></thead>
                     <tbody>
                     @forelse($documento->asignaciones as $vinculo)
+                        @php($valorAsociado = $moneda::linea($vinculo->problema ? null : (int) $vinculo->cantidad,
+                            $moneda::centavos($vinculo->entrada->costo_unitario ?? null), $moneda::centavos($vinculo->entrada->precio_venta ?? null)))
                         <tr>
                             <td><strong class="iw-code">{{ $vinculo->codigo }}</strong><div>{{ $vinculo->serie_salida }} {{ $vinculo->numero_salida }}</div>@if($vinculo->observacion)<small class="text-muted">{{ $vinculo->observacion }}</small>@endif<small class="d-block text-muted">Asociado: {{ \Carbon\Carbon::parse($vinculo->created_at)->format('d/m/Y H:i') }}</small></td>
                             <td>{{ $vinculo->sucursal_destino ?: 'Sucursal '.$vinculo->cod_sucursal_destino }}</td>
                             <td>{{ $vinculo->salida ? $fecha(\App\Support\InviernoDocumento::fechaSalida($vinculo->salida)) : '—' }}</td>
                             <td>@if(!$vinculo->problema && \App\Support\InviernoDocumento::recibido($vinculo->salida))<span class="iw-pill iw-success">Confirmado</span><small class="d-block mt-1">{{ $fecha($vinculo->salida->fecha_recepcion) }}</small>@else<span class="iw-pill {{ $vinculo->problema ? 'iw-danger' : 'iw-warning' }}">{{ $vinculo->problema ? 'Por revisar' : 'En tránsito' }}</span>@endif</td>
                             <td class="num font-weight-bold">{{ $n($vinculo->cantidad) }}</td>
+                            <td class="num">@include('invierno._importe', ['valor' => $valorAsociado, 'tipo' => 'costo'])</td>
+                            <td class="num">@include('invierno._importe', ['valor' => $valorAsociado, 'tipo' => 'venta'])</td>
                             <td>@if($vinculo->problema)<span class="text-danger small">{{ $vinculo->problema }}</span>@else<span class="iw-pill iw-success">Válido</span>@endif</td>
                             @can('ot edit')
                             <td style="min-width:210px"><details><summary class="small text-danger">Anular vínculo</summary><form class="mt-2" method="POST" action="{{ route('invierno.anular', ['id' => $documento->id, 'asignacion' => $vinculo->id]) }}">@csrf @method('PATCH')<label class="sr-only" for="iw-motivo-{{ $vinculo->id }}">Motivo de anulación</label><input id="iw-motivo-{{ $vinculo->id }}" name="motivo" class="form-control form-control-sm mb-2" minlength="3" maxlength="300" placeholder="Motivo de la anulación" required><button class="btn btn-sm btn-outline-danger" type="submit">Registrar anulación</button></form></details></td>
                             @endcan
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="iw-empty">Todavía no hay salidas asociadas a esta devolución. Seleccioná un artículo recibido en Central para vincular su salida.</td></tr>
+                        <tr><td colspan="{{ auth()->user()->can('ot edit') ? 9 : 8 }}" class="iw-empty">Todavía no hay salidas asociadas a esta devolución. Seleccioná un artículo recibido en Central para vincular su salida.</td></tr>
                     @endforelse
                     </tbody>
                 </table>

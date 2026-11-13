@@ -1,5 +1,6 @@
 @extends('layouts.app')
 @include('invierno._estilos')
+@section('carga_liviana', '1')
 
 @section('content')
 @php
@@ -27,7 +28,7 @@
             </div>
             <div class="table-responsive">
                 <table class="table table-hover">
-                    <thead><tr><th>Origen / remisión</th><th>Código / artículo</th><th>Recepción Central</th><th class="num">Documentadas</th><th class="num">Recibido Central</th><th class="num">Enviado a locales</th><th class="num">Disponible Central</th><th></th></tr></thead>
+                    <thead><tr><th>Origen / remisión</th><th>Código / artículo</th><th>Recepción Central</th><th class="num">Documentadas</th><th class="num">Recibido Central</th><th class="num">Enviado a locales</th><th class="num">Disponible Central</th><th class="num iw-importe-encabezado">Valores unitarios</th><th class="num iw-importe-encabezado">Valor documentado</th><th class="num iw-importe-encabezado">Valor disponible</th><th></th></tr></thead>
                     <tbody>
                     @forelse($paginados as $l)
                         <tr>
@@ -36,13 +37,15 @@
                             <td>@if($l->revisar)<span class="iw-pill iw-warning">Revisar documento</span>@elseif($l->central > 0)<span class="iw-pill iw-success">Confirmada</span>@else<span class="iw-pill iw-muted">Pendiente</span>@endif<small class="d-block mt-1">{{ $fecha($l->fecha_recepcion) }}</small></td>
                             <td class="num">{{ $n($l->prendas) }}</td><td class="num">{{ $n($l->central) }}</td><td class="num">{{ $n($l->remitido) }}<small class="d-block text-muted">{{ $n($l->recibido_local) }} recibidas · {{ $n($l->transito_local) }} en tránsito</small></td>
                             <td class="num font-weight-bold {{ $l->disponible > 0 ? 'text-success' : '' }}">{{ $l->disponible === null ? 'Por revisar' : $n($l->disponible) }}</td>
+                            @include('invierno._valores-fila', ['costo' => $l->costo_centavos, 'precio' => $l->precio_centavos,
+                                'cantidadDocumentada' => $l->prendas, 'cantidadDisponible' => $l->disponible])
                             <td><a class="btn btn-sm btn-outline-primary text-nowrap" href="{{ route('invierno.show', ['id' => $l->documento_id, 'entrada' => $l->entrada_id]) }}">Ver remisión <i class="fas fa-arrow-right ml-1"></i></a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="iw-empty">No hay artículos de este grupo para los filtros seleccionados.</td></tr>
+                        <tr><td colspan="11" class="iw-empty">No hay artículos de este grupo para los filtros seleccionados.</td></tr>
                     @endforelse
                     </tbody>
-                    @if($paginados->total())<tfoot><tr class="bg-light font-weight-bold"><td colspan="3">TOTAL FILTRADO DEL GRUPO</td><td class="num">{{ $n($resumen['prendas']) }}</td><td class="num">{{ $n($resumen['central']) }}</td><td class="num">{{ $n($resumen['remitido']) }}</td><td class="num text-success">{{ $n($resumen['disponible']) }}</td><td></td></tr></tfoot>@endif
+                    @if($paginados->total())<tfoot><tr class="bg-light font-weight-bold"><td colspan="3">TOTAL FILTRADO DEL GRUPO</td><td class="num">{{ $n($resumen['prendas']) }}</td><td class="num">{{ $n($resumen['central']) }}</td><td class="num">{{ $n($resumen['remitido']) }}</td><td class="num text-success">{{ $n($resumen['disponible']) }}</td><td></td>@include('invierno._valores-totales', ['valores' => $resumen['valorizacion']])<td></td></tr></tfoot>@endif
                 </table>
             </div>
             @if($paginados->hasPages())<div class="card-footer bg-white">{{ $paginados->links('pagination::bootstrap-4') }}</div>@endif

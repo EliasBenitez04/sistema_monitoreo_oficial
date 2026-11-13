@@ -6,3 +6,5 @@
     <div class="col-6 col-lg-2"><div class="card iw-metric iw-green"><span>Disponible en Central</span><strong class="text-success">{{ $n($resumen['disponible']) }}</strong><small>Recibido menos salidas asociadas</small></div></div>
     <div class="col-6 col-lg-2"><div class="card iw-metric iw-orange"><span>Saldo por revisar</span><strong>{{ $n($resumen['por_revisar']) }}</strong><small>{{ $n($resumen['lineas_revision']) }} líneas con diferencias</small></div></div>
 </div>
+@include('invierno._valorizacion-resumen', ['valorizacion' => $resumen['valorizacion'],
+    'sinDetalleValorizado' => $resumen['documentos'] === 0 && $resumen['sin_detalle'] > 0])

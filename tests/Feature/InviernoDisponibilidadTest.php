@@ -128,6 +128,42 @@ class InviernoDisponibilidadTest extends TestCase
         $this->assertSame(5, $r['disponible']);
     }
 
+    public function test_valoriza_por_linea_y_estado_con_importes_de_la_entrada_y_datos_faltantes(): void
+    {
+        $bonanza = $this->documento();
+        $mariano = $this->documento(16, 'S', '1303');
+        $this->maestro('060617629AZ01', 'CAMPERAS');
+        $this->maestro('060617629AZ02', 'CAMPERAS');
+        $this->maestro('060617629AZ03', 'CAMPERAS');
+        $entrada = $this->entrada($bonanza, '060617629AZ01', 10, ['costo_unitario' => '12500.25', 'precio_venta' => 25000]);
+        $this->entrada($bonanza, '060617629AZ02', 4, ['estado' => 'EN_TRANSITO', 'fecha_recepcion' => null, 'precio_venta' => 31000]);
+        $this->entrada($mariano, '060617629AZ01', 3, ['costo_unitario' => 10000]);
+        $this->entrada($mariano, '060617629AZ03', 2, ['costo_unitario' => 0, 'precio_venta' => 0]);
+        $salida = $this->salida($bonanza, '060617629AZ01', 9, true);
+        DB::table('ot_logistica_remisiones')->where('id', $salida)->update(['costo_unitario' => 99999, 'precio_venta' => 99999]);
+        $this->trazabilidad->asociar($bonanza, $entrada, $salida, 3, null, null);
+
+        $this->get(route('invierno.disponibilidad.datos', ['grupo' => 'CAMPERAS']))->assertOk()
+            ->assertSee('Gs 155.002,50')->assertSee('Gs 374.000')->assertSee('4 sin costo')->assertSee('3 sin precio')
+            ->assertViewHas('resumen', function ($resumen) {
+                $v = $resumen['valorizacion'];
+                return $v['prendas'] === ['cantidad' => 19, 'costo' => 15500250, 'venta' => 37400000, 'sin_costo' => 4, 'sin_precio' => 3]
+                    && $v['disponible'] === ['cantidad' => 12, 'costo' => 11750175, 'venta' => 17500000, 'sin_costo' => 0, 'sin_precio' => 3]
+                    && $v['pendiente']['costo'] === null && $v['pendiente']['venta'] === 12400000
+                    && $v['remitido']['costo'] === 3750075 && $v['recibido_local']['venta'] === 7500000;
+            });
+        $this->get(route('invierno.show', ['id' => $bonanza, 'entrada' => $entrada]))->assertOk()
+            ->assertSee('Total de la remisión')->assertSee('Gs 12.500,25')->assertSee('Gs 25.000')->assertSee('Gs 87.501,75')
+            ->assertViewHas('valorizacion', fn ($v) => $v['prendas']['venta'] === 37400000 && $v['disponible']['cantidad'] === 7);
+
+        DB::table('ot_logistica_remisiones')->where('id', $salida)->update(['cantidad' => 2]);
+        $v = $this->service->consultar(['local' => 7])['resumen']['valorizacion'];
+        $this->assertSame(0, $v['disponible']['cantidad']);
+        $this->assertSame(12500250, $v['por_revisar']['costo']);
+        $this->assertSame(12500250, $v['prendas']['costo']);
+        $this->assertSame(0, $v['remitido']['costo']);
+    }
+
     public function test_pendientes_y_recepciones_futuras_no_se_cuentan_disponibles_y_faltantes_no_inventan_prendas(): void
     {
         $a = $this->documento(); $b = $this->documento(16, 'S', '1303'); $this->documento(7, 'F', '1190');
@@ -291,7 +327,8 @@ class InviernoDisponibilidadTest extends TestCase
     public function test_excel_resumen_y_detalle_respetan_filtros_y_preservan_codigos_como_texto(): void
     {
         $d = $this->documento(); $this->maestro('060617629AZ01', '=1+1');
-        $this->entrada($d); $this->entrada($d, 'OTRO01', 100, ['descripcion' => 'OTRO GRUPO']);
+        $this->entrada($d, '060617629AZ01', 10, ['costo_unitario' => '12500.25', 'precio_venta' => 25000]);
+        $this->entrada($d, 'OTRO01', 100, ['descripcion' => 'OTRO GRUPO']);
         $export = new InviernoDisponibilidadExport($this->service->consultar(['grupo' => '=1+1']));
         $ruta = tempnam(sys_get_temp_dir(), 'inv_grupos_');
         file_put_contents($ruta, Excel::raw($export, \Maatwebsite\Excel\Excel::XLSX));
@@ -307,6 +344,11 @@ class InviernoDisponibilidadTest extends TestCase
             $this->assertSame(DataType::TYPE_STRING, $libro->getSheet(0)->getCell('A2')->getDataType());
             $this->assertSame('060617629AZ01', $libro->getSheet(1)->getCell('E2')->getValue());
             $this->assertSame(DataType::TYPE_STRING, $libro->getSheet(1)->getCell('E2')->getDataType());
+            $this->assertSame(125002.5, $libro->getSheet(0)->getCell('M2')->getValue());
+            $this->assertSame(DataType::TYPE_NUMERIC, $libro->getSheet(0)->getCell('M2')->getDataType());
+            $this->assertSame(12500.25, $libro->getSheet(1)->getCell('R2')->getValue());
+            $this->assertSame(25000, $libro->getSheet(1)->getCell('S2')->getValue());
+            $this->assertSame(250000, $libro->getSheet(1)->getCell('U2')->getValue());
             $this->assertSame(2, $libro->getSheet(1)->getHighestDataRow());
             $libro->disconnectWorksheets();
         } finally {

@@ -293,6 +293,13 @@ class InviernoTrazabilidadTest extends TestCase
         $this->assertDatabaseHas('invierno_asignaciones', ['id' => $vinculo, 'anulada_por' => 99, 'motivo_anulacion' => 'Asignación corregida']);
         $this->service->asociar($docA, $entradaA, $salida, 4, null, null);
         $this->assertSame(3, DB::table('invierno_asignaciones')->count());
+
+        DB::table('ot_logistica_remisiones')->where('id', $salida)->update(['cantidad' => 5]);
+        $individual = $this->service->panorama(documentoId: $docA);
+        $this->assertCount(1, $individual);
+        $this->assertSame('REVISAR', $individual->first()->estado);
+        $this->assertSame(0, $individual->first()->remitido);
+        $this->assertNull($individual->first()->saldo_central);
     }
 
     public function test_reimportacion_que_reduce_cantidad_observa_todos_los_vinculos_afectados(): void
@@ -363,6 +370,7 @@ class InviernoTrazabilidadTest extends TestCase
         \Illuminate\Support\Facades\Gate::before(fn () => true);
         $id = $this->documento();
         $entrada = $this->movimiento();
+        DB::table('ot_logistica_remisiones')->where('id', $entrada)->update(['costo_unitario' => '12500.25', 'precio_venta' => 25000]);
         $salida = $this->salida();
         $this->salida(['numero_remision' => '901', 'fecha_remision' => '2026-09-01']);
         $this->documento('JARDINES', 'J1', '465');
@@ -375,9 +383,13 @@ class InviernoTrazabilidadTest extends TestCase
         $ruta = tempnam(sys_get_temp_dir(), 'inv_exp_');
         file_put_contents($ruta, $raw);
         try {
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(new \PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder());
             $sheet = IOFactory::load($ruta)->getActiveSheet();
             $this->assertSame('LOCAL', $sheet->getCell('A1')->getValue());
             $this->assertSame(DataType::TYPE_STRING, $sheet->getCell('C2')->getDataType());
+            $this->assertSame(125002.5, $sheet->getCell('N3')->getValue());
+            $this->assertSame(250000, $sheet->getCell('O3')->getValue());
+            $this->assertNull($sheet->getCell('N2')->getValue());
         } finally {
             @unlink($ruta);
         }

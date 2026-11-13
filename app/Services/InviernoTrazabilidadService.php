@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\InviernoDocumento as Documento;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -108,9 +109,10 @@ class InviernoTrazabilidadService
      * ni cantidades: una reimportación también vuelve a auditar los vínculos.
      * Las consultas son por conjunto, sin una consulta por cada documento.
      */
-    public function panorama(bool $soloDisponibilidad = false): Collection
+    public function panorama(bool $soloDisponibilidad = false, ?int $documentoId = null): Collection
     {
-        $documentos = DB::table('invierno_remisiones')->orderByDesc('id')->get()->keyBy('id');
+        $documentos = DB::table('invierno_remisiones')->when($documentoId !== null, fn ($q) => $q->where('id', $documentoId))
+            ->orderByDesc('id')->get()->keyBy('id');
         if ($documentos->isEmpty()) return $documentos;
 
         $consultaEntradas = DB::table('invierno_remisiones as i')
@@ -120,13 +122,15 @@ class InviernoTrazabilidadService
                     ->whereRaw('r.cod_sucursal_destino = 1')
                     ->whereRaw('UPPER(TRIM(r.serie)) = i.serie')
                     ->whereRaw(Documento::numeroSql('r').' = i.numero_remision');
-            });
+            })->when($documentoId !== null, fn ($q) => $q->where('i.id', $documentoId));
         $columnas = $soloDisponibilidad ? [
             'r.id', 'r.cod_sucursal_salida', 'r.cod_sucursal_destino', 'r.serie', 'r.numero_remision',
             'r.codigo', 'r.descripcion', 'r.cantidad', 'r.estado', 'r.fecha_remision', 'r.fecha_creacion', 'r.fecha_recepcion',
+            'r.costo_unitario', 'r.precio_venta',
         ] : ['r.*'];
         $entradas = $consultaEntradas->get([...$columnas, 'i.id as invierno_remision_id']);
-        $activas = DB::table('invierno_asignaciones')->whereNull('anulada_at')->get();
+        $asignaciones = DB::table('invierno_asignaciones')->whereNull('anulada_at');
+        $activas = (clone $asignaciones)->when($documentoId !== null, fn ($q) => $q->where('invierno_remision_id', $documentoId))->get();
         $movimientos = $entradas->keyBy('id');
         $faltantes = $activas->pluck('remision_entrada_id')->merge($activas->pluck('remision_salida_id'))
             ->unique()->diff($movimientos->keys());
@@ -135,8 +139,15 @@ class InviernoTrazabilidadService
                 $movimientos->put($fila->id, $fila);
             }
         }
-        $sumasEntrada = $activas->groupBy('remision_entrada_id')->map->sum('cantidad');
-        $sumasSalida = $activas->groupBy('remision_salida_id')->map->sum('cantidad');
+        if ($documentoId !== null) {
+            // Un mismo movimiento puede tener vínculos en otras devoluciones.
+            $idsEntradas = $entradas->pluck('id')->merge($activas->pluck('remision_entrada_id'));
+            $sumasEntrada = $this->sumasActivas($asignaciones, $idsEntradas, 'remision_entrada_id');
+            $sumasSalida = $this->sumasActivas($asignaciones, $activas->pluck('remision_salida_id'), 'remision_salida_id');
+        } else {
+            $sumasEntrada = $activas->groupBy('remision_entrada_id')->map->sum('cantidad');
+            $sumasSalida = $activas->groupBy('remision_salida_id')->map->sum('cantidad');
+        }
         $porDocumento = $entradas->groupBy('invierno_remision_id');
         $vinculosDocumento = $activas->groupBy('invierno_remision_id');
         $hoy = now()->toDateString();
@@ -197,9 +208,12 @@ class InviernoTrazabilidadService
                     $porRevisar += (int) $vinculo->cantidad;
                     continue;
                 }
-                $remitido += (int) $vinculo->cantidad;
+                $cantidad = (int) $vinculo->cantidad;
+                $remitido += $cantidad;
+                $entrada->remitido_valido = ($entrada->remitido_valido ?? 0) + $cantidad;
                 if ($vinculo->recibida) {
-                    $recibidoLocal += (int) $vinculo->cantidad;
+                    $recibidoLocal += $cantidad;
+                    $entrada->recibido_local_valido = ($entrada->recibido_local_valido ?? 0) + $cantidad;
                 }
             }
             $documento->entradas = $lineas;
@@ -217,6 +231,16 @@ class InviernoTrazabilidadService
             $documento->estado_texto = self::ESTADOS[$documento->estado];
         }
         return $documentos->values();
+    }
+
+    private function sumasActivas(Builder $consulta, Collection $movimientos, string $campo): Collection
+    {
+        $sumas = collect();
+        foreach ($movimientos->unique()->chunk(500) as $ids) {
+            $sumas = $sumas->union((clone $consulta)->whereIn($campo, $ids)
+                ->groupBy($campo)->select($campo)->selectRaw('SUM(cantidad) as total')->pluck('total', $campo));
+        }
+        return $sumas;
     }
 
     private function estado(object $d): string
