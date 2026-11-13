@@ -23,19 +23,21 @@
 @empty($sinDetalleValorizado)
 <details class="card mb-3 p-3">
     <summary>Valorización por estado</summary>
-    <div class="table-responsive mt-2">
-        <table class="table table-sm">
-            <thead><tr><th>Estado</th><th class="num">Prendas</th><th class="num">Costo total</th><th class="num">Valor a precio de venta</th></tr></thead>
-            <tbody>
+    <div class="table-responsive iw-tabla mt-2">
+        <table class="table table-sm" role="table" aria-label="Valorización por estado">
+            <thead role="rowgroup">
+                <tr role="row"><th role="columnheader" scope="col">Estado</th><th role="columnheader" scope="col">Prendas</th><th role="columnheader" scope="col">Costo total</th><th role="columnheader" scope="col">Valor a precio de venta</th></tr>
+            </thead>
+            <tbody role="rowgroup">
             @foreach(\App\Support\InviernoValorizacion::ETAPAS as $etapa => $nombre)
-                <tr>
-                    <td>{{ ucfirst($nombre) }}</td>
+                <tr role="row">
+                    <td role="cell" class="iw-ficha">{{ ucfirst($nombre) }}</td>
                     @if($etapa === 'disponible' && !empty($saldoPorRevisar))
-                        <td colspan="3" class="num text-muted">Por revisar</td>
+                        <td role="cell" colspan="3" class="text-muted">Por revisar</td>
                     @else
-                        <td class="num">{{ $n($valorizacion[$etapa]['cantidad']) }}</td>
-                        <td class="num">@include('invierno._importe', ['valor' => $valorizacion[$etapa], 'tipo' => 'costo'])</td>
-                        <td class="num">@include('invierno._importe', ['valor' => $valorizacion[$etapa], 'tipo' => 'venta'])</td>
+                        <td role="cell" data-etiqueta="Prendas">{{ $n($valorizacion[$etapa]['cantidad']) }}</td>
+                        <td role="cell" data-etiqueta="Costo total">@include('invierno._importe', ['valor' => $valorizacion[$etapa], 'tipo' => 'costo'])</td>
+                        <td role="cell" data-etiqueta="Valor a precio de venta">@include('invierno._importe', ['valor' => $valorizacion[$etapa], 'tipo' => 'venta'])</td>
                     @endif
                 </tr>
             @endforeach

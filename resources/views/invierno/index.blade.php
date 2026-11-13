@@ -78,30 +78,46 @@
                     <div class="form-group col-md-2 d-flex"><button class="btn btn-primary flex-fill mr-1" type="submit">Filtrar</button><a class="btn btn-outline-secondary" href="{{ route('invierno.index') }}" aria-label="Limpiar filtros"><i class="fas fa-undo"></i></a></div>
                 </form>
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead><tr><th>Origen / remisión</th><th>Estado</th><th class="num">Prendas</th><th class="num">Confirmado Central</th><th class="num">Pendiente Central</th><th class="num">Enviado a locales</th><th class="num">Recibido locales</th><th class="num">Saldo Central</th><th class="num iw-importe-encabezado">Valor documentado</th><th class="num iw-importe-encabezado">Valor disponible</th><th></th></tr></thead>
-                    <tbody>
+            <div class="table-responsive iw-tabla">
+                <table class="table table-hover" role="table" aria-label="Seguimiento por remisión">
+                    <thead role="rowgroup">
+                        <tr role="row">
+                            <th role="columnheader" scope="col">Origen y remisión</th>
+                            <th role="columnheader" scope="col" class="iw-col-cantidades">Cantidades</th>
+                            <th role="columnheader" scope="col" class="iw-col-importes">Valor documentado</th>
+                            <th role="columnheader" scope="col" class="iw-col-importes">Valor disponible en Central</th>
+                        </tr>
+                    </thead>
+                    <tbody role="rowgroup">
                     @forelse($documentos as $documento)
-                        <tr>
-                            <td><strong>{{ $documento->local }}</strong><div class="iw-code">{{ $documento->serie }} {{ $documento->numero_remision }}</div><small class="text-muted">Destino: CASA CENTRAL · 01</small></td>
-                            <td>@include('invierno._estado')@if($documento->incidencias)<small class="d-block text-danger mt-1">{{ count($documento->incidencias) }} incidencias</small>@endif</td>
-                            <td class="num">{{ $documento->entradas->isEmpty() ? '—' : $n($documento->total) }}</td>
-                            <td class="num">{{ $documento->entradas->isEmpty() ? '—' : $n($documento->confirmado_central) }}</td>
-                            <td class="num">{{ $documento->entradas->isEmpty() ? '—' : $n($documento->pendiente_central) }}</td>
-                            <td class="num">{{ $n($documento->remitido) }}</td>
-                            <td class="num">{{ $n($documento->recibido_local) }}</td>
-                            <td class="num font-weight-bold">{{ $documento->saldo_central === null || $documento->entradas->isEmpty() ? '—' : $n($documento->saldo_central) }}</td>
-                            @if($documento->entradas->isEmpty())
-                                <td colspan="2" class="text-muted">Sin detalle importado</td>
+                        <tr role="row">
+                            <td role="cell" class="iw-ficha">
+                                <strong>{{ $documento->local }}</strong>
+                                <div class="iw-code">{{ $documento->serie }} {{ $documento->numero_remision }}</div>
+                                <small class="d-block text-muted">Destino CASA CENTRAL · 01</small>
+                                @include('invierno._estado')
+                                @if($documento->incidencias)
+                                    <small class="d-block text-danger">{{ count($documento->incidencias) }} incidencias</small>
+                                @endif
+                                <div><a class="btn btn-sm btn-outline-primary iw-accion" href="{{ route('invierno.show', $documento->id) }}">Ver detalle</a></div>
+                            </td>
+                            @php($sinDetalle = $documento->entradas->isEmpty())
+                            <td role="cell" data-etiqueta="Cantidades">@include('invierno._cantidades-celda', ['cantidades' => [
+                                'Documentadas' => $sinDetalle ? null : $documento->total,
+                                'Recibidas en Central' => $sinDetalle ? null : $documento->confirmado_central,
+                                'Pendientes' => $sinDetalle ? null : $documento->pendiente_central,
+                                'Enviadas a locales' => $documento->remitido, 'Recibidas en locales' => $documento->recibido_local,
+                                'Disponible en Central' => $sinDetalle ? null : ($documento->saldo_central ?? 'Por revisar'),
+                            ]])</td>
+                            @if($sinDetalle)
+                                <td role="cell" colspan="2" class="text-muted">Sin detalle importado</td>
                             @else
                                 @include('invierno._valores-totales', ['valores' => $valorizaciones[$documento->id],
                                     'disponiblePorRevisar' => $documento->saldo_central === null])
                             @endif
-                            <td><a class="btn btn-sm btn-outline-primary text-nowrap" href="{{ route('invierno.show', $documento->id) }}">Ver detalle <i class="fas fa-arrow-right ml-1"></i></a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="11" class="iw-empty"><i class="fas fa-snowflake"></i><strong>No hay remisiones para estos filtros.</strong>Importá el listado de invierno o ajustá los filtros para empezar el seguimiento.</td></tr>
+                        <tr role="row"><td role="cell" colspan="4" class="iw-empty"><i class="fas fa-snowflake"></i><strong>No hay remisiones para estos filtros.</strong>Importá el listado de invierno o ajustá los filtros para empezar el seguimiento.</td></tr>
                     @endforelse
                     </tbody>
                 </table>

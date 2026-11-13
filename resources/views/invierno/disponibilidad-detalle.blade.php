@@ -26,26 +26,65 @@
                     <div class="form-group col-md-2 d-flex"><button type="submit" class="btn btn-primary flex-fill mr-1">Consultar</button><a class="btn btn-outline-secondary" href="{{ route('invierno.disponibilidad.detalle', ['grupo' => $grupo]) }}" aria-label="Limpiar filtros"><i class="fas fa-undo"></i></a></div>
                 </form>
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead><tr><th>Origen / remisión</th><th>Código / artículo</th><th>Recepción Central</th><th class="num">Documentadas</th><th class="num">Recibido Central</th><th class="num">Enviado a locales</th><th class="num">Disponible Central</th><th class="num iw-importe-encabezado">Valores unitarios</th><th class="num iw-importe-encabezado">Valor documentado</th><th class="num iw-importe-encabezado">Valor disponible</th><th></th></tr></thead>
-                    <tbody>
+            <div class="table-responsive iw-tabla">
+                <table class="table table-hover" role="table" aria-label="Remisiones y artículos del grupo">
+                    <thead role="rowgroup">
+                        <tr role="row">
+                            <th role="columnheader" scope="col">Artículo y remisión</th>
+                            <th role="columnheader" scope="col" class="iw-col-cantidades">Cantidades</th>
+                            <th role="columnheader" scope="col">Valores unitarios</th>
+                            <th role="columnheader" scope="col">Valor documentado</th>
+                            <th role="columnheader" scope="col">Valor disponible</th>
+                        </tr>
+                    </thead>
+                    <tbody role="rowgroup">
                     @forelse($paginados as $l)
-                        <tr>
-                            <td><strong>{{ $l->local }}</strong><div class="iw-code">{{ $l->serie }} {{ $l->numero_remision }}</div><small class="text-muted">Remitido: {{ $fecha($l->fecha_remision) }}</small></td>
-                            <td><div class="iw-product">@include('invierno._imagen', ['imagenCodigo' => $l->codigo])<div><span class="iw-code">{{ $l->codigo }}</span><div>{{ $l->descripcion ?: 'Sin descripción' }}</div>@if($l->revisar)<small class="text-danger">El documento tiene diferencias. Abrí la remisión para revisarlas.</small>@endif</div></div></td>
-                            <td>@if($l->revisar)<span class="iw-pill iw-warning">Revisar documento</span>@elseif($l->central > 0)<span class="iw-pill iw-success">Confirmada</span>@else<span class="iw-pill iw-muted">Pendiente</span>@endif<small class="d-block mt-1">{{ $fecha($l->fecha_recepcion) }}</small></td>
-                            <td class="num">{{ $n($l->prendas) }}</td><td class="num">{{ $n($l->central) }}</td><td class="num">{{ $n($l->remitido) }}<small class="d-block text-muted">{{ $n($l->recibido_local) }} recibidas · {{ $n($l->transito_local) }} en tránsito</small></td>
-                            <td class="num font-weight-bold {{ $l->disponible > 0 ? 'text-success' : '' }}">{{ $l->disponible === null ? 'Por revisar' : $n($l->disponible) }}</td>
+                        <tr role="row">
+                            <td role="cell" class="iw-ficha">
+                                <div class="iw-product">
+                                    @include('invierno._imagen', ['imagenCodigo' => $l->codigo])
+                                    <div>
+                                        <strong class="iw-code">{{ $l->codigo }}</strong>
+                                        <span class="iw-descripcion">{{ $l->descripcion ?: 'Sin descripción' }}</span>
+                                        <small class="iw-grupo-articulo">{{ $l->local }} · {{ $l->serie }} {{ $l->numero_remision }}</small>
+                                        <small class="d-block text-muted">Envío {{ $fecha($l->fecha_remision) }} · Recepción {{ $fecha($l->fecha_recepcion) }}</small>
+                                        @if($l->revisar)
+                                            <span class="iw-pill iw-warning">Revisar documento</span>
+                                        @elseif($l->central > 0)
+                                            <span class="iw-pill iw-success">Recepción confirmada</span>
+                                        @else
+                                            <span class="iw-pill iw-muted">Recepción pendiente</span>
+                                        @endif
+                                        <div><a class="btn btn-sm btn-outline-primary iw-accion" href="{{ route('invierno.show', ['id' => $l->documento_id, 'entrada' => $l->entrada_id]) }}">Ver remisión</a></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td role="cell" data-etiqueta="Cantidades">@include('invierno._cantidades-celda', ['cantidades' => [
+                                'Documentadas' => $l->prendas, 'Recibidas en Central' => $l->central,
+                                'Enviadas a locales' => $l->remitido, 'Recibidas en locales' => $l->recibido_local,
+                                'En tránsito' => $l->transito_local, 'Disponible en Central' => $l->disponible ?? 'Por revisar',
+                            ]])</td>
                             @include('invierno._valores-fila', ['costo' => $l->costo_centavos, 'precio' => $l->precio_centavos,
                                 'cantidadDocumentada' => $l->prendas, 'cantidadDisponible' => $l->disponible])
-                            <td><a class="btn btn-sm btn-outline-primary text-nowrap" href="{{ route('invierno.show', ['id' => $l->documento_id, 'entrada' => $l->entrada_id]) }}">Ver remisión <i class="fas fa-arrow-right ml-1"></i></a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="11" class="iw-empty">No hay artículos de este grupo para los filtros seleccionados.</td></tr>
+                        <tr role="row"><td role="cell" colspan="5" class="iw-empty">No hay artículos de este grupo para los filtros seleccionados.</td></tr>
                     @endforelse
                     </tbody>
-                    @if($paginados->total())<tfoot><tr class="bg-light font-weight-bold"><td colspan="3">TOTAL FILTRADO DEL GRUPO</td><td class="num">{{ $n($resumen['prendas']) }}</td><td class="num">{{ $n($resumen['central']) }}</td><td class="num">{{ $n($resumen['remitido']) }}</td><td class="num text-success">{{ $n($resumen['disponible']) }}</td><td></td>@include('invierno._valores-totales', ['valores' => $resumen['valorizacion']])<td></td></tr></tfoot>@endif
+                    @if($paginados->total())
+                        <tfoot role="rowgroup">
+                            <tr role="row" class="bg-light">
+                                <td role="cell" class="iw-ficha font-weight-bold">TOTAL FILTRADO DEL GRUPO</td>
+                                <td role="cell" data-etiqueta="Cantidades">@include('invierno._cantidades-celda', ['cantidades' => [
+                                    'Documentadas' => $resumen['prendas'], 'Recibidas en Central' => $resumen['central'],
+                                    'Enviadas a locales' => $resumen['remitido'], 'Recibidas en locales' => $resumen['recibido_local'],
+                                    'En tránsito' => $resumen['transito_local'], 'Disponible en Central' => $resumen['disponible'],
+                                ]])</td>
+                                <td role="cell" class="iw-celda-vacia"></td>
+                                @include('invierno._valores-totales', ['valores' => $resumen['valorizacion']])
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if($paginados->hasPages())<div class="card-footer bg-white">{{ $paginados->links('pagination::bootstrap-4') }}</div>@endif
