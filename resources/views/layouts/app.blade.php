@@ -2,6 +2,7 @@
 <html lang="es">
 
 <head>
+    @php($cargaLiviana = $__env->hasSection('carga_liviana'))
     <meta charset="UTF-8">
     <title>{{ config('app.name') }}</title>
 
@@ -10,19 +11,30 @@
     {{-- CSRF Laravel --}}
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
+    @stack('page_head')
+
     {{-- FontAwesome --}}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.14.0/css/all.min.css"
         integrity="sha512-1PKOgIY59xJ8Co8+NE6FZ+LOAZKjy+KY8iq0G4B3CyeY6wYHN3yt9PW0XpSriVlkMXe40PTKnXrLnZ9+fkDaog=="
-        crossorigin="anonymous" />
+        crossorigin="anonymous" @if($cargaLiviana) media="print" onload="this.media='all'" @endif />
+    @if($cargaLiviana)
+        <noscript>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.14.0/css/all.min.css"
+                integrity="sha512-1PKOgIY59xJ8Co8+NE6FZ+LOAZKjy+KY8iq0G4B3CyeY6wYHN3yt9PW0XpSriVlkMXe40PTKnXrLnZ9+fkDaog=="
+                crossorigin="anonymous" />
+        </noscript>
+    @endif
 
     {{-- App CSS --}}
     <link href="{{ mix('css/app.css') }}" rel="stylesheet">
 
-    {{-- Google Font --}}
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    @unless($cargaLiviana)
+        {{-- Google Font --}}
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 
-    {{-- Select2 CSS --}}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+        {{-- Select2 CSS --}}
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    @endunless
 
     @stack('third_party_stylesheets')
     @stack('page_css')
@@ -109,7 +121,11 @@
     </style>
 </head>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@if($cargaLiviana)
+    <script src="{{ asset('vendor/sweetalert/sweetalert.all.js') }}" defer></script>
+@else
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endif
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -152,7 +168,11 @@
             <ul class="navbar-nav">
                 <li class="nav-item">
                     <a class="nav-link" data-widget="pushmenu" href="#" role="button">
-                        <i class="fas fa-bars"></i>
+                        @if($cargaLiviana)
+                            <span aria-hidden="true">&#9776;</span><span class="sr-only">Menú</span>
+                        @else
+                            <i class="fas fa-bars"></i>
+                        @endif
                     </a>
                 </li>
             </ul>
@@ -216,7 +236,9 @@
     <script src="{{ mix('js/app.js') }}"></script>
 
     {{-- Select2 JS (DESPUÉS de jQuery) --}}
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    @unless($cargaLiviana)
+        <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    @endunless
 
     {{-- SweetAlert --}}
 
@@ -315,13 +337,15 @@
     @stack('page_scripts')
     @include('sweetalert::alert')
 
-    <script>
-        $(".select2:visible").select2({
-            placeholder: "Seleccione...",
-            width: '100%',
-            allowClear: true
-        });
-    </script>
+    @unless($cargaLiviana)
+        <script>
+            $(".select2:visible").select2({
+                placeholder: "Seleccione...",
+                width: '100%',
+                allowClear: true
+            });
+        </script>
+    @endunless
 </body>
 
 </html>

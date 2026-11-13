@@ -108,25 +108,30 @@ class InviernoTrazabilidadService
      * ni cantidades: una reimportación también vuelve a auditar los vínculos.
      * Las consultas son por conjunto, sin una consulta por cada documento.
      */
-    public function panorama(): Collection
+    public function panorama(bool $soloDisponibilidad = false): Collection
     {
         $documentos = DB::table('invierno_remisiones')->orderByDesc('id')->get()->keyBy('id');
         if ($documentos->isEmpty()) return $documentos;
 
-        $entradas = DB::table('invierno_remisiones as i')
+        $consultaEntradas = DB::table('invierno_remisiones as i')
             ->join('ot_logistica_remisiones as r', function ($join) {
                 $join->on('r.cod_sucursal_salida', '=', 'i.cod_sucursal_origen')
                     // Predicado fijo del índice parcial de devoluciones a Central.
                     ->whereRaw('r.cod_sucursal_destino = 1')
                     ->whereRaw('UPPER(TRIM(r.serie)) = i.serie')
                     ->whereRaw(Documento::numeroSql('r').' = i.numero_remision');
-            })->select('r.*', 'i.id as invierno_remision_id')->get();
+            });
+        $columnas = $soloDisponibilidad ? [
+            'r.id', 'r.cod_sucursal_salida', 'r.cod_sucursal_destino', 'r.serie', 'r.numero_remision',
+            'r.codigo', 'r.descripcion', 'r.cantidad', 'r.estado', 'r.fecha_remision', 'r.fecha_creacion', 'r.fecha_recepcion',
+        ] : ['r.*'];
+        $entradas = $consultaEntradas->get([...$columnas, 'i.id as invierno_remision_id']);
         $activas = DB::table('invierno_asignaciones')->whereNull('anulada_at')->get();
         $movimientos = $entradas->keyBy('id');
         $faltantes = $activas->pluck('remision_entrada_id')->merge($activas->pluck('remision_salida_id'))
             ->unique()->diff($movimientos->keys());
         foreach ($faltantes->chunk(2000) as $ids) {
-            foreach (DB::table('ot_logistica_remisiones')->whereIn('id', $ids)->get() as $fila) {
+            foreach (DB::table('ot_logistica_remisiones as r')->whereIn('r.id', $ids)->get($columnas) as $fila) {
                 $movimientos->put($fila->id, $fila);
             }
         }

@@ -186,22 +186,45 @@ class InviernoDisponibilidadTest extends TestCase
         $a = $this->documento(); $b = $this->documento(16, 'S', '1303');
         $this->maestro('060617629AZ01', 'CAMPERAS'); $this->maestro('060617629AZ02', 'CAMPERAS');
         $this->entrada($a); $this->entrada($b, '060617629AZ02', 7);
-        $this->get(route('invierno.disponibilidad'))->assertOk()->assertSee('Disponibilidad de invierno')
+        $this->get(route('invierno.disponibilidad.datos'))->assertOk()->assertSee('Acumulado por grupo')
             ->assertViewHas('resumen', fn ($r) => $r['disponible'] === 17);
         $this->get(route('invierno.disponibilidad.detalle', ['grupo' => 'CAMPERAS', 'codigo' => '060617629AZ02']))
             ->assertOk()->assertSee('Ver remisión')->assertViewHas('resumen', fn ($r) => $r['disponible'] === 7)
             ->assertViewHas('paginados', fn ($p) => $p->total() === 1)
             ->assertViewHas('codigos', fn ($c) => $c->count() === 2);
-        $this->get(route('invierno.disponibilidad', ['local' => 7]))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos', ['local' => 7]))->assertOk()
             ->assertViewHas('resumen', fn ($r) => $r['disponible'] === 10);
-        $this->get(route('invierno.disponibilidad', ['buscar' => 'S 1303']))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos', ['buscar' => 'S 1303']))->assertOk()
             ->assertViewHas('resumen', fn ($r) => $r['disponible'] === 7);
         $this->getJson(route('invierno.disponibilidad', ['orden' => 'campo_invalido']))->assertUnprocessable();
-        foreach (['disponibilidad', 'disponibilidad.detalle', 'disponibilidad.exportar'] as $ruta) {
+        $this->getJson(route('invierno.disponibilidad.datos', ['orden' => 'campo_invalido']))->assertUnprocessable();
+        foreach (['disponibilidad', 'disponibilidad.datos', 'disponibilidad.detalle', 'disponibilidad.exportar'] as $ruta) {
             $middleware = app('router')->getRoutes()->getByName('invierno.'.$ruta)->gatherMiddleware();
             $this->assertContains('auth', $middleware); $this->assertContains('permission:ot index', $middleware);
         }
         $this->assertDatabaseCount('invierno_asignaciones', 0);
+    }
+
+    public function test_apertura_envia_la_pantalla_antes_de_leer_remisiones_y_tiene_vista_completa(): void
+    {
+        $this->entrada($this->documento());
+        $filtros = ['local' => 7, 'buscar' => 'CAMPERA'];
+        $consultas = [];
+        DB::listen(function (QueryExecuted $consulta) use (&$consultas) {
+            $consultas[] = $consulta->sql;
+        });
+
+        $this->get(route('invierno.disponibilidad', $filtros))->assertOk()
+            ->assertSee('Disponibilidad de invierno')->assertSee('Cargando disponibilidad de invierno')
+            ->assertSee(route('invierno.disponibilidad.datos', $filtros))
+            ->assertSee(route('invierno.disponibilidad', $filtros + ['completa' => 1]))
+            ->assertDontSee('TOTAL FILTRADO');
+        $this->assertSame([], array_values(array_filter($consultas, fn ($sql) => str_contains($sql, 'remisiones')
+            || str_contains($sql, 'maestro_codigos') || str_contains($sql, 'articulo_imagenes'))));
+
+        $this->get(route('invierno.disponibilidad', $filtros + ['completa' => 1]))->assertOk()
+            ->assertSee('TOTAL FILTRADO')->assertDontSee('Cargando disponibilidad de invierno')
+            ->assertViewHas('resumen', fn ($r) => $r['prendas'] === 10);
     }
 
     public function test_situacion_se_filtra_por_grupo_completo_y_totales_incluyen_todas_las_paginas(): void
@@ -211,13 +234,14 @@ class InviernoDisponibilidadTest extends TestCase
             $codigo = '060617629AZ'.str_pad((string) $i, 2, '0', STR_PAD_LEFT);
             $this->entrada($d, $codigo, $i, ['descripcion' => 'GRUPO '.str_pad((string) $i, 2, '0', STR_PAD_LEFT)]);
         }
-        $this->get(route('invierno.disponibilidad', ['page' => 2]))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos', ['page' => 2]))->assertOk()
             ->assertViewHas('resumen', fn ($r) => $r['disponible'] === 351 && $r['grupos'] === 26)
             ->assertViewHas('resumenImagenes', [
                 'prendas_con_imagen' => 0, 'prendas_sin_imagen' => 351,
                 'codigos_con_imagen' => 0, 'codigos_sin_imagen' => 26,
             ])
-            ->assertViewHas('paginados', fn ($p) => $p->count() === 1 && $p->total() === 26);
+            ->assertViewHas('paginados', fn ($p) => $p->count() === 1 && $p->total() === 26
+                && $p->url(1) === route('invierno.disponibilidad', ['page' => 1]).'#invierno-grupos');
         $this->entrada($d, '060617629AZ99', 4, ['descripcion' => 'GRUPO 26', 'fecha_recepcion' => null, 'estado' => 'EN_TRANSITO']);
         $datos = $this->service->consultar(['situacion' => 'pendientes']);
         $this->assertSame(1, $datos['resumen']['grupos']);
@@ -246,18 +270,18 @@ class InviernoDisponibilidadTest extends TestCase
             'nombre_archivo' => '060617629AZ.png',
         ]);
 
-        $this->get(route('invierno.disponibilidad'))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos'))->assertOk()
             ->assertSee('Prendas con imagen asociada')->assertSee('Prendas sin imagen asociada')
             ->assertViewHas('resumenImagenes', [
                 'prendas_con_imagen' => 36, 'prendas_sin_imagen' => 20,
                 'codigos_con_imagen' => 2, 'codigos_sin_imagen' => 2,
             ]);
-        $this->get(route('invierno.disponibilidad', ['local' => 7]))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos', ['local' => 7]))->assertOk()
             ->assertViewHas('resumenImagenes', [
                 'prendas_con_imagen' => 16, 'prendas_sin_imagen' => 0,
                 'codigos_con_imagen' => 2, 'codigos_sin_imagen' => 0,
             ]);
-        $this->get(route('invierno.disponibilidad', ['situacion' => 'pendientes']))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos', ['situacion' => 'pendientes']))->assertOk()
             ->assertViewHas('resumenImagenes', [
                 'prendas_con_imagen' => 36, 'prendas_sin_imagen' => 8,
                 'codigos_con_imagen' => 2, 'codigos_sin_imagen' => 1,
@@ -319,7 +343,7 @@ class InviernoDisponibilidadTest extends TestCase
 
         $filtros = ['local' => 7, 'grupo' => 'CAMPERAS'];
         $rutaExportar = 'invierno.disponibilidad.codigos-sin-imagen.exportar';
-        $this->get(route('invierno.disponibilidad', $filtros + ['page' => 2]))->assertOk()
+        $this->get(route('invierno.disponibilidad.datos', $filtros + ['page' => 2]))->assertOk()
             ->assertSee(route($rutaExportar, $filtros));
         $respuesta = $this->get(route($rutaExportar, $filtros + ['page' => 2]));
         $respuesta->assertOk()->assertDownload('codigos_base_sin_imagen_20261110_120000.xlsx');
@@ -371,7 +395,7 @@ class InviernoDisponibilidadTest extends TestCase
                 $consultasMaestro++;
             }
         });
-        $ruta = route('invierno.disponibilidad', ['local' => 7, 'grupo' => 'CAMPERAS']);
+        $ruta = route('invierno.disponibilidad.datos', ['local' => 7, 'grupo' => 'CAMPERAS']);
         $this->get($ruta)->assertOk()
             ->assertViewHas('locales', fn ($locales) => $locales->get(7) === 'BONANZA')
             ->assertViewHas('resumenImagenes', fn ($r) => $r['prendas_sin_imagen'] === 10);

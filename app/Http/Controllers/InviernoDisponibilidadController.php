@@ -39,9 +39,25 @@ class InviernoDisponibilidadController extends Controller
 
     public function index(Request $request)
     {
-        $datos = $this->service->listado($this->filtros($request));
-        $datos['paginados'] = $this->paginar($datos['grupos'], $request, 25);
-        return view('invierno.disponibilidad', $datos);
+        $filtros = $this->filtros($request);
+        $vistaCompleta = $request->boolean('completa');
+        $datos = $vistaCompleta ? $this->datosListado($request, $filtros) : [];
+        return view('invierno.disponibilidad', $datos + compact('filtros', 'vistaCompleta'));
+    }
+
+    public function datos(Request $request)
+    {
+        $filtros = $this->filtros($request);
+        return response()->view('invierno._disponibilidad-datos', $this->datosListado($request, $filtros))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    private function datosListado(Request $request, array $filtros): array
+    {
+        $datos = $this->service->listado($filtros);
+        $datos['paginados'] = $this->paginar($datos['grupos'], $request, 25, route('invierno.disponibilidad'));
+        $datos['paginados']->fragment('invierno-grupos');
+        return $datos;
     }
 
     public function detalle(Request $request)
@@ -55,11 +71,11 @@ class InviernoDisponibilidadController extends Controller
         return view('invierno.disponibilidad-detalle', $datos);
     }
 
-    private function paginar($coleccion, Request $request, int $cantidad): LengthAwarePaginator
+    private function paginar(Collection $coleccion, Request $request, int $cantidad, ?string $ruta = null): LengthAwarePaginator
     {
         $pagina = max(1, $request->integer('page', 1));
         return new LengthAwarePaginator($coleccion->forPage($pagina, $cantidad)->values(), $coleccion->count(),
-            $cantidad, $pagina, ['path' => $request->url(), 'query' => $request->query()]);
+            $cantidad, $pagina, ['path' => $ruta ?? $request->url(), 'query' => $request->query()]);
     }
 
     public function exportar(Request $request)

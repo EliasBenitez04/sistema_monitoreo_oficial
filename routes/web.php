@@ -50,6 +50,7 @@ Auth::routes();
 Route::middleware(['auth', 'permission:ot index'])->prefix('prendas-invierno')->name('invierno.')->group(function () {
     Route::get('/', [InviernoTrazabilidadController::class, 'index'])->name('index');
     Route::get('/disponibilidad', [InviernoDisponibilidadController::class, 'index'])->name('disponibilidad');
+    Route::get('/disponibilidad/datos', [InviernoDisponibilidadController::class, 'datos'])->name('disponibilidad.datos');
     Route::get('/disponibilidad/grupo', [InviernoDisponibilidadController::class, 'detalle'])->name('disponibilidad.detalle');
     Route::get('/disponibilidad/excel', [InviernoDisponibilidadController::class, 'exportar'])->name('disponibilidad.exportar');
     Route::get('/disponibilidad/codigos-sin-imagen/excel', [InviernoDisponibilidadController::class, 'exportarCodigosSinImagen'])
