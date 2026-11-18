@@ -83,14 +83,14 @@ class LogisticaRemisionesImportTest extends TestCase
         return $import;
     }
 
-    private function archivo(array $filas, string $tipo = 'Csv'): UploadedFile
+    private function archivo(array $filas, string $tipo = 'Csv', ?string $nombre = null): UploadedFile
     {
         $libro = new Spreadsheet();
         $libro->getActiveSheet()->fromArray(array_merge([array_keys($filas[0])], array_map('array_values', $filas)), null, 'A1', true);
         $ruta = tempnam(sys_get_temp_dir(), 'logistica_test_');
         IOFactory::createWriter($libro, $tipo)->save($ruta);
         $libro->disconnectWorksheets();
-        return new UploadedFile($ruta, 'envios.' . strtolower($tipo), null, null, true);
+        return new UploadedFile($ruta, $nombre ?? 'envios.' . strtolower($tipo), null, null, true);
     }
 
     public function test_corrige_cantidad_de_cinco_a_cuatro_sin_duplicar_ni_perder_vinculos(): void
@@ -253,6 +253,81 @@ class LogisticaRemisionesImportTest extends TestCase
         } finally {
             @unlink($archivo->getRealPath());
         }
+    }
+
+    public function test_detecta_un_xlsx_guardado_con_extension_xls(): void
+    {
+        $archivo = $this->archivo([$this->fila()], 'Xlsx', 'envios.xls');
+        try {
+            $this->post(route('control.terminacion.importar-remisiones'), ['archivo_envios' => $archivo],
+                ['Accept' => 'application/json'])->assertOk()->assertJsonPath('resumen.insertadas', 1);
+            $this->assertDatabaseHas('ot_logistica_remisiones', [
+                'numero_remision' => '1188', 'fecha_remision' => '2026-10-01', 'cantidad' => 5,
+            ]);
+        } finally {
+            unlink($archivo->getRealPath());
+        }
+    }
+
+    public function test_la_carga_central_detecta_el_formato_y_actualiza_logistica_y_redistribucion(): void
+    {
+        Schema::create('redistribucion_proceso_detalle', function (Blueprint $tabla) {
+            $tabla->bigIncrements('id');
+            $tabla->string('codigo');
+            $tabla->integer('sucursal_origen');
+            $tabla->integer('sucursal_destino');
+            $tabla->integer('cantidad');
+            $tabla->string('estado');
+            $tabla->date('fecha_remision')->nullable();
+            $tabla->date('fecha_recepcion')->nullable();
+            $tabla->string('observacion')->nullable();
+        });
+        Schema::create('redistribucion_remision', function (Blueprint $tabla) {
+            $tabla->bigIncrements('id');
+            $tabla->unsignedBigInteger('detalle_id');
+            $tabla->string('serie');
+            $tabla->integer('numero_remision');
+            $tabla->integer('cantidad_transferida');
+            $tabla->date('fecha_remision')->nullable();
+            $tabla->date('fecha_creacion')->nullable();
+            $tabla->date('fecha_recepcion')->nullable();
+            $tabla->timestamps();
+        });
+        DB::table('redistribucion_proceso_detalle')->insert([
+            'codigo' => '050617629AZ01', 'sucursal_origen' => 1, 'sucursal_destino' => 7,
+            'cantidad' => 10, 'estado' => 'PENDIENTE',
+        ]);
+
+        foreach (['Xlsx' => '02', 'Csv' => '03', 'Xls' => '04'] as $tipo => $dia) {
+            $archivo = $this->archivo([$this->fila(['fecha_recepcion' => "$dia/10/2026"])], $tipo, 'envios.xls');
+            try {
+                $this->from(route('remisiones.index'))->post(route('remisiones.importar'), [
+                    'archivo_envios' => $archivo,
+                ])->assertSessionHas('success')->assertRedirect(route('remisiones.index'));
+                $this->assertDatabaseCount('ot_logistica_remisiones', 1);
+                $this->assertDatabaseCount('redistribucion_remision', 1);
+                $this->assertDatabaseHas('ot_logistica_remisiones', [
+                    'numero_remision' => '1188', 'fecha_recepcion' => "2026-10-$dia",
+                ]);
+                $this->assertDatabaseHas('redistribucion_remision', [
+                    'numero_remision' => 1188, 'fecha_recepcion' => "2026-10-$dia", 'cantidad_transferida' => 5,
+                ]);
+            } finally {
+                unlink($archivo->getRealPath());
+            }
+        }
+    }
+
+    public function test_un_archivo_con_otro_formato_muestra_como_exportar_envios(): void
+    {
+        $archivo = UploadedFile::fake()->createWithContent('envios.xls', "%PDF-1.4\n");
+
+        $this->post(route('control.terminacion.importar-remisiones'), ['archivo_envios' => $archivo],
+            ['Accept' => 'application/json'])->assertUnprocessable()
+            ->assertJsonPath('message', 'No se pudo completar la importación de ENVIOS: '
+                . 'No se reconoció el formato del archivo ENVIOS. '
+                . 'Abrilo en Excel y guardalo como Libro de Excel (.xlsx), o volvé a exportarlo como CSV.');
+        $this->assertDatabaseCount('ot_logistica_remisiones', 0);
     }
 
     public function test_admite_csv_detectado_como_texto_plano_y_rechaza_extensiones_no_permitidas(): void
