@@ -77,7 +77,7 @@ class MariaPirelliTest extends TestCase
             ->assertSee('Cartera negra')
             ->assertSee('Último envío (remisión)')
             ->assertSee('04/11/2026')
-            ->assertDontSee('01/10/2026')
+            ->assertViewHas('porArticulo', fn ($movimientos) => reset($movimientos)['ultimo_envio'] === '2026-11-04')
             ->assertViewHas('meses', [
                 '2026-11' => ['enviadas' => 7, 'vendidas' => 2, 'venta_neta' => 60000.0],
                 '2026-10' => ['enviadas' => 15, 'vendidas' => 4, 'venta_neta' => 115000.0],
@@ -97,6 +97,76 @@ class MariaPirelliTest extends TestCase
             ->assertViewHas('totales', ['enviadas' => 11, 'vendidas' => 3, 'venta_neta' => 90000.0]);
         $this->post(route('accesorios.maria-pirelli.importar'))->assertForbidden();
         $this->get(route('accesorios.maria-pirelli.exportar', $rango))->assertForbidden();
+    }
+
+    public function test_muestra_remisiones_del_mes_y_sus_confirmaciones_por_articulo(): void
+    {
+        $this->ingresarComo('visualizador_accesorios');
+        foreach (['00042', '00043'] as $codigo) {
+            DB::table('maria_pirelli_articulos')->insert([
+                'codigo' => $codigo, 'descripcion' => 'Cartera ' . $codigo, 'linea' => 'CARTERAS',
+                'costo_unitario' => 10000, 'precio_venta' => 30000, 'fecha_envio' => '2024-11-01',
+            ]);
+        }
+        $central = [1, 'CASA CENTRAL'];
+        $pinedo = [14, 'PINEDO'];
+        $parcial = $this->remitir('00120', '00042', '2026-10-31', $central, $pinedo, 5, fechaRecepcion: '2026-11-03');
+        $this->remitir('00120', '00043', '2026-10-31', [0, 'CENTRAL'], [0, 'SHOPPING PINEDO'], 2);
+        $bonanza = $this->remitir('00120', '00042', '2026-10-31', $central, [7, 'BONANZA'], 10);
+        $this->remitir('00120', '00043', '2026-11-01', $central, $pinedo, 8);
+        $this->remitir('00120', 'OTRO-CODIGO', '2026-10-31', $central, $pinedo, 99);
+        $this->remitir('00121', '00042', '2026-10-30', $central, $pinedo, 3);
+        $this->remitir('00122', '00042', '2026-10-29', $central, $pinedo, 4, fechaRecepcion: '2026-10-30');
+
+        $filtros = [
+            'desde' => '2026-10-01', 'hasta' => '2026-10-31',
+            'sucursal' => 'PINEDO SHOPPING', 'linea' => 'CARTERAS', 'buscar' => 'Cartera',
+        ];
+        $panel = $this->get(route('accesorios.maria-pirelli.index', $filtros));
+        $panel->assertOk()->assertSee('Remisiones y confirmaciones')
+            ->assertSee(route('accesorios.maria-pirelli.index', $filtros) . '#remisiones')
+            ->assertSee('MP-00120')->assertSee('03/11/2026')->assertSee('Confirmada')
+            ->assertSee('Parcial')->assertSee('En tránsito')
+            ->assertViewHas('confirmadas', 9)->assertViewHas('pendientes', 5);
+
+        $remisiones = $panel->viewData('remisiones');
+        $this->assertSame(3, $remisiones->total());
+        $this->assertSame($parcial, $remisiones->first()->id);
+        $this->assertSame(7, $remisiones->first()->enviadas);
+        $this->assertSame(5, $remisiones->first()->confirmadas);
+
+        $detalle = $this->get(route('accesorios.maria-pirelli.index', $filtros + ['remision' => $parcial]));
+        $detalle->assertOk()->assertSee('Remisión MP-00120')->assertSee('Volver a remisiones');
+        $this->assertSame([
+            ['00042', 5, '2026-11-03'],
+            ['00043', 2, null],
+        ], $detalle->viewData('lineasRemision')
+            ->map(fn ($fila) => [$fila->codigo, (int) $fila->cantidad, $fila->fecha_recepcion])->all());
+
+        $this->get(route('accesorios.maria-pirelli.index', $filtros + ['remision' => $bonanza]))
+            ->assertOk()->assertViewHas('remisionActiva', fn ($documento) => $documento === null)
+            ->assertSee('La remisión seleccionada no está disponible con estos filtros.');
+    }
+
+    public function test_pagina_las_remisiones_independientemente_del_catalogo(): void
+    {
+        $this->ingresarComo('ADMIN');
+        DB::table('maria_pirelli_articulos')->insert([
+            'codigo' => '00042', 'descripcion' => 'Cartera', 'linea' => 'CARTERAS',
+            'costo_unitario' => 10000, 'precio_venta' => 30000, 'fecha_envio' => '2024-11-01',
+        ]);
+        foreach (range(1, 16) as $numero) {
+            $this->remitir((string) $numero, '00042', '2026-10-01', [1, 'CASA CENTRAL'], [14, 'PINEDO'], 1);
+        }
+
+        $respuesta = $this->get(route('accesorios.maria-pirelli.index', [
+            'desde' => '2026-10-01', 'hasta' => '2026-10-31', 'pagina_remisiones' => 2, 'page' => 53,
+        ]));
+        $respuesta->assertOk()->assertSee('MP-1')->assertSee('pagina_remisiones=1#remisiones');
+        $this->assertSame(53, $respuesta->viewData('articulos')->currentPage());
+        $this->assertSame(2, $respuesta->viewData('remisiones')->currentPage());
+        $this->assertSame(16, $respuesta->viewData('remisiones')->total());
+        $this->assertCount(1, $respuesta->viewData('remisiones'));
     }
 
     public function test_exporta_todos_los_codigos_con_movimiento_en_el_periodo_filtrado(): void
@@ -221,14 +291,15 @@ class MariaPirelliTest extends TestCase
 
     private function remitir(
         string $numero, string $codigo, ?string $fecha, array $origen, array $destino, int $cantidad,
-        ?string $fechaCreacion = null
-    ): void {
-        DB::table('ot_logistica_remisiones')->insert([
+        ?string $fechaCreacion = null, ?string $fechaRecepcion = null
+    ): int {
+        return DB::table('ot_logistica_remisiones')->insertGetId([
             'serie' => 'MP',
             'numero_remision' => $numero,
             'codigo' => $codigo,
             'fecha_remision' => $fecha,
             'fecha_creacion' => $fechaCreacion ?? $fecha,
+            'fecha_recepcion' => $fechaRecepcion,
             'cod_sucursal_salida' => $origen[0],
             'sucursal_salida' => $origen[1],
             'cod_sucursal_destino' => $destino[0],

@@ -7,6 +7,8 @@ use App\Imports\MariaPirelliCatalogoImport;
 use App\Services\AccesoriosStockService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -22,14 +24,18 @@ class MariaPirelliController extends Controller
             return view('accesorios.maria_pirelli', compact('configurado'));
         }
 
-        $datos = $this->datos($request);
-        $articulos = $datos['catalogo']->orderBy('a.codigo')->paginate(25)->withQueryString();
+        $request->validate(['remision' => 'nullable|integer|min:1']);
+        $sucursalesAccesorios = new AccesoriosStockService();
+        $datos = $this->datos($request, $sucursalesAccesorios);
+        $articulos = (clone $datos['catalogo'])->orderBy('a.codigo')->paginate(25)->withQueryString();
         $lineas = DB::table('maria_pirelli_articulos')->whereNotNull('linea')
             ->distinct()->orderBy('linea')->pluck('linea');
         $hayCatalogo = DB::table('maria_pirelli_articulos')->exists();
+        $detalleRemisiones = $this->detalleRemisiones($request, $datos, $sucursalesAccesorios);
         unset($datos['catalogo']);
 
-        return view('accesorios.maria_pirelli', $datos + compact('configurado', 'articulos', 'lineas', 'hayCatalogo'));
+        return view('accesorios.maria_pirelli', $datos + $detalleRemisiones
+            + compact('configurado', 'articulos', 'lineas', 'hayCatalogo'));
     }
 
     public function exportar(Request $request)
@@ -49,7 +55,7 @@ class MariaPirelliController extends Controller
         );
     }
 
-    private function datos(Request $request): array
+    private function datos(Request $request, ?AccesoriosStockService $sucursalesAccesorios = null): array
     {
         $filtros = $request->validate([
             'desde' => 'nullable|date_format:Y-m-d',
@@ -82,7 +88,7 @@ class MariaPirelliController extends Controller
         $conVentas = Schema::hasTable('ventas');
         $fuentes = [];
         if ($catalogo->exists()) {
-            $sucursalesAccesorios = new AccesoriosStockService();
+            $sucursalesAccesorios ??= new AccesoriosStockService();
             if ($conRemisiones) {
                 $fuentes[] = $this->envios($catalogo, $desde, $hasta, $sucursalesAccesorios);
             }
@@ -134,6 +140,99 @@ class MariaPirelliController extends Controller
         );
     }
 
+    private function detalleRemisiones(Request $request, array $datos, AccesoriosStockService $sucursales): array
+    {
+        $documentos = collect();
+        $remisionActiva = null;
+        $lineasRemision = collect();
+        if ($datos['totales']['enviadas'] > 0) {
+            $base = $this->remisionesBase($datos['catalogo'], $datos['desde'], $datos['hasta']);
+            $documentos = $this->documentos($base, $sucursales, $datos['sucursal']);
+            $remisionActiva = $documentos->firstWhere('id', $request->integer('remision'));
+            if ($remisionActiva !== null) {
+                $lineasRemision = $this->lineasDeRemision($base, $remisionActiva, $sucursales);
+            }
+        }
+
+        $confirmadas = (int) $documentos->sum('confirmadas');
+        $pendientes = (int) $documentos->sum('enviadas') - $confirmadas;
+        $porPagina = 15;
+        $pagina = min(LengthAwarePaginator::resolveCurrentPage('pagina_remisiones'),
+            max(1, (int) ceil($documentos->count() / $porPagina)));
+        $remisiones = (new LengthAwarePaginator(
+            $documentos->forPage($pagina, $porPagina)->values(),
+            $documentos->count(),
+            $porPagina,
+            $pagina,
+            ['path' => $request->url(), 'pageName' => 'pagina_remisiones']
+        ))->appends($request->only(['desde', 'hasta', 'sucursal', 'linea', 'buscar', 'page']))
+            ->fragment('remisiones');
+
+        return compact('remisiones', 'remisionActiva', 'lineasRemision', 'confirmadas', 'pendientes');
+    }
+
+    private function documentos(Builder $base, AccesoriosStockService $sucursales, string $sucursal): Collection
+    {
+        $campos = [
+            'r.serie', 'r.numero_remision', 'r.fecha_remision', 'r.cod_sucursal_salida',
+            'r.sucursal_salida', 'r.cod_sucursal_destino', 'r.sucursal_destino',
+        ];
+        $filas = (clone $base)->select($campos)
+            ->selectRaw($this->fechaIso('r.fecha_remision') . ' AS fecha_envio')
+            ->selectRaw($this->fechaIso('MAX(r.fecha_recepcion)') . ' AS ultima_confirmacion')
+            ->selectRaw('MIN(r.id) AS id, SUM(r.cantidad) AS enviadas,
+                SUM(CASE WHEN r.fecha_recepcion IS NOT NULL THEN r.cantidad ELSE 0 END) AS confirmadas')
+            ->groupBy($campos)->cursor();
+
+        $filtro = AccesoriosStockService::normalizar($sucursal);
+        $documentos = [];
+        foreach ($filas as $fila) {
+            $destino = $this->destinoDistribucion($fila, $sucursales);
+            if ($destino === null) {
+                continue;
+            }
+            $local = $sucursales->nombre($destino, (string) $fila->sucursal_destino);
+            if ($filtro !== '' && AccesoriosStockService::normalizar($local) !== $filtro) {
+                continue;
+            }
+
+            // Cada documento se identifica por serie, número, fecha y destino.
+            // El origen de estas filas es Casa Central. Los alias del mismo local se unifican.
+            $clave = serialize([$fila->serie, $fila->numero_remision, $fila->fecha_envio, $destino]);
+            $documento = $documentos[$clave] ??= (object) [
+                'id' => (int) $fila->id,
+                'serie' => $fila->serie,
+                'numero_remision' => $fila->numero_remision,
+                'fecha_envio' => $fila->fecha_envio,
+                'local' => $local,
+                'destino' => $destino,
+                'enviadas' => 0,
+                'confirmadas' => 0,
+                'ultima_confirmacion' => null,
+            ];
+            $documento->id = min($documento->id, (int) $fila->id);
+            $documento->enviadas += (int) $fila->enviadas;
+            $documento->confirmadas += (int) $fila->confirmadas;
+            $documento->ultima_confirmacion = max($documento->ultima_confirmacion, $fila->ultima_confirmacion);
+        }
+
+        return collect($documentos)->sortBy([['fecha_envio', 'desc'], ['id', 'desc']])->values();
+    }
+
+    private function lineasDeRemision(Builder $base, object $documento, AccesoriosStockService $sucursales): Collection
+    {
+        return (clone $base)
+            ->where('r.serie', $documento->serie)
+            ->where('r.numero_remision', $documento->numero_remision)
+            ->where('r.fecha_remision', $documento->fecha_envio)
+            ->select('a.codigo', 'a.descripcion', 'r.cantidad', 'r.cod_sucursal_salida', 'r.sucursal_salida',
+                'r.cod_sucursal_destino', 'r.sucursal_destino')
+            ->selectRaw($this->fechaIso('r.fecha_recepcion') . ' AS fecha_recepcion')
+            ->orderBy('a.codigo')->orderBy('r.id')->get()
+            ->filter(fn ($fila) => $this->destinoDistribucion($fila, $sucursales) === $documento->destino)
+            ->values();
+    }
+
     public function importar(Request $request)
     {
         $request->validate(['archivo' => 'required|file|mimes:xlsx,xls,csv,txt|max:10240']);
@@ -165,13 +264,8 @@ class MariaPirelliController extends Controller
         AccesoriosStockService $sucursales
     ): iterable {
         $mes = $this->expresionMes('r.fecha_remision');
-        $ultimoEnvio = DB::connection()->getDriverName() === 'pgsql'
-            ? "TO_CHAR(MAX(r.fecha_remision), 'YYYY-MM-DD')"
-            : 'MAX(r.fecha_remision)';
-        $filas = DB::table('ot_logistica_remisiones as r')
-            ->joinSub($catalogo, 'a', DB::raw('UPPER(TRIM(r.codigo))'), '=', 'a.codigo')
-            ->whereBetween('r.fecha_remision', [$desde, $hasta])
-            ->where('r.cantidad', '>', 0)
+        $ultimoEnvio = $this->fechaIso('MAX(r.fecha_remision)');
+        $filas = $this->remisionesBase($catalogo, $desde, $hasta)
             ->select(
                 'a.id as articulo_id', 'r.cod_sucursal_salida', 'r.sucursal_salida',
                 'r.cod_sucursal_destino', 'r.sucursal_destino'
@@ -183,14 +277,29 @@ class MariaPirelliController extends Controller
             ->cursor();
 
         foreach ($filas as $fila) {
-            $origen = $sucursales->identificar($fila->cod_sucursal_salida, $fila->sucursal_salida);
-            $destino = $sucursales->identificar($fila->cod_sucursal_destino, $fila->sucursal_destino);
-            $etapas = AccesoriosStockService::clasificarFlujo($origen, $destino, false, false, (int) $fila->enviadas);
-            if ($etapas['distribuido_central'] > 0) {
+            $destino = $this->destinoDistribucion($fila, $sucursales);
+            if ($destino !== null) {
                 $fila->sucursal = $sucursales->nombre($destino, (string) $fila->sucursal_destino);
                 yield $fila;
             }
         }
+    }
+
+    private function remisionesBase(Builder $catalogo, string $desde, string $hasta): Builder
+    {
+        return DB::table('ot_logistica_remisiones as r')
+            ->joinSub($catalogo, 'a', DB::raw('UPPER(TRIM(r.codigo))'), '=', 'a.codigo')
+            ->whereBetween('r.fecha_remision', [$desde, $hasta])
+            ->where('r.cantidad', '>', 0);
+    }
+
+    private function destinoDistribucion(object $fila, AccesoriosStockService $sucursales): ?string
+    {
+        $origen = $sucursales->identificar($fila->cod_sucursal_salida, $fila->sucursal_salida);
+        $destino = $sucursales->identificar($fila->cod_sucursal_destino, $fila->sucursal_destino);
+        $etapas = AccesoriosStockService::clasificarFlujo($origen, $destino, false, false, 1);
+
+        return $etapas['distribuido_central'] > 0 ? $destino : null;
     }
 
     private function ventas(
@@ -221,5 +330,10 @@ class MariaPirelliController extends Controller
         return DB::connection()->getDriverName() === 'pgsql'
             ? "TO_CHAR({$fecha}, 'YYYY-MM')"
             : "SUBSTR(CAST({$fecha} AS TEXT), 1, 7)";
+    }
+
+    private function fechaIso(string $fecha): string
+    {
+        return DB::connection()->getDriverName() === 'pgsql' ? "TO_CHAR({$fecha}, 'YYYY-MM-DD')" : $fecha;
     }
 }

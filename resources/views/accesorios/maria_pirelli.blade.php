@@ -1,15 +1,36 @@
 @extends('layouts.app')
 
-@section('content')
-<section class="content-header">
-    <div class="container-fluid">
-        <h1>MARIA PIRELLI</h1>
-        <p class="text-muted mb-0">Envíos de Casa Central a locales y ventas netas por mes.</p>
-    </div>
-</section>
+@push('page_css')
+    <link rel="stylesheet" href="{{ asset('css/maria-pirelli.css') }}">
+@endpush
 
-<section class="content">
-    <div class="container-fluid">
+@section('content')
+@php
+    $fecha = static fn (?string $valor) => $valor ? \Carbon\Carbon::parse($valor)->format('d/m/Y') : '—';
+@endphp
+<section class="content mp-panel">
+    <div class="container-fluid mp-shell">
+        <header class="mp-hero">
+            <div class="mp-hero-cabecera">
+                <div>
+                    <h1>MARIA PIRELLI</h1>
+                    <p>Envíos de Casa Central a locales y ventas netas por mes.</p>
+                </div>
+                @if($configurado && $hayCatalogo)
+                    <span class="mp-periodo">
+                        <i class="far fa-calendar-alt" aria-hidden="true"></i>
+                        {{ $fecha($desde) }} al {{ $fecha($hasta) }}
+                    </span>
+                @endif
+            </div>
+            @if($configurado && $hayCatalogo)
+                <nav class="mp-acciones" aria-label="Secciones de María Pirelli">
+                    <a href="#resumen-mensual">Resumen mensual</a>
+                    <a href="#remisiones">Remisiones</a>
+                    <a href="#articulos">Artículos</a>
+                </nav>
+            @endif
+        </header>
         @if(session('success'))
             <div class="alert alert-success" role="status">{{ session('success') }}</div>
         @endif
@@ -30,7 +51,7 @@
             <div class="alert alert-warning">Falta ejecutar la migración de MARIA PIRELLI.</div>
         @else
             @role('ADMIN')
-                <details class="card shadow-sm" @if(!$hayCatalogo || $errors->has('archivo') || session('error')) open @endif>
+                <details class="card mp-card mp-import" @if(!$hayCatalogo || $errors->has('archivo') || session('error')) open @endif>
                     <summary class="card-header font-weight-bold">Importar catálogo</summary>
                     <form action="{{ route('accesorios.maria-pirelli.importar') }}" method="post" enctype="multipart/form-data" class="card-body">
                         @csrf
@@ -59,6 +80,11 @@
                         $valor = round((float) $valor, 2);
                         return 'Gs ' . number_format($valor, $valor === floor($valor) ? 0 : 2, ',', '.');
                     };
+                    $indicadores = [
+                        ['Unidades enviadas a locales', $conRemisiones ? $unidades($totales['enviadas']) : '—', 'fa-truck', 'envios'],
+                        ['Unidades netas vendidas', $conVentas ? $unidades($totales['vendidas']) : '—', 'fa-shopping-bag', 'ventas'],
+                        ['Venta neta', $conVentas ? $guaranies($totales['venta_neta']) : '—', 'fa-coins', 'importe'],
+                    ];
                 @endphp
 
                 @if(!$conRemisiones || !$conVentas)
@@ -68,7 +94,7 @@
                     </div>
                 @endif
 
-                <form action="{{ route('accesorios.maria-pirelli.index') }}" method="get" class="card shadow-sm">
+                <form action="{{ route('accesorios.maria-pirelli.index') }}" method="get" class="card mp-card mp-filtros">
                     <div class="card-body pb-2">
                         <div class="form-row align-items-end">
                             <div class="form-group col-sm-6 col-lg-2">
@@ -109,42 +135,25 @@
                     </div>
                 </form>
 
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="card card-outline card-primary shadow-sm">
-                            <div class="card-body py-3">
-                                <div class="text-muted">Unidades enviadas a locales</div>
-                                <strong class="h3 d-block mb-0">{{ $conRemisiones ? $unidades($totales['enviadas']) : '—' }}</strong>
+                <div class="mp-indicadores">
+                    @foreach($indicadores as [$titulo, $valor, $icono, $tipo])
+                        <div class="mp-indicador mp-indicador-{{ $tipo }}">
+                            <span class="mp-indicador-icono"><i class="fas {{ $icono }}" aria-hidden="true"></i></span>
+                            <div>
+                                <span>{{ $titulo }}</span>
+                                <strong>{{ $valor }}</strong>
                             </div>
                         </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card card-outline card-success shadow-sm">
-                            <div class="card-body py-3">
-                                <div class="text-muted">Unidades netas vendidas</div>
-                                <strong class="h3 d-block mb-0">{{ $conVentas ? $unidades($totales['vendidas']) : '—' }}</strong>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card card-outline card-success shadow-sm">
-                            <div class="card-body py-3">
-                                <div class="text-muted">Venta neta</div>
-                                <strong class="h3 d-block mb-0">{{ $conVentas ? $guaranies($totales['venta_neta']) : '—' }}</strong>
-                            </div>
-                        </div>
-                    </div>
+                    @endforeach
                 </div>
 
-                <div class="card shadow-sm">
-                    <div class="card-header">
-                        <h2 class="h5 mb-1">Resumen mensual</h2>
-                        <p class="small text-muted mb-0">
-                            Los envíos se agrupan por fecha de remisión. Las ventas descuentan las notas de crédito. Elegí un mes para ver sus artículos.
-                        </p>
+                <div class="card mp-card" id="resumen-mensual">
+                    <div class="card-header mp-card-header">
+                        <h2>Resumen mensual</h2>
+                        <p>Elegí un mes para ver sus remisiones. Las ventas netas descuentan las notas de crédito.</p>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-striped table-sm mb-0">
+                    <div class="table-responsive mp-tabla-scroll" tabindex="0" role="region" aria-label="Resumen mensual">
+                        <table class="table table-hover mp-tabla mb-0">
                             <thead>
                                 <tr>
                                     <th scope="col">Mes</th>
@@ -163,8 +172,13 @@
                                             'sucursal' => $sucursal, 'linea' => $linea, 'buscar' => $buscar,
                                         ];
                                     @endphp
-                                    <tr>
-                                        <th scope="row"><a href="{{ route('accesorios.maria-pirelli.index', $filtroMes) }}#articulos">{{ ucfirst($inicioMes->isoFormat('MMMM YYYY')) }}</a></th>
+                                    <tr @class(['mp-fila-activa' => substr($desde, 0, 7) === $mes && substr($hasta, 0, 7) === $mes])>
+                                        <th scope="row">
+                                            <a class="mp-enlace" href="{{ route('accesorios.maria-pirelli.index', $filtroMes) }}#remisiones">
+                                                {{ ucfirst($inicioMes->isoFormat('MMMM YYYY')) }}
+                                                <i class="fas fa-angle-right ml-1" aria-hidden="true"></i>
+                                            </a>
+                                        </th>
                                         <td class="text-right">{{ $conRemisiones ? $unidades($resumen['enviadas']) : '—' }}</td>
                                         <td class="text-right">{{ $conVentas ? $unidades($resumen['vendidas']) : '—' }}</td>
                                         <td class="text-right text-nowrap">{{ $conVentas ? $guaranies($resumen['venta_neta']) : '—' }}</td>
@@ -177,10 +191,12 @@
                     </div>
                 </div>
 
-                <div class="card shadow-sm" id="articulos">
-                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+                @include('accesorios.maria_pirelli_remisiones')
+
+                <div class="card mp-card" id="articulos">
+                    <div class="card-header mp-card-header mp-card-acciones">
                         <div>
-                            <h2 class="h5 mb-0">Detalle por artículo</h2>
+                            <h2>Detalle por artículo</h2>
                             @role('ADMIN')
                                 <p class="small text-muted mb-0">El Excel incluye los códigos con envíos o ventas del período.</p>
                             @endrole
@@ -192,8 +208,8 @@
                             </a>
                         @endrole
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-striped table-sm mb-0">
+                    <div class="table-responsive mp-tabla-scroll" tabindex="0" role="region" aria-label="Detalle por artículo">
+                        <table class="table table-hover mp-tabla mb-0">
                             <thead>
                                 <tr>
                                     <th scope="col">Código</th>
@@ -212,10 +228,10 @@
                                     @php($movimiento = $porArticulo[$articulo->id] ?? [])
                                     @php($ultimoEnvio = $movimiento['ultimo_envio'] ?? null)
                                     <tr>
-                                        <th scope="row" class="text-nowrap">{{ $articulo->codigo }}</th>
+                                        <th scope="row" class="mp-codigo text-nowrap">{{ $articulo->codigo }}</th>
                                         <td>{{ $articulo->descripcion }}</td>
                                         <td>{{ $articulo->linea ?? '—' }}</td>
-                                        <td class="text-nowrap">{{ $ultimoEnvio ? \Carbon\Carbon::parse($ultimoEnvio)->format('d/m/Y') : '—' }}</td>
+                                        <td class="text-nowrap">{{ $fecha($ultimoEnvio) }}</td>
                                         <td class="text-right text-nowrap">{{ $guaranies($articulo->costo_unitario) }}</td>
                                         <td class="text-right text-nowrap">{{ $guaranies($articulo->precio_venta) }}</td>
                                         <td class="text-right">{{ $conRemisiones ? $unidades($movimiento['enviadas'] ?? 0) : '—' }}</td>
