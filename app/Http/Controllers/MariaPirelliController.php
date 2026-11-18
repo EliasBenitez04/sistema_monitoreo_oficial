@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\MariaPirelliExport;
 use App\Imports\MariaPirelliCatalogoImport;
 use App\Services\AccesoriosStockService;
 use Illuminate\Database\Query\Builder;
@@ -21,6 +22,35 @@ class MariaPirelliController extends Controller
             return view('accesorios.maria_pirelli', compact('configurado'));
         }
 
+        $datos = $this->datos($request);
+        $articulos = $datos['catalogo']->orderBy('a.codigo')->paginate(25)->withQueryString();
+        $lineas = DB::table('maria_pirelli_articulos')->whereNotNull('linea')
+            ->distinct()->orderBy('linea')->pluck('linea');
+        $hayCatalogo = DB::table('maria_pirelli_articulos')->exists();
+        unset($datos['catalogo']);
+
+        return view('accesorios.maria_pirelli', $datos + compact('configurado', 'articulos', 'lineas', 'hayCatalogo'));
+    }
+
+    public function exportar(Request $request)
+    {
+        if (!Schema::hasTable('maria_pirelli_articulos')) {
+            return redirect()->route('accesorios.maria-pirelli.index')
+                ->with('error', 'Ejecutá la migración de MARIA PIRELLI antes de exportar.');
+        }
+
+        $datos = $this->datos($request);
+        $articulos = $datos['catalogo']->whereIntegerInRaw('a.id', array_keys($datos['porArticulo']))
+            ->orderBy('a.codigo')->get();
+
+        return Excel::download(
+            new MariaPirelliExport($articulos, $datos['porArticulo'], $datos['conRemisiones'], $datos['conVentas']),
+            "maria_pirelli_{$datos['desde']}_{$datos['hasta']}.xlsx"
+        );
+    }
+
+    private function datos(Request $request): array
+    {
         $filtros = $request->validate([
             'desde' => 'nullable|date_format:Y-m-d',
             'hasta' => 'nullable|date_format:Y-m-d',
@@ -48,15 +78,10 @@ class MariaPirelliController extends Controller
                         ->orWhereRaw('UPPER(a.descripcion) LIKE ?', [$patron]);
                 });
             });
-        $articulos = (clone $catalogo)->orderBy('a.codigo')->paginate(25)->withQueryString();
-        $lineas = DB::table('maria_pirelli_articulos')->whereNotNull('linea')
-            ->distinct()->orderBy('linea')->pluck('linea');
-        $hayCatalogo = DB::table('maria_pirelli_articulos')->exists();
-
         $conRemisiones = Schema::hasTable('ot_logistica_remisiones');
         $conVentas = Schema::hasTable('ventas');
         $fuentes = [];
-        if ($articulos->total() > 0) {
+        if ($catalogo->exists()) {
             $sucursalesAccesorios = new AccesoriosStockService();
             if ($conRemisiones) {
                 $fuentes[] = $this->envios($catalogo, $desde, $hasta, $sucursalesAccesorios);
@@ -102,11 +127,11 @@ class MariaPirelliController extends Controller
         ksort($sucursales, SORT_NATURAL | SORT_FLAG_CASE);
         krsort($meses);
 
-        return view('accesorios.maria_pirelli', compact(
-            'configurado', 'hayCatalogo', 'conRemisiones', 'conVentas', 'desde', 'hasta',
-            'linea', 'buscar', 'sucursal', 'lineas', 'sucursales', 'articulos',
+        return compact(
+            'catalogo', 'conRemisiones', 'conVentas', 'desde', 'hasta',
+            'linea', 'buscar', 'sucursal', 'sucursales',
             'totales', 'meses', 'porArticulo'
-        ));
+        );
     }
 
     public function importar(Request $request)

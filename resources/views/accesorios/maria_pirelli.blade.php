@@ -178,8 +178,19 @@
                 </div>
 
                 <div class="card shadow-sm" id="articulos">
-                    <div class="card-header">
-                        <h2 class="h5 mb-0">Detalle por artículo</h2>
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+                        <div>
+                            <h2 class="h5 mb-0">Detalle por artículo</h2>
+                            @role('ADMIN')
+                                <p class="small text-muted mb-0">El Excel incluye los códigos con envíos o ventas del período.</p>
+                            @endrole
+                        </div>
+                        @role('ADMIN')
+                            <a class="btn btn-outline-success btn-sm my-1"
+                                href="{{ route('accesorios.maria-pirelli.exportar', compact('desde', 'hasta', 'sucursal', 'linea', 'buscar')) }}">
+                                Exportar Excel
+                            </a>
+                        @endrole
                     </div>
                     <div class="table-responsive">
                         <table class="table table-striped table-sm mb-0">

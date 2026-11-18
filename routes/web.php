@@ -381,6 +381,7 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::get('/accesorios/dashboard/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportar'])->name('accesorios.exportar');
     Route::get('/accesorios/stock/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportarStock'])->name('accesorios.stock.exportar');
     Route::get('/accesorios/retencion/exportar', [\App\Http\Controllers\AccesoriosDashboardController::class, 'exportarRetencion'])->name('accesorios.retencion.exportar');
+    Route::get('/accesorios/maria-pirelli/exportar', [\App\Http\Controllers\MariaPirelliController::class, 'exportar'])->name('accesorios.maria-pirelli.exportar');
     Route::post('/accesorios/stock/ajustar/{id}', [\App\Http\Controllers\AccesoriosAjusteStockController::class, 'guardar'])->whereNumber('id')->name('accesorios.stock.ajustar');
     Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
     Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');

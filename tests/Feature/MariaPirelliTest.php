@@ -6,7 +6,10 @@ use App\Models\User;
 use DateTimeImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\DefaultValueBinder;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -93,6 +96,60 @@ class MariaPirelliTest extends TestCase
             ->assertDontSee('08/10/2026')
             ->assertViewHas('totales', ['enviadas' => 11, 'vendidas' => 3, 'venta_neta' => 90000.0]);
         $this->post(route('accesorios.maria-pirelli.importar'))->assertForbidden();
+        $this->get(route('accesorios.maria-pirelli.exportar', $rango))->assertForbidden();
+    }
+
+    public function test_exporta_todos_los_codigos_con_movimiento_en_el_periodo_filtrado(): void
+    {
+        $this->ingresarComo('ADMIN');
+        foreach (range(1, 30) as $i) {
+            $codigo = sprintf('%05d', $i);
+            DB::table('maria_pirelli_articulos')->insert([
+                'codigo' => $codigo,
+                'descripcion' => $i === 30 ? 'Bolso' : ($i === 1 ? '=CARTERA' : 'Cartera'),
+                'linea' => $i === 29 ? 'BOLSOS' : 'CARTERAS',
+                'costo_unitario' => 9881.50,
+                'precio_venta' => 30000,
+                'fecha_envio' => '2024-11-01',
+            ]);
+            if ($i !== 26) {
+                $this->vender('FCR ' . $i, $codigo, $i === 28 ? 'BONANZA' : 'PINEDO',
+                    $i === 27 ? '2026-11-01' : '2026-10-16', 3, 90000);
+            }
+        }
+        $this->vender('NCR 31', '00001', 'SHOPPING PINEDO', '2026-10-22', -1, -30000);
+        $this->remitir('101', '00001', '2026-10-08', [1, 'CENTRAL'], [14, 'PINEDO'], 5);
+        $this->remitir('102', '00001', '2026-10-29', [1, 'CENTRAL'], [7, 'BONANZA'], 6);
+        $this->remitir('103', '00026', '2026-10-10', [1, 'CENTRAL'], [14, 'PINEDO'], 4);
+
+        $filtros = [
+            'desde' => '2026-10-01', 'hasta' => '2026-10-31', 'sucursal' => 'PINEDO SHOPPING',
+            'linea' => 'CARTERAS', 'buscar' => 'Cartera',
+        ];
+        $url = route('accesorios.maria-pirelli.exportar', $filtros);
+        $this->get(route('accesorios.maria-pirelli.index', $filtros + ['page' => 2]))
+            ->assertOk()->assertSee($url)->assertSee('Exportar Excel');
+
+        $respuesta = $this->get($url . '&page=2');
+        $respuesta->assertOk()->assertDownload('maria_pirelli_2026-10-01_2026-10-31.xlsx');
+        $ruta = $respuesta->baseResponse->getFile()->getPathname();
+
+        try {
+            Cell::setValueBinder(new DefaultValueBinder());
+            $hoja = IOFactory::load($ruta)->getActiveSheet();
+            $this->assertSame(27, $hoja->getHighestDataRow());
+            $this->assertSame('00001', $hoja->getCell('A2')->getValue());
+            $this->assertSame(DataType::TYPE_STRING, $hoja->getCell('A2')->getDataType());
+            $this->assertSame(DataType::TYPE_STRING, $hoja->getCell('B2')->getDataType());
+            $this->assertSame('2026-10-08', Date::excelToDateTimeObject($hoja->getCell('D2')->getValue())->format('Y-m-d'));
+            $this->assertSame(9881.50, $hoja->getCell('E2')->getValue());
+            $this->assertSame([5, 2, 60000.0], $hoja->rangeToArray('G2:I2', null, false, false)[0]);
+            $this->assertSame('00026', $hoja->getCell('A27')->getValue());
+            $this->assertSame(0, $hoja->getCell('H27')->getValue());
+            $this->assertNull($hoja->getCell('D3')->getValue());
+        } finally {
+            unlink($ruta);
+        }
     }
 
     public function test_importa_excel_con_ceros_en_el_codigo_y_fecha_numerica(): void
