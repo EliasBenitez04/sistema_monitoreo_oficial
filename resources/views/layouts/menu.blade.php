@@ -1,5 +1,8 @@
+@php
+    $menuMariaPirelli = request()->routeIs('maria-pirelli.*', 'accesorios.maria-pirelli.*');
+@endphp
 @if(auth()->check() && auth()->user()->hasRole('visualizador_accesorios') && !auth()->user()->hasRole('ADMIN'))
-    {{-- Menú exclusivo para cuentas de consulta de Accesorios. --}}
+    {{-- Menú para las cuentas con acceso de solo lectura. --}}
     <li class="nav-header">ACCESO DE SOLO LECTURA</li>
     <li class="nav-item">
         <a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') ? 'active' : '' }}">
@@ -26,9 +29,9 @@
         </a>
     </li>
     <li class="nav-item">
-        <a href="{{ route('accesorios.maria-pirelli.index') }}" class="nav-link {{ request()->routeIs('accesorios.maria-pirelli.*') ? 'active' : '' }}">
+        <a href="{{ route('maria-pirelli.index') }}" class="nav-link {{ $menuMariaPirelli ? 'active' : '' }}">
             <i class="nav-icon fas fa-chart-bar"></i>
-            <p>MARIA PIRELLI</p>
+            <p>María Pirelli</p>
         </a>
     </li>
 @else
@@ -243,8 +246,11 @@
 
 {{-- Accesorios: exclusivo para el rol ADMIN. Independiente del permiso de Pedidos. --}}
 @role('ADMIN')
-    <li class="nav-item {{ request()->routeIs('accesorios.*') ? 'menu-open' : '' }}">
-        <a href="#" class="nav-link {{ request()->routeIs('accesorios.*') ? 'active' : '' }}">
+    @php
+        $menuAccesorios = !$menuMariaPirelli && request()->routeIs('accesorios.*');
+    @endphp
+    <li class="nav-item {{ $menuAccesorios ? 'menu-open' : '' }}">
+        <a href="#" class="nav-link {{ $menuAccesorios ? 'active' : '' }}">
             <i class="nav-icon fas fa-socks"></i>
             <p>Accesorios <i class="right fas fa-angle-left"></i></p>
         </a>
@@ -269,12 +275,13 @@
                     <i class="fas fa-file-import nav-icon"></i><p>Importar datos</p>
                 </a>
             </li>
-            <li class="nav-item">
-                <a href="{{ route('accesorios.maria-pirelli.index') }}" class="nav-link {{ request()->routeIs('accesorios.maria-pirelli.*') ? 'active' : '' }}">
-                    <i class="fas fa-chart-bar nav-icon"></i><p>MARIA PIRELLI</p>
-                </a>
-            </li>
         </ul>
+    </li>
+    <li class="nav-item">
+        <a href="{{ route('maria-pirelli.index') }}" class="nav-link {{ $menuMariaPirelli ? 'active' : '' }}">
+            <i class="nav-icon fas fa-chart-bar"></i>
+            <p>María Pirelli</p>
+        </a>
     </li>
 @endrole
 

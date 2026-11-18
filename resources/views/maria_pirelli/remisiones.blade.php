@@ -55,7 +55,7 @@
                             <th scope="row" class="text-nowrap">
                                 <a class="mp-enlace mp-codigo"
                                     aria-label="Ver remisión {{ $numero }} con destino a {{ $documento->local }}"
-                                    href="{{ route('accesorios.maria-pirelli.index', $filtrosRemisiones + ['remision' => $documento->id]) }}#detalle-remision">
+                                    href="{{ route('maria-pirelli.index', $filtrosRemisiones + ['remision' => $documento->id]) }}#detalle-remision">
                                     {{ $numero }} <i class="fas fa-angle-right ml-1" aria-hidden="true"></i>
                                 </a>
                             </th>
@@ -93,7 +93,7 @@
                 <p>Casa Central → {{ $remisionActiva->local }} · Enviada el {{ $fecha($remisionActiva->fecha_envio) }}</p>
             </div>
             <a class="btn btn-sm btn-outline-secondary"
-                href="{{ route('accesorios.maria-pirelli.index', $filtrosRemisiones) }}#remisiones">Volver a remisiones</a>
+                href="{{ route('maria-pirelli.index', $filtrosRemisiones) }}#remisiones">Volver a remisiones</a>
         </header>
         <div class="table-responsive mp-tabla-scroll" tabindex="0" role="region" aria-label="Artículos de la remisión">
             <table class="table table-hover mp-tabla mb-0">

@@ -186,6 +186,18 @@
     overflow-wrap: anywhere;
 }
 
+.mp-panel .mp-stock-resumen .mp-indicadores {
+    margin-bottom: 0;
+}
+
+.mp-panel .mp-stock-acciones {
+    gap: .5rem;
+}
+
+.mp-panel .mp-stock-buscar {
+    max-width: 18rem;
+}
+
 .mp-panel .mp-recepcion-totales {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

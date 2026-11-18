@@ -41,10 +41,8 @@
 
     <style>
         /*
-         * Contención del módulo Accesorios:
-         * evitar que un margen exterior o un desbordamiento de sus tablas
-         * desplace la barra superior de AdminLTE. La clase se asigna
-         * exclusivamente a las rutas accesorios.*.
+         * Evita que el desbordamiento de las tablas de Accesorios y María Pirelli
+         * desplace la barra superior de AdminLTE.
          */
         body.modulo-accesorios {
             margin: 0 !important;
@@ -160,7 +158,7 @@
     });
 </script>
 
-<body class="hold-transition sidebar-mini layout-navbar-not-fixed{{ request()->routeIs('accesorios.*') ? ' modulo-accesorios' : '' }}">
+<body class="hold-transition sidebar-mini layout-navbar-not-fixed{{ request()->routeIs('accesorios.*', 'maria-pirelli.*') ? ' modulo-accesorios' : '' }}">
     <div class="wrapper">
 
         {{-- NAVBAR --}}

@@ -7,14 +7,19 @@
 @section('content')
 @php
     $fecha = static fn (?string $valor) => $valor ? \Carbon\Carbon::parse($valor)->format('d/m/Y') : '—';
+    $unidades = static fn ($valor) => number_format((int) $valor, 0, ',', '.');
+    $guaranies = static function ($valor) {
+        $valor = round((float) $valor, 2);
+        return 'Gs ' . number_format($valor, $valor === floor($valor) ? 0 : 2, ',', '.');
+    };
 @endphp
 <section class="content mp-panel">
     <div class="container-fluid mp-shell">
         <header class="mp-hero">
             <div class="mp-hero-cabecera">
                 <div>
-                    <h1>MARIA PIRELLI</h1>
-                    <p>Envíos de Casa Central a locales y ventas netas por mes.</p>
+                    <h1>María Pirelli</h1>
+                    <p>Stock actual, remisiones a locales y ventas netas por mes.</p>
                 </div>
                 @if($configurado && $hayCatalogo)
                     <span class="mp-periodo">
@@ -25,6 +30,7 @@
             </div>
             @if($configurado && $hayCatalogo)
                 <nav class="mp-acciones" aria-label="Secciones de María Pirelli">
+                    <a href="#stock-actual">Stock actual</a>
                     <a href="#resumen-mensual">Resumen mensual</a>
                     <a href="#remisiones">Remisiones</a>
                     <a href="#articulos">Artículos</a>
@@ -50,10 +56,36 @@
         @if(!$configurado)
             <div class="alert alert-warning">Falta ejecutar la migración de MARIA PIRELLI.</div>
         @else
+            <section class="card mp-card" id="stock-actual" aria-labelledby="mp-stock-titulo">
+                <header class="card-header mp-card-header mp-card-acciones">
+                    <div>
+                        <h2 id="mp-stock-titulo">Stock actual</h2>
+                        @if($stockActual['corte'])
+                            <p>Inventario del {{ $fecha($stockActual['corte']->fecha_corte) }} · {{ $unidades($stockActual['sucursales']->count()) }} sucursales</p>
+                        @endif
+                    </div>
+                    <div class="d-flex flex-wrap mp-stock-acciones">
+                        <a href="{{ route('maria-pirelli.stock') }}" class="btn btn-outline-primary btn-sm">Ver más</a>
+                        @role('ADMIN')
+                            @if($stockActual['configurado'])
+                                <a href="{{ route('maria-pirelli.stock') }}#importar-stock" class="btn btn-primary btn-sm">Importar stock</a>
+                            @endif
+                        @endrole
+                    </div>
+                </header>
+                @if($stockActual['corte'])
+                    <div class="card-body mp-stock-resumen">
+                        @include('maria_pirelli.stock_indicadores')
+                    </div>
+                @else
+                    <p class="mp-vacio">Todavía no hay un inventario cargado.</p>
+                @endif
+            </section>
+
             @role('ADMIN')
                 <details class="card mp-card mp-import" @if(!$hayCatalogo || $errors->has('archivo') || session('error')) open @endif>
                     <summary class="card-header font-weight-bold">Importar catálogo</summary>
-                    <form action="{{ route('accesorios.maria-pirelli.importar') }}" method="post" enctype="multipart/form-data" class="card-body">
+                    <form action="{{ route('maria-pirelli.importar') }}" method="post" enctype="multipart/form-data" class="card-body">
                         @csrf
                         <div class="form-group">
                             <label for="archivo">Archivo Excel o CSV</label>
@@ -75,11 +107,6 @@
                 <div class="alert alert-light border">Todavía no hay artículos en el catálogo de MARIA PIRELLI.</div>
             @else
                 @php
-                    $unidades = static fn ($valor) => number_format((int) $valor, 0, ',', '.');
-                    $guaranies = static function ($valor) {
-                        $valor = round((float) $valor, 2);
-                        return 'Gs ' . number_format($valor, $valor === floor($valor) ? 0 : 2, ',', '.');
-                    };
                     $indicadores = [
                         ['Unidades enviadas a locales', $conRemisiones ? $unidades($totales['enviadas']) : '—', 'fa-truck', 'envios'],
                         ['Unidades netas vendidas', $conVentas ? $unidades($totales['vendidas']) : '—', 'fa-shopping-bag', 'ventas'],
@@ -94,7 +121,7 @@
                     </div>
                 @endif
 
-                <form action="{{ route('accesorios.maria-pirelli.index') }}" method="get" class="card mp-card mp-filtros">
+                <form action="{{ route('maria-pirelli.index') }}" method="get" class="card mp-card mp-filtros">
                     <div class="card-body pb-2">
                         <div class="form-row align-items-end">
                             <div class="form-group col-sm-6 col-lg-2">
@@ -130,7 +157,7 @@
                         </div>
                         <div class="form-group mb-2">
                             <button type="submit" class="btn btn-primary">Filtrar</button>
-                            <a href="{{ route('accesorios.maria-pirelli.index') }}" class="btn btn-outline-secondary">Limpiar</a>
+                            <a href="{{ route('maria-pirelli.index') }}" class="btn btn-outline-secondary">Limpiar</a>
                         </div>
                     </div>
                 </form>
@@ -174,7 +201,7 @@
                                     @endphp
                                     <tr @class(['mp-fila-activa' => substr($desde, 0, 7) === $mes && substr($hasta, 0, 7) === $mes])>
                                         <th scope="row">
-                                            <a class="mp-enlace" href="{{ route('accesorios.maria-pirelli.index', $filtroMes) }}#remisiones">
+                                            <a class="mp-enlace" href="{{ route('maria-pirelli.index', $filtroMes) }}#remisiones">
                                                 {{ ucfirst($inicioMes->isoFormat('MMMM YYYY')) }}
                                                 <i class="fas fa-angle-right ml-1" aria-hidden="true"></i>
                                             </a>
@@ -191,7 +218,7 @@
                     </div>
                 </div>
 
-                @include('accesorios.maria_pirelli_remisiones')
+                @include('maria_pirelli.remisiones')
 
                 <div class="card mp-card" id="articulos">
                     <div class="card-header mp-card-header mp-card-acciones">
@@ -203,7 +230,7 @@
                         </div>
                         @role('ADMIN')
                             <a class="btn btn-outline-success btn-sm my-1"
-                                href="{{ route('accesorios.maria-pirelli.exportar', compact('desde', 'hasta', 'sucursal', 'linea', 'buscar')) }}">
+                                href="{{ route('maria-pirelli.exportar', compact('desde', 'hasta', 'sucursal', 'linea', 'buscar')) }}">
                                 Exportar Excel
                             </a>
                         @endrole

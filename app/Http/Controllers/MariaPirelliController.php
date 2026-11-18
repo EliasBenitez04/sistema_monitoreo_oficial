@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exports\MariaPirelliExport;
 use App\Imports\MariaPirelliCatalogoImport;
 use App\Services\AccesoriosStockService;
+use App\Services\MariaPirelliStockService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -17,11 +18,11 @@ use Throwable;
 
 class MariaPirelliController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, MariaPirelliStockService $stock)
     {
         $configurado = Schema::hasTable('maria_pirelli_articulos');
         if (!$configurado) {
-            return view('accesorios.maria_pirelli', compact('configurado'));
+            return view('maria_pirelli.index', compact('configurado'));
         }
 
         $request->validate(['remision' => 'nullable|integer|min:1']);
@@ -32,16 +33,17 @@ class MariaPirelliController extends Controller
             ->distinct()->orderBy('linea')->pluck('linea');
         $hayCatalogo = DB::table('maria_pirelli_articulos')->exists();
         $detalleRemisiones = $this->detalleRemisiones($request, $datos, $sucursalesAccesorios);
+        $stockActual = $stock->actual();
         unset($datos['catalogo']);
 
-        return view('accesorios.maria_pirelli', $datos + $detalleRemisiones
-            + compact('configurado', 'articulos', 'lineas', 'hayCatalogo'));
+        return view('maria_pirelli.index', $datos + $detalleRemisiones
+            + compact('configurado', 'articulos', 'lineas', 'hayCatalogo', 'stockActual'));
     }
 
     public function exportar(Request $request)
     {
         if (!Schema::hasTable('maria_pirelli_articulos')) {
-            return redirect()->route('accesorios.maria-pirelli.index')
+            return redirect()->route('maria-pirelli.index')
                 ->with('error', 'Ejecutá la migración de MARIA PIRELLI antes de exportar.');
         }
 
@@ -237,7 +239,7 @@ class MariaPirelliController extends Controller
     {
         $request->validate(['archivo' => 'required|file|mimes:xlsx,xls,csv,txt|max:10240']);
         if (!Schema::hasTable('maria_pirelli_articulos')) {
-            return redirect()->route('accesorios.maria-pirelli.index')
+            return redirect()->route('maria-pirelli.index')
                 ->with('error', 'Ejecutá la migración de MARIA PIRELLI antes de importar.');
         }
 
@@ -251,7 +253,7 @@ class MariaPirelliController extends Controller
             return back()->with('error', 'No se pudo leer el archivo. Revisá el formato e intentá de nuevo.');
         }
 
-        return redirect()->route('accesorios.maria-pirelli.index')->with(
+        return redirect()->route('maria-pirelli.index')->with(
             'success',
             'Importación completada. Se guardaron ' . number_format($importador->articulos, 0, ',', '.') . ' códigos.'
         );
