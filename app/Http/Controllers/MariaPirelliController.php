@@ -89,6 +89,10 @@ class MariaPirelliController extends Controller
                     $meses[$fila->mes][$campo] += $fila->{$campo};
                     $porArticulo[$fila->articulo_id][$campo] += $fila->{$campo};
                 }
+                if (isset($fila->ultimo_envio)) {
+                    $envioAnterior = $porArticulo[$fila->articulo_id]['ultimo_envio'] ?? '';
+                    $porArticulo[$fila->articulo_id]['ultimo_envio'] = max($envioAnterior, $fila->ultimo_envio);
+                }
             }
         }
         if ($filtroSucursal !== '') {
@@ -135,21 +139,19 @@ class MariaPirelliController extends Controller
         string $hasta,
         AccesoriosStockService $sucursales
     ): iterable {
-        $fecha = 'COALESCE(r.fecha_remision, r.fecha_creacion)';
-        $mes = $this->expresionMes($fecha);
+        $mes = $this->expresionMes('r.fecha_remision');
+        $ultimoEnvio = DB::connection()->getDriverName() === 'pgsql'
+            ? "TO_CHAR(MAX(r.fecha_remision), 'YYYY-MM-DD')"
+            : 'MAX(r.fecha_remision)';
         $filas = DB::table('ot_logistica_remisiones as r')
             ->joinSub($catalogo, 'a', DB::raw('UPPER(TRIM(r.codigo))'), '=', 'a.codigo')
-            ->where(function ($q) use ($desde, $hasta) {
-                $q->whereBetween('r.fecha_remision', [$desde, $hasta])
-                    ->orWhere(fn ($q) => $q->whereNull('r.fecha_remision')
-                        ->whereBetween('r.fecha_creacion', [$desde, $hasta]));
-            })
+            ->whereBetween('r.fecha_remision', [$desde, $hasta])
             ->where('r.cantidad', '>', 0)
             ->select(
                 'a.id as articulo_id', 'r.cod_sucursal_salida', 'r.sucursal_salida',
                 'r.cod_sucursal_destino', 'r.sucursal_destino'
             )
-            ->selectRaw("{$mes} AS mes,
+            ->selectRaw("{$mes} AS mes, {$ultimoEnvio} AS ultimo_envio,
                 SUM(r.cantidad) AS enviadas, 0 AS vendidas, 0 AS venta_neta")
             ->groupBy('a.id', 'mes', 'r.cod_sucursal_salida', 'r.sucursal_salida',
                 'r.cod_sucursal_destino', 'r.sucursal_destino')

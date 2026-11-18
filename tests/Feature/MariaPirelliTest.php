@@ -41,7 +41,8 @@ class MariaPirelliTest extends TestCase
         $this->remitir('D', '00042', '2026-10-01', [99, 'DEPÓSITO'], [1, 'CASA CENTRAL'], 20);
         $this->remitir('E', '00042', '2026-10-10', [14, 'PINEDO'], [7, 'BONANZA'], 2);
         $this->remitir('F', '00042-XL', '2026-10-11', [1, 'CASA CENTRAL'], [14, 'PINEDO'], 100);
-        $this->remitir('G', ' 00042 ', null, [1, 'CASA CENTRAL'], [14, 'PINEDO'], 7);
+        $this->remitir('G', ' 00042 ', '2026-11-04', [1, 'CASA CENTRAL'], [14, 'PINEDO'], 7, '2026-10-31');
+        $this->remitir('H', '00042', null, [1, 'CASA CENTRAL'], [14, 'PINEDO'], 9, '2026-11-05');
 
         $this->vender('FCR 1', '00042', 'PINEDO', '2026-10-15', 4, 120000);
         $this->vender('NCR 2', '00042', 'PINEDO SHOPPING', '2026-10-17', -1, -30000);
@@ -71,6 +72,9 @@ class MariaPirelliTest extends TestCase
             ->assertSee('Octubre 2026')
             ->assertSee('Noviembre 2026')
             ->assertSee('Cartera negra')
+            ->assertSee('Último envío (remisión)')
+            ->assertSee('04/11/2026')
+            ->assertDontSee('01/10/2026')
             ->assertViewHas('meses', [
                 '2026-11' => ['enviadas' => 7, 'vendidas' => 2, 'venta_neta' => 60000.0],
                 '2026-10' => ['enviadas' => 15, 'vendidas' => 4, 'venta_neta' => 115000.0],
@@ -81,6 +85,13 @@ class MariaPirelliTest extends TestCase
             ->assertOk()
             ->assertDontSee('Importar catálogo')
             ->assertViewHas('totales', ['enviadas' => 18, 'vendidas' => 5, 'venta_neta' => 150000.0]);
+        $this->get(route('accesorios.maria-pirelli.index', [
+            'desde' => '2026-10-01', 'hasta' => '2026-10-31', 'sucursal' => 'PINEDO SHOPPING',
+        ]))
+            ->assertOk()
+            ->assertSee('07/10/2026')
+            ->assertDontSee('08/10/2026')
+            ->assertViewHas('totales', ['enviadas' => 11, 'vendidas' => 3, 'venta_neta' => 90000.0]);
         $this->post(route('accesorios.maria-pirelli.importar'))->assertForbidden();
     }
 
@@ -152,14 +163,15 @@ class MariaPirelliTest extends TestCase
     }
 
     private function remitir(
-        string $numero, string $codigo, ?string $fecha, array $origen, array $destino, int $cantidad
+        string $numero, string $codigo, ?string $fecha, array $origen, array $destino, int $cantidad,
+        ?string $fechaCreacion = null
     ): void {
         DB::table('ot_logistica_remisiones')->insert([
             'serie' => 'MP',
             'numero_remision' => $numero,
             'codigo' => $codigo,
             'fecha_remision' => $fecha,
-            'fecha_creacion' => $fecha ?? '2026-11-04',
+            'fecha_creacion' => $fechaCreacion ?? $fecha,
             'cod_sucursal_salida' => $origen[0],
             'sucursal_salida' => $origen[1],
             'cod_sucursal_destino' => $destino[0],

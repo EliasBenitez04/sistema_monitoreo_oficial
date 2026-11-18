@@ -139,7 +139,9 @@
                 <div class="card shadow-sm">
                     <div class="card-header">
                         <h2 class="h5 mb-1">Resumen mensual</h2>
-                        <p class="small text-muted mb-0">Elegí un mes para ver sus artículos. Las ventas descuentan las notas de crédito.</p>
+                        <p class="small text-muted mb-0">
+                            Los envíos se agrupan por fecha de remisión. Las ventas descuentan las notas de crédito. Elegí un mes para ver sus artículos.
+                        </p>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-striped table-sm mb-0">
@@ -186,7 +188,7 @@
                                     <th scope="col">Código</th>
                                     <th scope="col">Descripción</th>
                                     <th scope="col">Línea</th>
-                                    <th scope="col" class="text-nowrap">Fecha envío (catálogo)</th>
+                                    <th scope="col" class="text-nowrap">Último envío (remisión)</th>
                                     <th scope="col" class="text-right">Costo</th>
                                     <th scope="col" class="text-right text-nowrap">Precio de venta</th>
                                     <th scope="col" class="text-right">Enviadas</th>
@@ -197,11 +199,12 @@
                             <tbody>
                                 @forelse($articulos as $articulo)
                                     @php($movimiento = $porArticulo[$articulo->id] ?? [])
+                                    @php($ultimoEnvio = $movimiento['ultimo_envio'] ?? null)
                                     <tr>
                                         <th scope="row" class="text-nowrap">{{ $articulo->codigo }}</th>
                                         <td>{{ $articulo->descripcion }}</td>
                                         <td>{{ $articulo->linea ?? '—' }}</td>
-                                        <td class="text-nowrap">{{ \Carbon\Carbon::parse($articulo->fecha_envio)->format('d/m/Y') }}</td>
+                                        <td class="text-nowrap">{{ $ultimoEnvio ? \Carbon\Carbon::parse($ultimoEnvio)->format('d/m/Y') : '—' }}</td>
                                         <td class="text-right text-nowrap">{{ $guaranies($articulo->costo_unitario) }}</td>
                                         <td class="text-right text-nowrap">{{ $guaranies($articulo->precio_venta) }}</td>
                                         <td class="text-right">{{ $conRemisiones ? $unidades($movimiento['enviadas'] ?? 0) : '—' }}</td>
