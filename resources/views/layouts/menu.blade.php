@@ -25,6 +25,12 @@
             <p>Compras · Facturas FCO</p>
         </a>
     </li>
+    <li class="nav-item">
+        <a href="{{ route('accesorios.maria-pirelli.index') }}" class="nav-link {{ request()->routeIs('accesorios.maria-pirelli.*') ? 'active' : '' }}">
+            <i class="nav-icon fas fa-chart-bar"></i>
+            <p>MARIA PIRELLI</p>
+        </a>
+    </li>
 @else
 <li class="nav-item">
     <a href="{{ route('home') }}" class="nav-link {{ Request::is('home') ? 'active' : '' }}">
@@ -261,6 +267,11 @@
             <li class="nav-item">
                 <a href="{{ route('accesorios.importar.form') }}" class="nav-link {{ request()->routeIs('accesorios.importar*') ? 'active' : '' }}">
                     <i class="fas fa-file-import nav-icon"></i><p>Importar datos</p>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="{{ route('accesorios.maria-pirelli.index') }}" class="nav-link {{ request()->routeIs('accesorios.maria-pirelli.*') ? 'active' : '' }}">
+                    <i class="fas fa-chart-bar nav-icon"></i><p>MARIA PIRELLI</p>
                 </a>
             </li>
         </ul>

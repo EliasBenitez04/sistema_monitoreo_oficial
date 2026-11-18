@@ -368,6 +368,7 @@ Route::middleware(['auth', 'role:ADMIN|visualizador_accesorios'])->group(functio
     Route::get('/accesorios/listado', [\App\Http\Controllers\AccesoriosController::class, 'index'])->name('accesorios.listado');
     Route::get('/accesorios/detalle/resumen', [\App\Http\Controllers\AccesoriosDashboardController::class, 'detalleAgrupado'])->name('accesorios.detalle.resumen');
     Route::get('/accesorios/compras-facturas', [\App\Http\Controllers\AccesoriosFacturasController::class, 'index'])->name('accesorios.facturas.index');
+    Route::get('/accesorios/maria-pirelli', [\App\Http\Controllers\MariaPirelliController::class, 'index'])->name('accesorios.maria-pirelli.index');
     Route::get('/accesorios/{id}', [\App\Http\Controllers\AccesoriosController::class, 'show'])->whereNumber('id')->name('accesorios.show');
 });
 
@@ -383,6 +384,7 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::post('/accesorios/stock/ajustar/{id}', [\App\Http\Controllers\AccesoriosAjusteStockController::class, 'guardar'])->whereNumber('id')->name('accesorios.stock.ajustar');
     Route::get('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importarForm'])->name('accesorios.importar.form');
     Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
+    Route::post('/accesorios/maria-pirelli/importar', [\App\Http\Controllers\MariaPirelliController::class, 'importar'])->name('accesorios.maria-pirelli.importar');
     Route::patch('/accesorios/compras-facturas/{compraId}', [\App\Http\Controllers\AccesoriosFacturasController::class, 'actualizar'])->whereNumber('compraId')->name('accesorios.facturas.actualizar');
     Route::patch('/accesorios/{id}/compras/{compraId}', [\App\Http\Controllers\AccesoriosController::class, 'actualizarCompra'])->whereNumber('id')->whereNumber('compraId')->name('accesorios.compras.actualizar');
 });
