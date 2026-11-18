@@ -24,21 +24,21 @@ class MariaPirelliCatalogoImport extends StringValueBinder implements
 
     public function collection(Collection $rows): void
     {
+        $primeraFila = $rows->first();
+        if ($primeraFila !== null) {
+            $this->validarEncabezados($this->campos($primeraFila));
+        }
+
         $registros = [];
         $errores = [];
         $ahora = now();
 
         foreach ($rows as $indice => $row) {
-            if ($row->every(fn ($valor) => trim((string) $valor) === '')) {
+            if ($row->every(fn ($valor) => $valor === null || (is_string($valor) && trim($valor) === ''))) {
                 continue;
             }
 
-            $campos = [];
-            foreach ($row as $nombre => $valor) {
-                $clave = preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii((string) $nombre)));
-                $campos[$clave] = $valor;
-            }
-
+            $campos = $this->campos($row);
             $numeroFila = $indice + 2;
             $codigo = strtoupper(ltrim(trim((string) ($campos['codigo'] ?? '')), "'’‘`"));
             $descripcion = trim((string) ($campos['descripcion'] ?? ''));
@@ -47,12 +47,27 @@ class MariaPirelliCatalogoImport extends StringValueBinder implements
             $precio = AccesoriosCompraImport::importe($campos['precvent'] ?? $campos['precioventa'] ?? null);
             $fecha = AccesoriosCompraImport::fecha($campos['fechaenvio'] ?? null);
 
-            if ($codigo === '' || mb_strlen($codigo) > 50 || $descripcion === ''
-                || mb_strlen($descripcion) > 200 || mb_strlen($linea) > 100
-                || $costo === null || $costo < 0 || round($costo, 2) >= 1e13
-                || $precio === null || $precio < 0 || round($precio, 2) >= 1e13
-                || $fecha === null || strlen($fecha) !== 10 || substr($fecha, 0, 4) === '0000') {
-                $errores[] = "Fila {$numeroFila}. Revisá código, descripción, costo, precio, fecha de envío y línea.";
+            $problemas = [];
+            if ($codigo === '' || mb_strlen($codigo) > 50) {
+                $problemas[] = 'CODIGO debe tener entre 1 y 50 caracteres';
+            }
+            if ($descripcion === '' || mb_strlen($descripcion) > 200) {
+                $problemas[] = 'DESCRIPCION debe tener entre 1 y 200 caracteres';
+            }
+            if ($costo === null || $costo < 0 || round($costo, 2) >= 1e13) {
+                $problemas[] = 'COSTO debe ser un importe válido mayor o igual a cero';
+            }
+            if ($precio === null || $precio < 0 || round($precio, 2) >= 1e13) {
+                $problemas[] = 'PREC. VENT. debe ser un importe válido mayor o igual a cero';
+            }
+            if ($fecha === null || strlen($fecha) !== 10 || substr($fecha, 0, 4) === '0000') {
+                $problemas[] = 'FECHA ENVIO debe ser una fecha válida, por ejemplo 18/11/2026';
+            }
+            if (mb_strlen($linea) > 100) {
+                $problemas[] = 'LINEA admite hasta 100 caracteres';
+            }
+            if ($problemas) {
+                $errores[] = "Fila {$numeroFila}. " . implode('. ', $problemas) . '.';
                 continue;
             }
 
@@ -93,5 +108,38 @@ class MariaPirelliCatalogoImport extends StringValueBinder implements
         });
 
         $this->articulos = count($registros);
+    }
+
+    private function campos(Collection $fila): array
+    {
+        $campos = [];
+        foreach ($fila as $nombre => $valor) {
+            $clave = preg_replace('/[^a-z0-9]/', '', strtolower(Str::ascii((string) $nombre)));
+            $campos[$clave] = $valor;
+        }
+
+        return $campos;
+    }
+
+    private function validarEncabezados(array $campos): void
+    {
+        $obligatorios = [
+            'codigo' => 'CODIGO',
+            'descripcion' => 'DESCRIPCION',
+            'costo' => 'COSTO',
+            'precvent' => 'PREC. VENT.',
+            'fechaenvio' => 'FECHA ENVIO',
+        ];
+        if (array_key_exists('precioventa', $campos)) {
+            unset($obligatorios['precvent']);
+        }
+
+        $faltantes = array_diff_key($obligatorios, $campos);
+        if ($faltantes) {
+            $mensaje = count($faltantes) === 1 ? 'Falta el encabezado ' : 'Faltan los encabezados ';
+            throw ValidationException::withMessages([
+                'archivo' => $mensaje . implode(', ', $faltantes) . ' en la primera fila de la primera hoja.',
+            ]);
+        }
     }
 }

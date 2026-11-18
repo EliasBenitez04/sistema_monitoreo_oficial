@@ -114,6 +114,35 @@ class MariaPirelliTest extends TestCase
         ]);
     }
 
+    public function test_identifica_un_encabezado_faltante(): void
+    {
+        $this->ingresarComo('ADMIN');
+        $this->post(route('accesorios.maria-pirelli.importar'), [
+            'archivo' => UploadedFile::fake()->createWithContent('catalogo.csv',
+                "CODIGO;DESCRIPCION;COSTO;PREC. VENT.;LINEA\n00042;Cartera;10000;30000;CARTERAS\n"
+            ),
+        ])->assertSessionHasErrors([
+            'archivo' => 'Falta el encabezado FECHA ENVIO en la primera fila de la primera hoja.',
+        ]);
+        $this->assertDatabaseCount('maria_pirelli_articulos', 0);
+    }
+
+    public function test_identifica_la_columna_invalida_y_rechaza_toda_la_carga(): void
+    {
+        $this->ingresarComo('ADMIN');
+        $this->post(route('accesorios.maria-pirelli.importar'), [
+            'archivo' => UploadedFile::fake()->createWithContent('catalogo.csv',
+                "CODIGO;DESCRIPCION;COSTO;PRECIO VENTA;FECHA ENVIO\n"
+                . "00042;Cartera;10000;30000;18/11/2026\n"
+                . ";;;;\n"
+                . "00043;Bolso;15000;45000;31/02/2026\n"
+            ),
+        ])->assertSessionHasErrors([
+            'archivo' => 'Fila 4. FECHA ENVIO debe ser una fecha válida, por ejemplo 18/11/2026.',
+        ]);
+        $this->assertDatabaseCount('maria_pirelli_articulos', 0);
+    }
+
     private function ingresarComo(string $rol): void
     {
         $usuario = new User(['name' => 'Prueba', 'email' => 'prueba@example.test']);
