@@ -1,7 +1,7 @@
 name: Verificar sintaxis PHP y Blade
 'on':
   push:
-    branches: [master]
+    branches: [master, codex/maria-pirelli]
   workflow_dispatch:
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
             require "vendor/autoload.php";
             $filesystem = new \Illuminate\Filesystem\Filesystem();
             $compiler = new \Illuminate\View\Compilers\BladeCompiler($filesystem, sys_get_temp_dir());
-            foreach (array_merge(glob("resources/views/accesorios/*.blade.php"), glob("resources/views/ventas/mayoristas_matriz_factura.blade.php"), glob("resources/views/ventas/mayoristas_matriz.blade.php"), glob("resources/views/invierno/*.blade.php"), glob("resources/views/layouts/menu.blade.php"), glob("resources/views/dashboard/ot-logistica.blade.php"), glob("resources/views/remisiones/progreso-importacion.blade.php")) as $path) {
+            foreach (array_merge(glob("resources/views/accesorios/*.blade.php"), glob("resources/views/maria_pirelli/*.blade.php"), glob("resources/views/ventas/mayoristas_matriz_factura.blade.php"), glob("resources/views/ventas/mayoristas_matriz.blade.php"), glob("resources/views/invierno/*.blade.php"), glob("resources/views/layouts/menu.blade.php"), glob("resources/views/dashboard/ot-logistica.blade.php"), glob("resources/views/remisiones/progreso-importacion.blade.php")) as $path) {
               $compiled = $compiler->compileString(file_get_contents($path));
               $target = sys_get_temp_dir() . "/" . sha1($path) . ".php";
               file_put_contents($target, $compiled);
@@ -49,3 +49,4 @@ jobs:
           vendor/bin/phpunit tests/Feature/InviernoImagenesTest.php
           vendor/bin/phpunit tests/Unit/ArticuloImagenNombreTest.php
           vendor/bin/phpunit tests/Feature/LogisticaRemisionesImportTest.php
+          vendor/bin/phpunit tests/Feature/MariaPirelliTest.php

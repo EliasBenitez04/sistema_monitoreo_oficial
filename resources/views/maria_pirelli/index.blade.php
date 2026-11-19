@@ -32,6 +32,7 @@
                 <nav class="mp-acciones" aria-label="Secciones de María Pirelli">
                     <a href="#stock-actual">Stock actual</a>
                     <a href="#resumen-mensual">Resumen mensual</a>
+                    <a href="#sucursales-mes">Ventas y stock por sucursal</a>
                     <a href="#remisiones">Remisiones</a>
                     <a href="#articulos">Artículos</a>
                 </nav>
@@ -177,7 +178,7 @@
                 <div class="card mp-card" id="resumen-mensual">
                     <div class="card-header mp-card-header">
                         <h2>Resumen mensual</h2>
-                        <p>Elegí un mes para ver sus remisiones. Las ventas netas descuentan las notas de crédito.</p>
+                        <p>Elegí un mes para ver ventas, stock valorizado y remisiones por sucursal. Las ventas netas descuentan las notas de crédito.</p>
                     </div>
                     <div class="table-responsive mp-tabla-scroll" tabindex="0" role="region" aria-label="Resumen mensual">
                         <table class="table table-hover mp-tabla mb-0">
@@ -201,7 +202,7 @@
                                     @endphp
                                     <tr @class(['mp-fila-activa' => substr($desde, 0, 7) === $mes && substr($hasta, 0, 7) === $mes])>
                                         <th scope="row">
-                                            <a class="mp-enlace" href="{{ route('maria-pirelli.index', $filtroMes) }}#remisiones">
+                                            <a class="mp-enlace" href="{{ route('maria-pirelli.index', $filtroMes) }}#sucursales-mes">
                                                 {{ ucfirst($inicioMes->isoFormat('MMMM YYYY')) }}
                                                 <i class="fas fa-angle-right ml-1" aria-hidden="true"></i>
                                             </a>
@@ -217,6 +218,8 @@
                         </table>
                     </div>
                 </div>
+
+                @include('maria_pirelli.sucursales_mes')
 
                 @include('maria_pirelli.remisiones')
 

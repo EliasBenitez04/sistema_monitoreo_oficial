@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Services\AccesoriosStockService;
 use DateTimeImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -337,6 +338,141 @@ class MariaPirelliTest extends TestCase
             && $stock['sucursales']->keys()->all() === ['S:1']
             && (int) $stock['totales']['unidades'] === 11
         );
+    }
+
+    public function test_cruza_ventas_del_mes_con_el_ultimo_stock_disponible_por_sucursal(): void
+    {
+        $this->ingresarComo('visualizador_accesorios');
+        $this->crearCatalogoStock();
+        $this->guardarCorte('2026-10-31', [['PINEDO', '00042', 99, 1000, 2000]]);
+        $this->guardarCorte('2026-11-16', [
+            ['PINEDO', '00042', 5, 10000, 20000],
+            ['PINEDO SHOPPING', '00043', -2, 12000, 25000],
+            ['BONANZA', '00042', 0, 10000, 20000],
+            ['MALL', '00042', 4, 20000, 40000],
+        ]);
+        $this->guardarCorte('2026-11-20', [['PINEDO', '00042', 500, 99000, 150000]]);
+        $this->vender('FCR 100', '00042', 'PINEDO', '2026-11-03', 4, 120000);
+        $this->vender('NCR 101', '00042', 'SHOPPING PINEDO', '2026-11-04', -1, -30000);
+        $this->vender('FCR 102', '00042', 'BONANZA', '2026-11-05', 1, 25000);
+        $this->vender('FCR 103', '00042', 'LUQUE', '2026-11-06', 2, 50000);
+        $this->vender('FCR 104', '00042-XL', 'PINEDO', '2026-11-07', 100, 3000000);
+        $this->vender('FCR 105', '00042', 'PINEDO', '2026-10-31', 10, 300000);
+        $this->vender('FCR 106', '00042', 'PINEDO', '2026-11-20', 10, 300000);
+        $this->remitir('301', '00042', '2026-11-05', [1, 'CASA CENTRAL'], [14, 'PINEDO'], 99);
+
+        $rango = ['desde' => '2026-11-01', 'hasta' => '2026-11-19'];
+        $respuesta = $this->get(route('maria-pirelli.index', $rango));
+        $respuesta->assertOk()->assertSee('Ventas y stock por sucursal')
+            ->assertSee('Stock del 16/11/2026')->assertSee('Sin dato')
+            ->assertViewHas('mesSeleccionado', 'Noviembre 2026')
+            ->assertViewHas('sucursalesSinStock', 1)
+            ->assertViewHas('stockMes', fn ($stock) => $stock['corte']->fecha_corte === '2026-11-16');
+        $locales = $respuesta->viewData('sucursalesDelMes')->keyBy('sucursal');
+        $this->assertCount(4, $locales);
+        $pinedo = $locales->get('PINEDO SHOPPING');
+        $this->assertSame(99, (int) $pinedo['enviadas']);
+        $this->assertSame(3, (int) $pinedo['vendidas']);
+        $this->assertSame(90000, (int) $pinedo['venta_neta']);
+        $this->assertSame(3, (int) $pinedo['unidades']);
+        $this->assertSame(26000, (int) $pinedo['costo']);
+        $this->assertSame(100000, (int) $pinedo['venta_potencial']);
+        $this->assertSame(2, (int) $pinedo['negativas']);
+        $this->assertSame(0, (int) $locales->get('BONANZA')['unidades']);
+        $this->assertNull($locales->get('LUQUE')['unidades']);
+        $this->assertSame(0, (int) $locales->get('MALL')['vendidas']);
+
+        $totales = $respuesta->viewData('totalesMes');
+        $this->assertSame(6, (int) $totales['vendidas']);
+        $this->assertSame(165000, (int) $totales['venta_neta']);
+        $this->assertSame(7, (int) $totales['unidades']);
+        $this->assertSame(106000, (int) $totales['costo']);
+        $this->assertSame(260000, (int) $totales['venta_potencial']);
+
+        $filtrado = $this->get(route('maria-pirelli.index', $rango + ['sucursal' => 'PINEDO']));
+        $filtrado->assertOk()->assertViewHas('sucursalesSinStock', 0);
+        $this->assertCount(1, $filtrado->viewData('sucursalesDelMes'));
+        $this->assertSame(26000, (int) $filtrado->viewData('totalesMes')['costo']);
+
+        $anterior = $this->get(route('maria-pirelli.index', [
+            'desde' => '2026-11-01', 'hasta' => '2026-11-10', 'sucursal' => 'PINEDO',
+        ]));
+        $anterior->assertOk()->assertViewHas('stockMes', fn ($stock) => $stock['corte']->fecha_corte === '2026-10-31');
+        $this->assertSame(99, (int) $anterior->viewData('totalesMes')['unidades']);
+    }
+
+    public function test_distingue_el_stock_cero_del_stock_ausente_y_no_usa_inventarios_futuros(): void
+    {
+        $this->ingresarComo('ADMIN');
+        $this->crearCatalogoStock();
+        $this->guardarCorte('2026-11-16', [['PINEDO', '00042', 0, 10000, 20000]]);
+        $this->vender('FCR 201', '00042', 'PINEDO', '2026-11-02', 1, 30000);
+
+        $sinStock = $this->get(route('maria-pirelli.index', [
+            'desde' => '2026-11-01', 'hasta' => '2026-11-10',
+        ]));
+        $sinStock->assertOk()->assertSee('No hay inventario importado hasta el 10/11/2026.')
+            ->assertViewHas('stockMes', fn ($stock) => $stock['corte'] === null)
+            ->assertViewHas('sucursalesSinStock', 1);
+        $this->assertNull($sinStock->viewData('totalesMes')['unidades']);
+        $this->assertNull($sinStock->viewData('sucursalesDelMes')->first()['costo']);
+
+        $conCero = $this->get(route('maria-pirelli.index', [
+            'desde' => '2026-11-01', 'hasta' => '2026-11-16',
+        ]));
+        $conCero->assertOk()->assertViewHas('sucursalesSinStock', 0);
+        $this->assertSame(0, (int) $conCero->viewData('totalesMes')['unidades']);
+        $this->assertSame(0, (int) $conCero->viewData('totalesMes')['costo']);
+    }
+
+    public function test_permite_abrir_meses_sin_ventas_y_respeta_linea_codigo_y_sucursal_en_el_stock(): void
+    {
+        $this->ingresarComo('visualizador_accesorios');
+        $this->crearCatalogoStock();
+        DB::table('maria_pirelli_articulos')->where('codigo', '00042')->update(['linea' => 'CARTERAS']);
+        DB::table('maria_pirelli_articulos')->where('codigo', '00043')->update(['linea' => 'BOLSOS']);
+        $this->guardarCorte('2026-11-16', [
+            ['PINEDO', '00042', 5, 10000, 20000],
+            ['PINEDO', '00043', 8, 12000, 25000],
+            ['MALL', '00043', 4, 12000, 25000],
+        ]);
+        $this->guardarCorte('2026-12-01', [['MALL', '00043', 2, 12000, 25000]]);
+
+        $this->get(route('maria-pirelli.index', ['desde' => '2026-11-01', 'hasta' => '2026-12-19']))
+            ->assertOk()->assertSee('Noviembre 2026')->assertSee('Diciembre 2026')
+            ->assertViewHas('meses', [
+                '2026-12' => ['enviadas' => 0, 'vendidas' => 0, 'venta_neta' => 0.0],
+                '2026-11' => ['enviadas' => 0, 'vendidas' => 0, 'venta_neta' => 0.0],
+            ])->assertViewHas('mesSeleccionado', fn ($mes) => $mes === null);
+
+        $filtros = [
+            'desde' => '2026-11-01', 'hasta' => '2026-11-19',
+            'sucursal' => 'PINEDO', 'linea' => 'CARTERAS', 'buscar' => '00042',
+        ];
+        $respuesta = $this->get(route('maria-pirelli.index', $filtros));
+        $respuesta->assertOk()->assertSee('#sucursales-mes')
+            ->assertViewHas('sucursal', 'PINEDO SHOPPING');
+        $this->assertCount(1, $respuesta->viewData('sucursalesDelMes'));
+        $this->assertSame(0, (int) $respuesta->viewData('totalesMes')['vendidas']);
+        $this->assertSame(5, (int) $respuesta->viewData('totalesMes')['unidades']);
+        $this->assertSame(50000, (int) $respuesta->viewData('totalesMes')['costo']);
+        $this->assertSame(100000, (int) $respuesta->viewData('totalesMes')['venta_potencial']);
+    }
+
+    private function guardarCorte(string $fecha, array $filas): void
+    {
+        $corte = DB::table('maria_pirelli_stock_cortes')->insertGetId(['fecha_corte' => $fecha]);
+        $sucursales = new AccesoriosStockService();
+        foreach ($filas as [$nombre, $codigo, $cantidad, $costo, $precio]) {
+            $clave = $sucursales->identificar(null, $nombre);
+            DB::table('maria_pirelli_stock')->insert([
+                'corte_id' => $corte,
+                'articulo_id' => DB::table('maria_pirelli_articulos')->where('codigo', $codigo)->value('id'),
+                'sucursal_clave' => $clave,
+                'sucursal' => $sucursales->nombre($clave, $nombre),
+                'cantidad' => $cantidad, 'costo_unitario' => $costo, 'precio_venta' => $precio,
+            ]);
+        }
     }
 
     private function crearCatalogoStock(): void

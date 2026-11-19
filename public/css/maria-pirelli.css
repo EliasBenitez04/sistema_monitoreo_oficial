@@ -346,3 +346,33 @@
         padding-left: .8rem;
     }
 }
+
+.mp-panel .mp-mes-contexto {
+    padding: .8rem 1.2rem;
+    border-bottom: 1px solid var(--mp-line);
+    background: #f7faff;
+    color: var(--mp-muted);
+    font-size: .83rem;
+}
+
+.mp-panel .mp-mes-contexto p {
+    margin: 0 0 .3rem;
+}
+
+.mp-panel .mp-mes-contexto p:last-child {
+    margin-bottom: 0;
+}
+
+.mp-panel .mp-tabla-mes {
+    min-width: 980px;
+}
+
+.mp-panel .mp-tabla-mes tfoot {
+    background: #edf3fc;
+    font-weight: 700;
+}
+
+.mp-panel .mp-sin-dato {
+    color: var(--mp-muted);
+    font-size: .8rem;
+}

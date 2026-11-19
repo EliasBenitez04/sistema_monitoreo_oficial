@@ -6,6 +6,7 @@ use App\Exports\MariaPirelliExport;
 use App\Imports\MariaPirelliCatalogoImport;
 use App\Services\AccesoriosStockService;
 use App\Services\MariaPirelliStockService;
+use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -28,6 +29,25 @@ class MariaPirelliController extends Controller
         $request->validate(['remision' => 'nullable|integer|min:1']);
         $sucursalesAccesorios = new AccesoriosStockService();
         $datos = $this->datos($request, $sucursalesAccesorios);
+        // Los meses y locales con inventario también se pueden consultar aunque no tengan ventas.
+        foreach ($stock->fechas($datos['catalogo'], $datos['desde'], $datos['hasta']) as $fila) {
+            $clave = AccesoriosStockService::normalizar($fila->sucursal);
+            $datos['sucursales'][$clave] ??= $fila->sucursal;
+            if ($datos['sucursal'] !== '' && $clave !== AccesoriosStockService::normalizar($datos['sucursal'])) {
+                continue;
+            }
+            $datos['meses'][substr($fila->fecha_corte, 0, 7)] ??= [
+                'enviadas' => 0, 'vendidas' => 0, 'venta_neta' => 0.0,
+            ];
+        }
+        krsort($datos['meses']);
+        $detalleSucursales = $this->detalleSucursales($datos, $stock);
+        foreach ($detalleSucursales['sucursalesDelMes'] as $local) {
+            if ($local['filtrable']) {
+                $datos['sucursales'][AccesoriosStockService::normalizar($local['sucursal'])] ??= $local['sucursal'];
+            }
+        }
+        ksort($datos['sucursales'], SORT_NATURAL | SORT_FLAG_CASE);
         $articulos = (clone $datos['catalogo'])->orderBy('a.codigo')->paginate(25)->withQueryString();
         $lineas = DB::table('maria_pirelli_articulos')->whereNotNull('linea')
             ->distinct()->orderBy('linea')->pluck('linea');
@@ -36,7 +56,7 @@ class MariaPirelliController extends Controller
         $stockActual = $stock->actual();
         unset($datos['catalogo']);
 
-        return view('maria_pirelli.index', $datos + $detalleRemisiones
+        return view('maria_pirelli.index', $datos + $detalleRemisiones + $detalleSucursales
             + compact('configurado', 'articulos', 'lineas', 'hayCatalogo', 'stockActual'));
     }
 
@@ -76,6 +96,11 @@ class MariaPirelliController extends Controller
         $linea = $filtros['linea'] ?? '';
         $buscar = $filtros['buscar'] ?? '';
         $sucursal = $filtros['sucursal'] ?? '';
+        $sucursalesAccesorios ??= new AccesoriosStockService();
+        if ($sucursal !== '') {
+            $clave = $sucursalesAccesorios->identificar(null, $sucursal);
+            $sucursal = $clave !== null ? $sucursalesAccesorios->nombre($clave, $sucursal) : $sucursal;
+        }
 
         $catalogo = DB::table('maria_pirelli_articulos as a')
             ->when($linea !== '', fn ($q) => $q->where('a.linea', $linea))
@@ -90,7 +115,6 @@ class MariaPirelliController extends Controller
         $conVentas = Schema::hasTable('ventas');
         $fuentes = [];
         if ($catalogo->exists()) {
-            $sucursalesAccesorios ??= new AccesoriosStockService();
             if ($conRemisiones) {
                 $fuentes[] = $this->envios($catalogo, $desde, $hasta, $sucursalesAccesorios);
             }
@@ -103,7 +127,7 @@ class MariaPirelliController extends Controller
         $ceros = ['enviadas' => 0, 'vendidas' => 0, 'venta_neta' => 0.0];
         $campos = array_keys($ceros);
         $totales = $ceros;
-        $meses = $porArticulo = $sucursales = [];
+        $meses = $porArticulo = $sucursales = $porMesSucursal = [];
         $filtroSucursal = AccesoriosStockService::normalizar($sucursal);
         foreach ($fuentes as $fuente) {
             foreach ($fuente as $fila) {
@@ -115,9 +139,14 @@ class MariaPirelliController extends Controller
                     continue;
                 }
 
+                $porMesSucursal[$fila->mes][$claveLocal] ??= $ceros + [
+                    'sucursal' => $fila->sucursal ?: 'Sin sucursal identificada',
+                    'filtrable' => $claveLocal !== '',
+                ];
                 $meses[$fila->mes] ??= $ceros;
                 $porArticulo[$fila->articulo_id] ??= $ceros;
                 foreach ($campos as $campo) {
+                    $porMesSucursal[$fila->mes][$claveLocal][$campo] += $fila->{$campo};
                     $totales[$campo] += $fila->{$campo};
                     $meses[$fila->mes][$campo] += $fila->{$campo};
                     $porArticulo[$fila->articulo_id][$campo] += $fila->{$campo};
@@ -138,8 +167,49 @@ class MariaPirelliController extends Controller
         return compact(
             'catalogo', 'conRemisiones', 'conVentas', 'desde', 'hasta',
             'linea', 'buscar', 'sucursal', 'sucursales',
-            'totales', 'meses', 'porArticulo'
+            'totales', 'meses', 'porArticulo', 'porMesSucursal'
         );
+    }
+
+    private function detalleSucursales(array $datos, MariaPirelliStockService $stock): array
+    {
+        $mesSeleccionado = substr($datos['desde'], 0, 7) === substr($datos['hasta'], 0, 7)
+            ? substr($datos['desde'], 0, 7) : null;
+        $sucursalesDelMes = collect();
+        $stockMes = null;
+        $totalesMes = null;
+        $sucursalesSinStock = 0;
+        if ($mesSeleccionado !== null) {
+            $stockMes = $stock->alCorte($datos['catalogo'], $datos['hasta']);
+            $filas = $datos['porMesSucursal'][$mesSeleccionado] ?? [];
+            $sinStock = ['unidades' => null, 'costo' => null, 'venta_potencial' => null, 'negativas' => 0];
+            $filtro = AccesoriosStockService::normalizar($datos['sucursal']);
+            foreach ($stockMes['sucursales'] as $local) {
+                $clave = AccesoriosStockService::normalizar($local->sucursal);
+                if ($filtro !== '' && $clave !== $filtro) {
+                    continue;
+                }
+                $filas[$clave] ??= [
+                    'sucursal' => $local->sucursal, 'filtrable' => true,
+                    'enviadas' => 0, 'vendidas' => 0, 'venta_neta' => 0.0,
+                ];
+                foreach (array_keys($sinStock) as $campo) {
+                    $filas[$clave][$campo] = $local->{$campo};
+                }
+            }
+
+            $sucursalesDelMes = collect($filas)->map(fn ($fila) => $fila + $sinStock)
+                ->sortBy('sucursal', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            $informadas = $sucursalesDelMes->filter(fn ($fila) => $fila['unidades'] !== null);
+            $sucursalesSinStock = $sucursalesDelMes->count() - $informadas->count();
+            $totalesMes = $datos['totales'];
+            foreach (['unidades', 'costo', 'venta_potencial', 'negativas'] as $campo) {
+                $totalesMes[$campo] = $informadas->isNotEmpty() ? $informadas->sum($campo) : null;
+            }
+            $mesSeleccionado = ucfirst(Carbon::parse($mesSeleccionado . '-01')->locale('es')->isoFormat('MMMM YYYY'));
+        }
+
+        return compact('mesSeleccionado', 'sucursalesDelMes', 'stockMes', 'totalesMes', 'sucursalesSinStock');
     }
 
     private function detalleRemisiones(Request $request, array $datos, AccesoriosStockService $sucursales): array
