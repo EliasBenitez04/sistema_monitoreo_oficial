@@ -143,7 +143,7 @@ class AccesoriosStockService
         return $etapas;
     }
 
-    private function identificar($codigo, ?string $nombre): ?string
+    public function identificar($codigo, ?string $nombre): ?string
     {
         if (self::esDeposito($nombre)) {
             return null; // Proveedor, fuera del stock de los locales.
@@ -196,7 +196,7 @@ class AccesoriosStockService
             ? (int) substr($key, 2) : null;
     }
 
-    private function nombre(string $clave, string $importado): string
+    public function nombre(string $clave, string $importado): string
     {
         if (strpos($clave, 'S:') === 0) {
             $id = (int) substr($clave, 2);

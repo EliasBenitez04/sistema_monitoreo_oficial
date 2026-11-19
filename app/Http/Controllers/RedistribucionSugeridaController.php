@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\LoteRedistribucionExport;
 use App\Imports\RedistribucionRemisionImport;
+use App\Support\FormatoArchivoRemisiones;
+use Maatwebsite\Excel\Excel as FormatoExcel;
 use Maatwebsite\Excel\Facades\Excel;
 
 class RedistribucionSugeridaController extends Controller
@@ -3530,19 +3532,19 @@ class RedistribucionSugeridaController extends Controller
         DB::disableQueryLog();
 
         $request->validate([
-            'archivo' => 'required|file|mimes:xlsx,xls|max:102400',
+            'archivo' => 'required|file|max:102400',
         ]);
 
         try {
             $inicio = microtime(true);
             $import = new RedistribucionRemisionImport();
             $archivo = $request->file('archivo');
-            $extension = strtolower($archivo->getClientOriginalExtension());
+            $formato = FormatoArchivoRemisiones::detectar($archivo, admiteCsv: false);
 
-            if ($extension === 'xlsx') {
+            if ($formato === FormatoExcel::XLSX) {
                 $import->importarXlsxStreaming($archivo->getRealPath());
             } else {
-                Excel::import($import, $archivo);
+                Excel::import($import, $archivo, null, $formato);
             }
 
             $segundos = round(microtime(true) - $inicio, 2);
@@ -3560,6 +3562,8 @@ class RedistribucionSugeridaController extends Controller
                 . ' | Errores: ' . $import->getErrores()
                 . ' | Tiempo: ' . $segundos . ' s.'
             );
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             Log::error('ERROR IMPORTANDO REMISIONES REDISTRIBUCION', [
                 'error' => $e->getMessage(),

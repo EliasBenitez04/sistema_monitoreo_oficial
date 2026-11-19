@@ -27,6 +27,8 @@ use App\Http\Controllers\MayoristaMatrizController;
 use App\Http\Controllers\MayoristaAuditoriaController;
 use App\Http\Controllers\InviernoTrazabilidadController;
 use App\Http\Controllers\InviernoDisponibilidadController;
+use App\Http\Controllers\MariaPirelliController;
+use App\Http\Controllers\MariaPirelliStockController;
 
 
 /*
@@ -385,6 +387,23 @@ Route::middleware(['auth', 'role:ADMIN'])->group(function () {
     Route::post('/accesorios/importar', [\App\Http\Controllers\AccesoriosController::class, 'importar'])->name('accesorios.importar');
     Route::patch('/accesorios/compras-facturas/{compraId}', [\App\Http\Controllers\AccesoriosFacturasController::class, 'actualizar'])->whereNumber('compraId')->name('accesorios.facturas.actualizar');
     Route::patch('/accesorios/{id}/compras/{compraId}', [\App\Http\Controllers\AccesoriosController::class, 'actualizarCompra'])->whereNumber('id')->whereNumber('compraId')->name('accesorios.compras.actualizar');
+});
+
+Route::middleware(['auth', 'role:ADMIN|visualizador_accesorios'])->group(function () {
+    Route::get('/maria-pirelli', [MariaPirelliController::class, 'index'])->name('maria-pirelli.index');
+    Route::get('/maria-pirelli/stock', [MariaPirelliStockController::class, 'index'])->name('maria-pirelli.stock');
+
+    // Entrada de los enlaces al historial compartidos antes de mover el módulo.
+    Route::get('/accesorios/maria-pirelli', [MariaPirelliController::class, 'index'])->name('accesorios.maria-pirelli.index');
+});
+
+Route::middleware(['auth', 'role:ADMIN'])->group(function () {
+    Route::get('/maria-pirelli/exportar', [MariaPirelliController::class, 'exportar'])->name('maria-pirelli.exportar');
+    Route::post('/maria-pirelli/importar', [MariaPirelliController::class, 'importar'])->name('maria-pirelli.importar');
+    Route::post('/maria-pirelli/stock/importar', [MariaPirelliStockController::class, 'importar'])->name('maria-pirelli.stock.importar');
+
+    Route::get('/accesorios/maria-pirelli/exportar', [MariaPirelliController::class, 'exportar'])->name('accesorios.maria-pirelli.exportar');
+    Route::post('/accesorios/maria-pirelli/importar', [MariaPirelliController::class, 'importar'])->name('accesorios.maria-pirelli.importar');
 });
 
 Route::get(

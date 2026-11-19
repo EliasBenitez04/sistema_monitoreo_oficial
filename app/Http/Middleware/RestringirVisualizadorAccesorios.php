@@ -32,7 +32,10 @@ class RestringirVisualizadorAccesorios
                 'accesorios.listado',
                 'accesorios.show',
                 'accesorios.detalle.resumen',
-                'accesorios.facturas.index'
+                'accesorios.facturas.index',
+                'accesorios.maria-pirelli.index',
+                'maria-pirelli.index',
+                'maria-pirelli.stock'
             )) {
                 return $next($request);
             }

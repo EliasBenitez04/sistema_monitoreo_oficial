@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Imports\ControlTerminacionRemisionImport;
 use App\Imports\RedistribucionRemisionImport;
+use App\Support\FormatoArchivoRemisiones;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Maatwebsite\Excel\Excel as FormatoExcel;
 use Maatwebsite\Excel\Facades\Excel;
 
 class RemisionesController extends Controller
@@ -41,7 +43,7 @@ class RemisionesController extends Controller
         DB::disableQueryLog();
 
         $request->validate([
-            'archivo_envios' => 'required|file|mimes:xlsx,xls,csv|max:102400',
+            'archivo_envios' => 'required|file|max:102400',
         ]);
 
         if (!Schema::hasTable('ot_logistica_remisiones')) {
@@ -51,8 +53,7 @@ class RemisionesController extends Controller
         try {
             $inicio = microtime(true);
             $archivo = $request->file('archivo_envios');
-            $rutaArchivo = $archivo->getRealPath();
-            $extension = strtolower($archivo->getClientOriginalExtension());
+            $formato = FormatoArchivoRemisiones::detectar($archivo);
 
             Log::info('INICIO IMPORTACION CENTRAL REMISIONES', [
                 'archivo' => $archivo->getClientOriginalName(),
@@ -74,14 +75,14 @@ class RemisionesController extends Controller
             $redisImport = new RedistribucionRemisionImport();
             $import = new ControlTerminacionRemisionImport();
 
-            if ($extension === 'xlsx') {
+            if ($formato === FormatoExcel::XLSX) {
                 /*
                  * XLSX grande: se lee UNA SOLA VEZ con XMLReader.
                  * El mismo bloque de filas se entrega a Redistribución y a
                  * OT/Logística, manteniendo separados los dos motores.
                  */
                 $import->importarXlsxStreaming(
-                    $rutaArchivo,
+                    $archivo->getRealPath(),
                     $redisImport
                 );
             } else {
@@ -89,8 +90,8 @@ class RemisionesController extends Controller
                  * XLS/CSV: compatibilidad con Laravel Excel. Estos formatos
                  * suelen ser mucho menores; cada motor conserva su importador.
                  */
-                Excel::import($redisImport, $rutaArchivo);
-                Excel::import($import, $rutaArchivo);
+                Excel::import($redisImport, $archivo, null, $formato);
+                Excel::import($import, $archivo, null, $formato);
             }
 
             $segundos = microtime(true) - $inicio;
@@ -131,6 +132,8 @@ class RemisionesController extends Controller
             ]);
 
             return back()->with('success', $mensaje);
+        } catch (\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             Log::error('ERROR IMPORTACION CENTRAL REMISIONES', [
                 'error' => $e->getMessage(),

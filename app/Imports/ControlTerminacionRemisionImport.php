@@ -109,7 +109,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
      * de filas puede superar fácilmente 512 MB. Para ENVIOS leemos directamente
      * el XML del XLSX y entregamos bloques pequeños al mismo motor de negocio.
      */
-    public function importarXlsxStreaming(string $ruta): void
+    public function importarXlsxStreaming(string $ruta, ?RedistribucionRemisionImport $redistribucion = null): void
     {
         @set_time_limit(0);
         DB::disableQueryLog();
@@ -220,12 +220,8 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
                 $lote[] = $fila;
 
                 if (count($lote) >= $tamanoLote) {
-                    $filasLote = collect($lote);
-
-                    $this->collection($filasLote);
-
+                    $this->guardarLoteXlsx($lote, $redistribucion);
                     $lote = [];
-                    unset($filasLote);
                     gc_collect_cycles();
                 }
             }
@@ -234,13 +230,7 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $reader = null;
 
             if (!empty($lote)) {
-                $filasLote = collect($lote);
-
-                $this->collection($filasLote);
-
-                $lote = [];
-                unset($filasLote);
-                gc_collect_cycles();
+                $this->guardarLoteXlsx($lote, $redistribucion);
             }
         } finally {
             if ($reader) {
@@ -249,6 +239,20 @@ class ControlTerminacionRemisionImport implements ToCollection, WithHeadingRow, 
             $zip->close();
             $this->eliminarDirectorioTemporal($directorioTemporal);
         }
+    }
+
+    private function guardarLoteXlsx(array $lote, ?RedistribucionRemisionImport $redistribucion): void
+    {
+        $filas = collect($lote);
+        if ($redistribucion === null) {
+            $this->collection($filas);
+            return;
+        }
+
+        DB::transaction(function () use ($filas, $redistribucion) {
+            $this->collection($filas);
+            $redistribucion->collection($filas);
+        });
     }
 
     private function leerSharedStrings(\ZipArchive $zip): array

@@ -153,7 +153,7 @@ class AccesoriosCompraImport implements ToCollection, WithHeadingRow, SkipsEmpty
             return null;
         }
         $texto = preg_replace('/[^0-9,.\-]/u', '', (string) $valor);
-        if (!$texto || !preg_match('/^-?\d[\d.,]*$/', $texto)) {
+        if ($texto === '' || !preg_match('/^-?\d[\d.,]*$/', $texto)) {
             return null;
         }
         if (strpos($texto, ',') !== false) {

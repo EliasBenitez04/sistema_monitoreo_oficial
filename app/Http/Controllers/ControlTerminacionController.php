@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Imports\ControlTerminacionRemisionImport;
 use App\Services\LogisticaConciliacionService;
+use App\Support\FormatoArchivoRemisiones;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Maatwebsite\Excel\Excel as FormatoExcel;
 use Maatwebsite\Excel\Facades\Excel;
 
 class ControlTerminacionController extends Controller
@@ -3724,9 +3726,7 @@ class ControlTerminacionController extends Controller
 
         $request->validate([
             'archivo_envios' => [
-                'bail', 'required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:102400',
-                // Un CSV válido también puede detectarse como text/plain.
-                // La extensión original sigue limitada a los formatos del importador.
+                'bail', 'required', 'file', 'max:102400',
                 function ($atributo, $archivo, $fallar) {
                     if (!in_array(strtolower($archivo->getClientOriginalExtension()), ['xlsx', 'xls', 'csv'], true)) {
                         $fallar('El archivo ENVIOS debe tener extensión .xlsx, .xls o .csv.');
@@ -3755,14 +3755,14 @@ class ControlTerminacionController extends Controller
         try {
             $archivo = $request->file('archivo_envios');
             $inicio = microtime(true);
-            $extension = strtolower($archivo->getClientOriginalExtension());
+            $formato = FormatoArchivoRemisiones::detectar($archivo);
 
-            if ($extension === 'xlsx') {
+            if ($formato === FormatoExcel::XLSX) {
                 $import->importarXlsxStreaming($archivo->getRealPath());
-            } elseif ($extension === 'csv') {
+            } elseif ($formato === FormatoExcel::CSV) {
                 $import->importarCsvStreaming($archivo->getRealPath());
             } else {
-                Excel::import($import, $archivo);
+                Excel::import($import, $archivo, null, $formato);
             }
 
             $segundos = round(microtime(true) - $inicio, 2);
