@@ -4,6 +4,10 @@
     <link rel="stylesheet" href="{{ asset('css/maria-pirelli.css') }}">
 @endpush
 
+@push('page_scripts')
+    <script src="{{ asset('js/maria-pirelli.js') }}" defer></script>
+@endpush
+
 @section('content')
 @php
     $fecha = static fn (?string $valor) => $valor ? \Carbon\Carbon::parse($valor)->format('d/m/Y') : '—';

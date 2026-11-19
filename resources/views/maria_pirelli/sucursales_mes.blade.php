@@ -42,25 +42,28 @@
             @if($sucursalesSinStock > 0)
                 <p><strong>{{ $unidades($sucursalesSinStock) }}</strong> sucursales con movimientos sin stock informado para estos filtros. “Sin dato” indica que falta inventario.</p>
             @endif
+            <p id="mp-mes-orden-ayuda">Hacé clic en una cabecera para ordenar. Volvé a hacer clic para invertir el orden.</p>
+            <p id="mp-mes-orden-estado" class="sr-only" role="status" aria-live="polite"></p>
         </div>
 
         <div class="table-responsive mp-tabla-scroll" tabindex="0" role="region" aria-labelledby="mp-mes-sucursales-titulo">
-            <table class="table table-hover mp-tabla mp-tabla-mes mb-0">
+            <table id="mp-sucursales-mes-tabla" class="table table-hover mp-tabla mp-tabla-mes mb-0" aria-describedby="mp-mes-orden-ayuda">
                 <thead>
                     <tr>
-                        <th scope="col">Sucursal</th>
-                        <th scope="col" class="text-right">Enviadas</th>
-                        <th scope="col" class="text-right">Vendidas netas</th>
-                        <th scope="col" class="text-right">Venta neta</th>
-                        <th scope="col" class="text-right">Stock del corte</th>
-                        <th scope="col" class="text-right">Costo del stock</th>
-                        <th scope="col" class="text-right">Venta estimada del stock</th>
+                        @foreach(['Sucursal', 'Enviadas', 'Vendidas netas', 'Venta neta', 'Stock del corte', 'Costo del stock', 'Venta estimada del stock'] as $columna)
+                            <th scope="col" @class(['text-right' => !$loop->first]) aria-sort="none">
+                                <button type="button" class="mp-mes-ordenar" data-sort-column="{{ $loop->index }}"
+                                    data-sort-type="{{ $loop->first ? 'text' : 'number' }}" data-sort-label="{{ $columna }}">
+                                    {{ $columna }} <i class="fas fa-sort" aria-hidden="true"></i>
+                                </button>
+                            </th>
+                        @endforeach
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($sucursalesDelMes as $local)
                         <tr>
-                            <th scope="row">
+                            <th scope="row" data-sort-value="{{ $local['sucursal'] }}">
                                 @if($local['filtrable'])
                                     <a class="mp-enlace"
                                         href="{{ route('maria-pirelli.index', ['desde' => $desde, 'hasta' => $hasta, 'sucursal' => $local['sucursal'], 'linea' => $linea, 'buscar' => $buscar]) }}#sucursales-mes">
@@ -70,10 +73,10 @@
                                     {{ $local['sucursal'] }}
                                 @endif
                             </th>
-                            <td class="text-right">{{ $conRemisiones ? $unidades($local['enviadas']) : '—' }}</td>
-                            <td class="text-right">{{ $conVentas ? $unidades($local['vendidas']) : '—' }}</td>
-                            <td class="text-right text-nowrap">{{ $conVentas ? $guaranies($local['venta_neta']) : '—' }}</td>
-                            <td class="text-right text-nowrap">
+                            <td class="text-right" data-sort-value="{{ $conRemisiones ? $local['enviadas'] : '' }}">{{ $conRemisiones ? $unidades($local['enviadas']) : '—' }}</td>
+                            <td class="text-right" data-sort-value="{{ $conVentas ? $local['vendidas'] : '' }}">{{ $conVentas ? $unidades($local['vendidas']) : '—' }}</td>
+                            <td class="text-right text-nowrap" data-sort-value="{{ $conVentas ? $local['venta_neta'] : '' }}">{{ $conVentas ? $guaranies($local['venta_neta']) : '—' }}</td>
+                            <td class="text-right text-nowrap" data-sort-value="{{ $local['unidades'] }}">
                                 @if($local['unidades'] !== null)
                                     <strong @class(['text-danger' => $local['unidades'] < 0])>{{ $unidades($local['unidades']) }}</strong>
                                     @if($local['negativas'] > 0)
@@ -83,8 +86,8 @@
                                     <span class="mp-sin-dato">Sin dato</span>
                                 @endif
                             </td>
-                            <td class="text-right text-nowrap">{{ $local['costo'] !== null ? $guaranies($local['costo']) : 'Sin dato' }}</td>
-                            <td class="text-right text-nowrap"><strong>{{ $local['venta_potencial'] !== null ? $guaranies($local['venta_potencial']) : 'Sin dato' }}</strong></td>
+                            <td class="text-right text-nowrap" data-sort-value="{{ $local['costo'] }}">{{ $local['costo'] !== null ? $guaranies($local['costo']) : 'Sin dato' }}</td>
+                            <td class="text-right text-nowrap" data-sort-value="{{ $local['venta_potencial'] }}"><strong>{{ $local['venta_potencial'] !== null ? $guaranies($local['venta_potencial']) : 'Sin dato' }}</strong></td>
                         </tr>
                     @empty
                         <tr><td colspan="7" class="mp-vacio">No hay ventas, envíos ni stock informado para estas sucursales y artículos.</td></tr>
