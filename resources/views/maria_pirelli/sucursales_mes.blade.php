@@ -1,7 +1,12 @@
 <section class="card mp-card" id="sucursales-mes" aria-labelledby="mp-mes-sucursales-titulo">
     <header class="card-header mp-card-header mp-card-acciones">
         <div>
-            <h2 id="mp-mes-sucursales-titulo">Ventas y stock por sucursal@if($mesSeleccionado) · {{ $mesSeleccionado }}@endif</h2>
+            <h2 id="mp-mes-sucursales-titulo">
+                Ventas y stock por sucursal
+                @if($mesSeleccionado)
+                    · {{ $mesSeleccionado }}
+                @endif
+            </h2>
             @if($mesSeleccionado)
                 <p>Ventas y envíos del {{ $fecha($desde) }} al {{ $fecha($hasta) }}.</p>
             @endif

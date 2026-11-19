@@ -36,6 +36,12 @@ jobs:
               if ($status !== 0) exit(1);
             }
           '
+      - name: Probar ventas e inventario de María Pirelli
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+        run: vendor/bin/phpunit tests/Feature/MariaPirelliTest.php
       - name: Probar edición FCO y controles de integridad
         env:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
@@ -49,4 +55,3 @@ jobs:
           vendor/bin/phpunit tests/Feature/InviernoImagenesTest.php
           vendor/bin/phpunit tests/Unit/ArticuloImagenNombreTest.php
           vendor/bin/phpunit tests/Feature/LogisticaRemisionesImportTest.php
-          vendor/bin/phpunit tests/Feature/MariaPirelliTest.php
